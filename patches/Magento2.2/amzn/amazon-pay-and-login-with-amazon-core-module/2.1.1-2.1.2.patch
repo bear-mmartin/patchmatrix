@@ -1,0 +1,1000 @@
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,202 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "{}"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright {yyyy} {name of copyright owner}
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,23 +2,23 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "2.1.1",
++  "version": "2.1.2",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
+-    "magento/framework": "101.0.*",
+-    "magento/module-config": "101.0.*",
+-    "magento/module-store": "^100.1",
+-    "magento/module-developer": "100.2.*",
+-    "magento/module-quote": "101.0.*",
+-    "magento/module-catalog": "102.0.*",
+-    "magento/module-customer": "^101.0",
+-    "magento/module-checkout": "100.2.*",
+-    "magento/module-backend": "100.2.*",
+-    "magento/module-payment": "100.2.*",
+-    "magento/module-paypal": "100.2.*",
++    "php": "~7.0.13|~7.1.0|~7.2.0",
++    "magento/framework": "*",
++    "magento/module-config": "*",
++    "magento/module-store": "*",
++    "magento/module-developer": "*",
++    "magento/module-quote": "*",
++    "magento/module-catalog": "*",
++    "magento/module-customer": "*",
++    "magento/module-checkout": "*",
++    "magento/module-backend": "*",
++    "magento/module-payment": "*",
++    "magento/module-paypal": "*",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "autoload": {
+
+--- /dev/null
++++ b/etc/db_schema_whitelist.json
+@@ -0,0 +1,32 @@
++{
++    "amazon_quote": {
++        "column": {
++            "entity_id": true,
++            "quote_id": true,
++            "amazon_order_reference_id": true,
++            "sandbox_simulation_reference": true,
++            "confirmed": true
++        },
++        "index": {
++            "AMAZON_QUOTE_QUOTE_ID": true
++        },
++        "constraint": {
++            "PRIMARY": true,
++            "AMAZON_QUOTE_QUOTE_ID_QUOTE_ENTITY_ID": true
++        }
++    },
++    "amazon_sales_order": {
++        "column": {
++            "entity_id": true,
++            "order_id": true,
++            "amazon_order_reference_id": true
++        },
++        "index": {
++            "AMAZON_SALES_ORDER_ORDER_ID": true
++        },
++        "constraint": {
++            "PRIMARY": true,
++            "AMAZON_SALES_ORDER_ORDER_ID_SALES_ORDER_ENTITY_ID": true
++        }
++    }
++}
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="2.1.1">
++    <module name="Amazon_Core" setup_version="2.1.2">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/view/adminhtml/web/js/simplepath.js
++++ b/view/adminhtml/web/js/simplepath.js
+@@ -14,362 +14,366 @@
+  */
+ /*browser:true*/
+ /*global define*/
+-define([
+-    'jquery',
+-    'uiComponent',
+-    'mage/translate',
+-    'jquery/ui',
+-    'jquery/validate'
+-], function ($, Class, $t) {
+-    'use strict';
+-    var pollTimer, windowOpen = false;
+-
+-    return Class.extend({
+-
+-        defaults: {
+-            $amazonFields: null,
+-            $amazonCredentialJson: null,
+-            $amazonSpBack: null,
+-            $amazonMerchantId: null,
+-            selector: 'amazon_payment',
+-            $container: null,
+-            pollInterval: 1500,
+-            $form: null,
+-        },
+-
+-        /**
+-         * Set list of observable attributes
+-         * @returns {exports.initObservable}
+-         */
+-        initObservable: function () {
+-            var self = this;
+-            self.$amazonSimplepath = $('#amazon_simplepath');
+-            self.$amazonFields = $('#payment_' + self.getCountry() + '_' + self.selector + ' .form-list');
+-            self.$amazonCredentialsHeader = $('#payment_' + self.getCountry() + '_' + self.selector
+-                + '_credentials-head');
+-            self.$amazonCredentialJson = $('#payment_' + self.getCountry() + '_' + self.selector
+-                + '_credentials_credentials_json');
+-            self.$amazonMerchantId = $('#payment_' + self.getCountry() + '_' + self.selector
+-                + '_credentials_merchant_id').val();
+-            self.$amazonSpBack = $('#amazon_simplepath_back');
+-            self.$container = $('#amazon_simplepath');
+-
+-            if (self.$amazonMerchantId) {
+-                self.hideAmazonConfig();
+-            }
+-            else {
+-                self.showAmazonConfig();
+-            }
+-
+-            if (!self.$form) {
+-                self.generateSimplePathForm();
+-            }
+-
+-            self._super();
+-
+-            self.initEventHandlers();
+-
+-            return self;
+-        },
+-
+-        /**
+-         * Init event handlers
+-         */
+-        initEventHandlers: function () {
+-            var self = this;
+-            self.$amazonSpBack.click(function () {
+-                self.showAmazonConfig();
+-                return false;
+-            });
+-
+-            $('#simplepath-skip').click(function () {
+-                self.hideAmazonConfig();
+-                return false;
+-            });
+-
+-            $('#simplepath_form').on('submit', function () {
+-                self.setupWindowLaunch();
+-            });
+-
+-            self.$amazonCredentialJson.on('input', function (e) {
+-                self.updateCredentials(self);
+-            });
+-        },
+-
+-        /**
+-         * Detects when a properly formatted JSON block is pasted into the Credentials JSON field and auto populates
+-         * specified fields.
+-         *
+-         * @param self
+-         */
+-        updateCredentials: function (self) {
+-            var elJson = self.$amazonCredentialJson.val();
+-            var obj = null;
+-            try {
+-                obj = $.parseJSON($.trim(elJson));
+-            }
+-            catch (err) {
+-                obj = null;
+-                self.$amazonCredentialJson.val('').attr(
+-                    'placeholder',
+-                    $t('Invalid JSON credentials entered, please try again.')
+-                ).focus();
+-            }
+-
+-            if (obj && typeof obj === 'object') {
+-                var success = true;
+-                for (var prop in obj) {
+-                    var item = $('#payment_' + self.getCountry() + '_amazon_payment_credentials_' + $.trim(prop));
+-                    if (item && item.length) {
+-                        $('#payment_' + self.getCountry() + '_amazon_payment_credentials_'
+-                            + $.trim(prop)).val($.trim(obj[prop]));
++define(
++    [
++        'jquery',
++        'uiComponent',
++        'mage/translate',
++        'jquery/ui',
++        'jquery/validate'
++    ],
++    function ($, Class, $t) {
++        'use strict';
++        var pollTimer, windowOpen = false;
++
++        return Class.extend({
++
++                defaults: {
++                    $amazonFields: null,
++                    $amazonCredentialJson: null,
++                    $amazonSpBack: null,
++                    $amazonMerchantId: null,
++                    selector: 'amazon_payment',
++                    $container: null,
++                    pollInterval: 1500,
++                    $form: null,
++                },
++
++                /**
++                 * Set list of observable attributes
++                 * @returns {exports.initObservable}
++                 */
++                initObservable: function () {
++                    var self = this;
++                    self.$amazonSimplepath = $('#amazon_simplepath');
++                    self.$amazonFields = $('#payment_' + self.getCountry() + '_' + self.selector + ' .form-list');
++                    self.$amazonCredentialsHeader = $('#payment_' + self.getCountry() + '_' + self.selector
++                        + '_credentials-head');
++                    self.$amazonCredentialJson = $('#payment_' + self.getCountry() + '_' + self.selector
++                        + '_credentials_credentials_json');
++                    self.$amazonMerchantId = $('#payment_' + self.getCountry() + '_' + self.selector
++                        + '_credentials_merchant_id').val();
++                    self.$amazonSpBack = $('#amazon_simplepath_back');
++                    self.$container = $('#amazon_simplepath');
++
++                    if (self.$amazonMerchantId) {
++                        self.hideAmazonConfig();
+                     }
+                     else {
+-                        success = false;
++                        self.showAmazonConfig();
+                     }
+-                }
+ 
+-                if (success) {
+-                    self.$amazonCredentialJson.val('').attr(
+-                        'placeholder',
+-                        $t('Credential fields successfully updated and being saved.')
+-                    ).focus();
+-                    $('#save').click();
+-                }
+-                else {
+-                    self.$amazonCredentialJson.val('').attr(
+-                        'placeholder',
+-                        $t('One or more of your credential fields did not parse correctly. Please review your entry and try again.')
+-                    ).focus();
+-                }
+-            }
+-        },
+-
+-        /**
+-         * Sets up Amazon merchant key popup and polls for data update upon user completion.
+-         */
+-        setupWindowLaunch: function () {
+-            var self = this;
+-            var heights = [660, 720, 810, 900];
+-            var popupWidth = this.getCountry() !== 'us' ? 768 : 1050;
+-            var popupHeight = heights[0];
+-            for (var i in heights) {
+-                popupHeight = (window.innerHeight >= heights[i]) ? heights[i] : popupHeight;
+-            }
++                    if (!self.$form) {
++                        self.generateSimplePathForm();
++                    }
+ 
+-            self.launchPopup(self.amazonUrl, popupWidth, popupHeight);
++                    self._super();
+ 
+-            // flags that popup is open and poll timer can proceed
+-            windowOpen = true;
++                    self.initEventHandlers();
+ 
+-            // begin polling for feedback
+-            pollTimer = setTimeout(self.pollForKeys(self), self.pollInterval);
++                    return self;
++                },
+ 
+-            // Save JSON
+-            $('#save-json').click(function (e) {
+-                e.stop();
+-                var json = $('#json-import').value;
+-                if (!json || !json.isJSON()) {
+-                    return;
+-                }
+-                elJson.value = json;
+-                $('#save').click();
+-            });
+-
+-            // Autoset payment region (for EU/UK)
+-            var region = self.region;
+-            if (self.region.indexOf('eu') != -1) {
+-                region = 'de';
+-            }
+-            var elCheckDefault = $('#payment_' + self.getCountry()
+-                + '_amazon_payment_credentials_payment_region_inherit:checked');
+-            if (elCheckDefault && elCheckDefault.length) {
+-                elCheckDefault[0].click();
+-            }
+-            var elRegion = $('payment_' + self.getCountry() + '_amazon_payment_credentials_payment_region');
+-            if (elRegion) {
+-                elRegion.value = region;
+-            }
+-        },
+-
+-        /**
+-         * Perform Ajax request looking for new keys.
+-         */
+-        pollForKeys: function (self) {
+-            clearTimeout(pollTimer);
+-            if (windowOpen) {
+-                $.ajax({
+-                    url: self.pollUrl,
+-                    data: {},
+-                    type: 'GET',
+-                    cache: true,
+-                    dataType: 'json',
+-                    context: this,
+-
+-                    /**
+-                     * Response handler
+-                     * @param {Object} response
+-                     */
+-                    success: function (response) {
+-                        // poll controller returns a 0 if invalid and a 1 if valid
+-                        if (response) {
+-                            $('#amazon_reload').show();
+-                            document.location.replace(document.location + '#payment_amazon_payments-head');
+-                            location.reload();
++                /**
++                 * Init event handlers
++                 */
++                initEventHandlers: function () {
++                    var self = this;
++                    self.$amazonSpBack.click(function () {
++                        self.showAmazonConfig();
++                        return false;
++                    });
++
++                    $('#simplepath-skip').click(function () {
++                        self.hideAmazonConfig();
++                        return false;
++                    });
++
++                    $('#simplepath_form').on('submit', function () {
++                        self.setupWindowLaunch();
++                    });
++
++                    self.$amazonCredentialJson.on('input', function (e) {
++                        self.updateCredentials(self);
++                    });
++                },
++
++                /**
++                 * Detects when a properly formatted JSON block is pasted into the Credentials JSON field and auto populates
++                 * specified fields.
++                 *
++                 * @param self
++                 */
++                updateCredentials: function (self) {
++                    var elJson = self.$amazonCredentialJson.val();
++                    var obj = null;
++                    try {
++                        obj = $.parseJSON($.trim(elJson));
++                    }
++                    catch (err) {
++                        obj = null;
++                        self.$amazonCredentialJson.val('').attr(
++                            'placeholder',
++                            $t('Invalid JSON credentials entered, please try again.')
++                        ).focus();
++                    }
++
++                    if (obj && typeof obj === 'object') {
++                        var success = true;
++                        for (var prop in obj) {
++                            var item = $('#payment_' + self.getCountry() + '_amazon_payment_credentials_' + $.trim(prop));
++                            if (item && item.length) {
++                                $('#payment_' + self.getCountry() + '_amazon_payment_credentials_'
++                                    + $.trim(prop)).val($.trim(obj[prop]));
++                            }
++                            else {
++                                success = false;
++                            }
++                        }
++
++                        if (success) {
++                            self.$amazonCredentialJson.val('').attr(
++                                'placeholder',
++                                $t('Credential fields successfully updated and being saved.')
++                            ).focus();
++                            $('#save').click();
+                         }
+                         else {
+-                            pollTimer = setTimeout(self.pollForKeys(self), self.pollInterval);
++                            self.$amazonCredentialJson.val('').attr(
++                                'placeholder',
++                                $t('One or more of your credential fields did not parse correctly. Please review your entry and try again.')
++                            ).focus();
+                         }
+                     }
+-                });
+-            }
+-        },
+-
+-        /**
+-         * Sets up dynamic form for capturing popup/form input for simple path setup.
+-         */
+-        generateSimplePathForm: function () {
+-            this.$form = new Element('form', {
+-                method: 'post',
+-                action: this.amazonUrl,
+-                id: 'simplepath_form',
+-                target: 'simplepath',
+-                novalidate: 'novalidate',
+-            });
+-
+-            this.$container.wrap(this.$form);
+-
+-            // Convert formParams JSON to hidden inputs
+-            for (var key in this.formParams) {
+-                if (typeof this.formParams[key] === 'object' || typeof this.formParams[key] === 'array') {
+-                    for (var i in this.formParams[key]) {
+-                        if (typeof this.formParams[key][i] !== 'function') {
++                },
++
++                /**
++                 * Sets up Amazon merchant key popup and polls for data update upon user completion.
++                 */
++                setupWindowLaunch: function () {
++                    var self = this;
++                    var heights = [660, 720, 810, 900];
++                    var popupWidth = this.getCountry() !== 'us' ? 768 : 1050;
++                    var popupHeight = heights[0];
++                    for (var i in heights) {
++                        popupHeight = (window.innerHeight >= heights[i]) ? heights[i] : popupHeight;
++                    }
++
++                    self.launchPopup(self.amazonUrl, popupWidth, popupHeight);
++
++                    // flags that popup is open and poll timer can proceed
++                    windowOpen = true;
++
++                    // begin polling for feedback
++                    pollTimer = setTimeout(self.pollForKeys(self), self.pollInterval);
++
++                    // Save JSON
++                    $('#save-json').click(function (e) {
++                        e.stop();
++                        var json = $('#json-import').value;
++                        if (!json || !json.isJSON()) {
++                            return;
++                        }
++                        elJson.value = json;
++                        $('#save').click();
++                    });
++
++                    // Autoset payment region (for EU/UK)
++                    var region = self.region;
++                    if (self.region.indexOf('eu') != -1) {
++                        region = 'de';
++                    }
++                    var elCheckDefault = $('#payment_' + self.getCountry()
++                        + '_amazon_payment_credentials_payment_region_inherit:checked');
++                    if (elCheckDefault && elCheckDefault.length) {
++                        elCheckDefault[0].click();
++                    }
++                    var elRegion = $('payment_' + self.getCountry() + '_amazon_payment_credentials_payment_region');
++                    if (elRegion) {
++                        elRegion.value = region;
++                    }
++                },
++
++                /**
++                 * Perform Ajax request looking for new keys.
++                 */
++                pollForKeys: function (self) {
++                    clearTimeout(pollTimer);
++                    if (windowOpen) {
++                        $.ajax({
++                            url: self.pollUrl,
++                            data: {},
++                            type: 'GET',
++                            cache: true,
++                            dataType: 'json',
++                            context: this,
++
++                            /**
++                             * Response handler
++                             * @param {Object} response
++                             */
++                            success: function (response) {
++                                // poll controller returns a 0 if invalid and a 1 if valid
++                                if (response) {
++                                    $('#amazon_reload').show();
++                                    document.location.replace(document.location + '#payment_amazon_payments-head');
++                                    location.reload();
++                                }
++                                else {
++                                    pollTimer = setTimeout(self.pollForKeys(self), self.pollInterval);
++                                }
++                            }
++                        });
++                    }
++                },
++
++                /**
++                 * Sets up dynamic form for capturing popup/form input for simple path setup.
++                 */
++                generateSimplePathForm: function () {
++                    this.$form = new Element('form', {
++                        method: 'post',
++                        action: this.amazonUrl,
++                        id: 'simplepath_form',
++                        target: 'simplepath',
++                        novalidate: 'novalidate',
++                    });
++
++                    this.$container.wrap(this.$form);
++
++                    // Convert formParams JSON to hidden inputs
++                    for (var key in this.formParams) {
++                        if (typeof this.formParams[key] === 'object' || typeof this.formParams[key] === 'array') {
++                            for (var i in this.formParams[key]) {
++                                if (typeof this.formParams[key][i] !== 'function') {
++                                    var element = new Element('input', {
++                                        type: 'hidden',
++                                        name: key,
++                                        value: this.formParams[key][i],
++                                        novalidate: 'novalidate'
++                                    });
++                                    $(element).appendTo($("#simplepath_form"));
++                                }
++                            }
++                        } else {
+                             var element = new Element('input', {
+                                 type: 'hidden',
+                                 name: key,
+-                                value: this.formParams[key][i],
+-                                novalidate: 'novalidate'
++                                novalidate: 'novalidate',
++                                value: this.formParams[key]
+                             });
+                             $(element).appendTo($("#simplepath_form"));
+                         }
+                     }
+-                } else {
+-                    var element = new Element('input', {
+-                        type: 'hidden',
+-                        name: key,
+-                        novalidate: 'novalidate',
+-                        value: this.formParams[key]
+-                    });
+-                    $(element).appendTo($("#simplepath_form"));
+-                }
+-            }
+ 
+-            // unable to use this.form, had to resort to direct call
+-            $('#simplepath_form').validate({});
+-        },
+-
+-        /**
+-         * display amazon simple path config section
+-         */
+-        showAmazonConfig: function () {
+-            this.$amazonSimplepath.show();
+-            this.$amazonSpBack.hide();
+-            if (this.$amazonCredentialsHeader.hasClass('open')) {
+-                this.$amazonCredentialsHeader.click();
+-            }
+-        },
+-
+-        /**
+-         * hide amazon simple path config.
+-         */
+-        hideAmazonConfig: function () {
+-            this.$amazonSimplepath.hide();
+-            this.$amazonSpBack.show();
+-            if (!this.$amazonCredentialsHeader.hasClass('open')) {
+-                this.$amazonCredentialsHeader.click();
+-            }
+-        },
+-
+-        /**
+-         * Get payment code
+-         * @returns {String}
+-         */
+-        getCountry: function () {
+-            return this.co.toLowerCase();
+-        },
+-
+-        /**
+-         * Generate popup window for simple path process
+-         * @param url
+-         * @param requestedWidth
+-         * @param requestedHeight
+-         */
+-        launchPopup: function (url, requestedWidth, requestedHeight) {
+-            var self = this;
+-            var leftOffset = this.getLeftOffset(requestedWidth),
+-                topOffset = this.getTopOffset(requestedHeight),
+-                newWindow = window.open(url, 'simplepath', 'scrollbars=yes, width=' + requestedWidth + ', height=' +
+-                    requestedHeight + ', top=' + topOffset + ', left=' + leftOffset);
+-
+-            if (window.focus) {
+-                newWindow.focus();
+-            }
++                    // unable to use this.form, had to resort to direct call
++                    $('#simplepath_form').validate({});
++                },
++
++                /**
++                 * display amazon simple path config section
++                 */
++                showAmazonConfig: function () {
++                    this.$amazonSimplepath.show();
++                    this.$amazonSpBack.hide();
++                    if (this.$amazonCredentialsHeader.hasClass('open')) {
++                        this.$amazonCredentialsHeader.click();
++                    }
++                },
++
++                /**
++                 * hide amazon simple path config.
++                 */
++                hideAmazonConfig: function () {
++                    this.$amazonSimplepath.hide();
++                    this.$amazonSpBack.show();
++                    if (!this.$amazonCredentialsHeader.hasClass('open')) {
++                        this.$amazonCredentialsHeader.click();
++                    }
++                },
++
++                /**
++                 * Get payment code
++                 * @returns {String}
++                 */
++                getCountry: function () {
++                    return this.co.toLowerCase();
++                },
++
++                /**
++                 * Generate popup window for simple path process
++                 * @param url
++                 * @param requestedWidth
++                 * @param requestedHeight
++                 */
++                launchPopup: function (url, requestedWidth, requestedHeight) {
++                    var self = this;
++                    var leftOffset = this.getLeftOffset(requestedWidth),
++                        topOffset = this.getTopOffset(requestedHeight),
++                        newWindow = window.open(url, 'simplepath', 'scrollbars=yes, width=' + requestedWidth + ', height=' +
++                            requestedHeight + ', top=' + topOffset + ', left=' + leftOffset);
++
++                    if (window.focus) {
++                        newWindow.focus();
++                    }
+ 
+-            // Set interval to check when this popup window is closed so timeout can be suspended.
+-            var winTimer = window.setInterval(function () {
+-                if (newWindow.closed !== false) {
+-                    window.clearInterval(winTimer);
+-                    windowOpen = false;
++                    // Set interval to check when this popup window is closed so timeout can be suspended.
++                    var winTimer = window.setInterval(function () {
++                        if (newWindow.closed !== false) {
++                            window.clearInterval(winTimer);
++                            windowOpen = false;
++                        }
++                    });
++                },
++
++                /**
++                 * Determine left offset for popup window
++                 * @param requestedWidth
++                 * @returns {number}
++                 */
++                getLeftOffset: function (requestedWidth) {
++                    var dualScreenLeft = window.screenLeft !== undefined ? window.screenLeft : screen.left;
++                    return ((this.windowWidth() / 2) - (requestedWidth / 2)) + dualScreenLeft;
++                },
++
++                /**
++                 * Determine top offset for popup window
++                 * @param requestedHeight
++                 * @returns {number}
++                 */
++                getTopOffset: function (requestedHeight) {
++                    var dualScreenTop = window.screenTop !== undefined ? window.screenTop : screen.top;
++                    return ((this.windowHeight() / 2) - (requestedHeight / 2)) + dualScreenTop;
++                },
++
++                /**
++                 * Determine width of popup window
++                 * @returns {number}
++                 */
++                windowWidth: function () {
++                    if (window.innerWidth) {
++                        return window.innerWidth;
++                    } else if (document.documentElement.clientWidth) {
++                        return document.documentElement.clientWidth;
++                    } else {
++                        return screen.width;
++                    }
++                },
++
++                /**
++                 * Determine window height of popup
++                 * @returns {number}
++                 */
++                windowHeight: function () {
++                    if (window.innerHeight) {
++                        return window.innerHeight;
++                    } else if (document.documentElement.clientHeight) {
++                        return document.documentElement.clientHeight;
++                    } else {
++                        return screen.height;
++                    }
+                 }
+-            });
+-        },
+-
+-        /**
+-         * Determine left offset for popup window
+-         * @param requestedWidth
+-         * @returns {number}
+-         */
+-        getLeftOffset: function (requestedWidth) {
+-            var dualScreenLeft = window.screenLeft !== undefined ? window.screenLeft : screen.left;
+-            return ((this.windowWidth() / 2) - (requestedWidth / 2)) + dualScreenLeft;
+-        },
+-
+-        /**
+-         * Determine top offset for popup window
+-         * @param requestedHeight
+-         * @returns {number}
+-         */
+-        getTopOffset: function (requestedHeight) {
+-            var dualScreenTop = window.screenTop !== undefined ? window.screenTop : screen.top;
+-            return ((this.windowHeight() / 2) - (requestedHeight / 2)) + dualScreenTop;
+-        },
+-
+-        /**
+-         * Determine width of popup window
+-         * @returns {number}
+-         */
+-        windowWidth: function () {
+-            if (window.innerWidth) {
+-                return window.innerWidth;
+-            } else if (document.documentElement.clientWidth) {
+-                return document.documentElement.clientWidth;
+-            } else {
+-                return screen.width;
+-            }
+-        },
+-
+-        /**
+-         * Determine window height of popup
+-         * @returns {number}
+-         */
+-        windowHeight: function () {
+-            if (window.innerHeight) {
+-                return window.innerHeight;
+-            } else if (document.documentElement.clientHeight) {
+-                return document.documentElement.clientHeight;
+-            } else {
+-                return screen.height;
+             }
+-        }
+-    });
+-});
+\ No newline at end of file
++        );
++    }
++);
+

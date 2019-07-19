@@ -1,0 +1,1253 @@
+--- a/Domain/Validator/AmazonAuthorization.php
++++ b/Domain/Validator/AmazonAuthorization.php
+@@ -21,7 +21,7 @@ use Amazon\Payment\Domain\Details\AmazonAuthorizationDetails;
+ 
+ /**
+  * Class AmazonAuthorization
+- * @package Amazon\Payment\Domain\Validator
++ * validates Amazon Pay status during cron updates.
+  */
+ class AmazonAuthorization
+ {
+
+--- a/Gateway/Command/AmazonAuthCommand.php
++++ b/Gateway/Command/AmazonAuthCommand.php
+@@ -24,7 +24,6 @@ use Amazon\Payment\Gateway\Config\Config;
+  * Class AmazonAuthCommand
+  *
+  * Enables customized error handling for Amazon Payment
+- * @api
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+  */
+ class AmazonAuthCommand implements CommandInterface
+
+--- a/Gateway/Command/CaptureStrategyCommand.php
++++ b/Gateway/Command/CaptureStrategyCommand.php
+@@ -115,7 +115,7 @@ class CaptureStrategyCommand implements CommandInterface
+         }
+ 
+         // capture on settlement/invoice
+-        if (!$isCaptured && $this->isAuthorized($payment)) {
++        if (!$isCaptured && $payment->getAuthorizationTransaction()) {
+             return self::CAPTURE;
+         }
+ 
+@@ -127,32 +127,6 @@ class CaptureStrategyCommand implements CommandInterface
+         return self::AUTHORIZE_CAPTURE;
+     }
+ 
+-    /**
+-     * Check if auth transaction exists
+-     *
+-     * @param  OrderPaymentInterface $payment
+-     * @return boolean
+-     */
+-    private function isAuthorized(OrderPaymentInterface $payment) 
+-    {
+-        $filters = [];
+-        $this->filterBuilder->setField('transaction_id')
+-            ->setValue($payment->getLastTransId())
+-            ->create();
+-
+-        $this->filterBuilder->setField('txn_type')
+-            ->setValue(TransactionInterface::TYPE_AUTH)
+-            ->create();
+-
+-        $searchCriteria = $this->searchCriteriaBuilder->addFilters($filters)
+-            ->create();
+-
+-        $count = $this->transactionRepository->getList($searchCriteria)->getTotalCount();
+-
+-        return (boolean) $count;
+-
+-    }
+-
+     /**
+      * Check if capture transaction already exists
+      *
+
+--- a/Gateway/Helper/SubjectReader.php
++++ b/Gateway/Helper/SubjectReader.php
+@@ -25,10 +25,7 @@ use Magento\Payment\Gateway\Data\PaymentDataObjectInterface;
+ 
+ /**
+  * Class SubjectReader
+- *
+  * Consolidates commonly used calls
+- *
+- * @package Amazon\Payment\Gateway\Helper
+  */
+ class SubjectReader
+ {
+@@ -51,8 +48,9 @@ class SubjectReader
+     /**
+      * SubjectReader constructor.
+      *
+-     * @param Session                   $checkoutSession
++     * @param Session $checkoutSession
+      * @param QuoteLinkInterfaceFactory $quoteLinkInterfaceFactory
++     * @param Data $coreHelper
+      */
+     public function __construct(
+         Session $checkoutSession,
+@@ -64,7 +62,6 @@ class SubjectReader
+         $this->coreHelper = $coreHelper;
+     }
+ 
+-
+     /**
+      * Reads payment from subject
+      *
+@@ -76,7 +73,6 @@ class SubjectReader
+         return Helper\SubjectReader::readPayment($subject);
+     }
+ 
+-
+     /**
+      * Reads amount from subject
+      *
+@@ -144,5 +140,4 @@ class SubjectReader
+     {
+         return $this->checkoutSession->getLastRealOrder();
+     }
+-
+ }
+
+--- a/Gateway/Http/Client/AbstractClient.php
++++ b/Gateway/Http/Client/AbstractClient.php
+@@ -26,12 +26,10 @@ use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+ 
+ /**
+  * Class AbstractClient
+- *
+- * @package Amazon\Payment\Gateway\Http\Client
++ * Base class for gateway client classes
+  */
+ abstract class AbstractClient implements ClientInterface
+ {
+-
+     /**
+      * @var SubjectReader
+      */
+@@ -47,7 +45,6 @@ abstract class AbstractClient implements ClientInterface
+      */
+     protected $clientFactory;
+ 
+-
+     /**
+      * @var Data
+      */
+@@ -58,7 +55,14 @@ abstract class AbstractClient implements ClientInterface
+      */
+     protected $adapter;
+ 
+-
++    /**
++     * AbstractClient constructor.
++     * @param Logger $logger
++     * @param ClientFactoryInterface $clientFactory
++     * @param SubjectReader $subjectReader
++     * @param Data $coreHelper
++     * @param AmazonPaymentAdapter $adapter
++     */
+     public function __construct(
+         Logger $logger,
+         ClientFactoryInterface $clientFactory,
+@@ -91,19 +95,14 @@ abstract class AbstractClient implements ClientInterface
+         try {
+             $response = $this->process($data);
+         } catch (\Exception $e) {
+-            $message = __($e->getMessage() ?: "Something went wrong during Gateway request.");
++            $message = $e->getMessage() ? $e->getMessage() : "Something went wrong during Gateway request.";
+             $log['error'] = $message;
+             $this->logger->debug($log);
+-        } finally {
+-            $log['response'] = (array) $response;
+-            $this->logger->debug($log);
+         }
+ 
+         return $response;
+     }
+ 
+-
+-
+     /**
+      * Process http request
+      *
+
+--- a/Gateway/Http/Client/AuthorizeClient.php
++++ b/Gateway/Http/Client/AuthorizeClient.php
+@@ -19,8 +19,7 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ 
+ /**
+  * Class Client
+- *
+- * @package Amazon\Payment\Gateway\Http\Client
++ * Amazon Pay authorization gateway client
+  */
+ class AuthorizeClient extends AbstractClient
+ {
+@@ -39,5 +38,4 @@ class AuthorizeClient extends AbstractClient
+ 
+         return $response;
+     }
+-
+ }
+
+--- a/Gateway/Http/Client/CaptureClient.php
++++ b/Gateway/Http/Client/CaptureClient.php
+@@ -19,8 +19,7 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ 
+ /**
+  * Class Client
+- *
+- * @package Amazon\Payment\Gateway\Http\Client
++ * Amazon Pay gateway capture client
+  */
+ class CaptureClient extends AbstractClient
+ {
+
+--- a/Gateway/Http/Client/RefundClient.php
++++ b/Gateway/Http/Client/RefundClient.php
+@@ -24,8 +24,7 @@ use Amazon\Payment\Domain\AmazonRefundResponseFactory;
+ 
+ /**
+  * Class RefundClient
+- *
+- * @package Amazon\Payment\Gateway\Http\Client
++ * Amazon Pay refund client
+  */
+ class RefundClient implements ClientInterface
+ {
+@@ -42,7 +41,6 @@ class RefundClient implements ClientInterface
+      */
+     private $logger;
+ 
+-
+     /**
+      * @var AmazonRefundResponseFactory
+      */
+@@ -128,5 +126,4 @@ class RefundClient implements ClientInterface
+         // Gateway expects response to be in form of array
+         return $response;
+     }
+-
+ }
+
+--- a/Gateway/Http/Client/SettlementClient.php
++++ b/Gateway/Http/Client/SettlementClient.php
+@@ -20,8 +20,7 @@ use Amazon\Core\Exception\AmazonServiceUnavailableException;
+ 
+ /**
+  * Class SettlementClient
+- *
+- * @package Amazon\Payment\Gateway\Http\Client
++ * Amazon Pay capture client
+  */
+ class SettlementClient extends AbstractClient
+ {
+@@ -59,9 +58,4 @@ class SettlementClient extends AbstractClient
+ 
+         return $response;
+     }
+-
+-
+-
+-
+-
+ }
+
+--- a/Gateway/Http/Client/VoidClient.php
++++ b/Gateway/Http/Client/VoidClient.php
+@@ -19,8 +19,7 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ 
+ /**
+  * Class VoidClient
+- *
+- * @package Amazon\Payment\Gateway\Http\Client
++ * Amazon Pay client for gateway cancel and void
+  */
+ class VoidClient extends AbstractClient
+ {
+
+--- a/Gateway/Request/AuthorizationRequest.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -26,7 +26,7 @@ use Magento\Framework\DataObject;
+ use Amazon\Payment\Plugin\AdditionalInformation;
+ use Amazon\Core\Helper\CategoryExclusion;
+ 
+-class AuthorizationRequest implements BuilderInterface
++class AuthorizationRequestBuilder implements BuilderInterface
+ {
+     /**
+      * @var ConfigInterface
+@@ -59,7 +59,7 @@ class AuthorizationRequest implements BuilderInterface
+     private $categoryExclusion;
+ 
+     /**
+-     * AuthorizationRequest constructor.
++     * AuthorizationRequestBuilder constructor.
+      *
+      * @param ConfigInterface $config
+      * @param ProductMetadata $productMetadata
+
+--- a/Gateway/Request/CaptureRequest.php
++++ b/Gateway/Request/CaptureRequestBuilder.php
+@@ -24,7 +24,7 @@ use Amazon\Core\Helper\Data;
+ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Payment\Model\Method\Logger;
+ 
+-class CaptureRequest implements BuilderInterface
++class CaptureRequestBuilder implements BuilderInterface
+ {
+     /**
+      * @var Config
+@@ -52,7 +52,7 @@ class CaptureRequest implements BuilderInterface
+     private $coreHelper;
+ 
+     /**
+-     * CaptureRequest constructor.
++     * CaptureRequestBuilder constructor.
+      *
+      * @param Config          $config
+      * @param ProductMetadata $productMetadata
+@@ -144,9 +144,4 @@ class CaptureRequest implements BuilderInterface
+ 
+         return $data;
+     }
+-
+-
+-
+-
+ }
+-
+
+--- a/Gateway/Request/RefundRequest.php
++++ b/Gateway/Request/RefundRequestBuilder.php
+@@ -23,11 +23,10 @@ use Amazon\Core\Helper\Data;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ 
+ /**
+- * Class RefundRequest
+- *
+- * @package Amazon\Payment\Gateway\Request
++ * Class RefundRequestBuilder
++ * Builds refund request for Amazon Pay
+  */
+-class RefundRequest implements BuilderInterface
++class RefundRequestBuilder implements BuilderInterface
+ {
+ 
+     /**
+@@ -51,7 +50,7 @@ class RefundRequest implements BuilderInterface
+     private $orderRepository;
+ 
+     /**
+-     * RefundRequest constructor.
++     * RefundRequestBuilder constructor.
+      *
+      * @param ProductMetadata          $productMetadata
+      * @param SubjectReader            $subjectReader
+
+--- a/Gateway/Request/SettlementRequest.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -24,7 +24,7 @@ use Magento\Payment\Model\Method\Logger;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ 
+-class SettlementRequest implements BuilderInterface
++class SettlementRequestBuilder implements BuilderInterface
+ {
+     /**
+      * @var Config
+@@ -62,7 +62,7 @@ class SettlementRequest implements BuilderInterface
+     private $quoteRepository;
+ 
+     /**
+-     * SettlementRequest constructor.
++     * SettlementRequestBuilder constructor.
+      *
+      * @param Config                   $config
+      * @param ProductMetadata          $productMetadata
+@@ -131,4 +131,3 @@ class SettlementRequest implements BuilderInterface
+     }
+ 
+ }
+-
+
+--- a/Gateway/Request/VoidRequest.php
++++ b/Gateway/Request/VoidRequestBuilder.php
+@@ -22,7 +22,7 @@ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ 
+-class VoidRequest implements BuilderInterface
++class VoidRequestBuilder implements BuilderInterface
+ {
+ 
+     /**
+@@ -46,7 +46,7 @@ class VoidRequest implements BuilderInterface
+     private $orderRepository;
+ 
+     /**
+-     * VoidRequest constructor.
++     * VoidRequestBuilder constructor.
+      *
+      * @param ProductMetadata          $productMetadata
+      * @param SubjectReader            $subjectReader
+
+--- a/Gateway/Response/RefundHandler.php
++++ b/Gateway/Response/RefundHandler.php
+@@ -25,8 +25,7 @@ use Amazon\Payment\Api\Data\PendingRefundInterfaceFactory;
+ 
+ /**
+  * Class RefundHandler
+- *
+- * @package Amazon\Payment\Gateway\Response
++ * Handles refund behavior for Amazon Pay
+  */
+ class RefundHandler implements HandlerInterface
+ {
+@@ -56,7 +55,6 @@ class RefundHandler implements HandlerInterface
+      */
+     private $pendingRefundFactory;
+ 
+-
+     /**
+      * RefundHandler constructor.
+      *
+@@ -109,5 +107,4 @@ class RefundHandler implements HandlerInterface
+             $this->messageManager->addSuccessMessage(__('Amazon Pay refund successful.'));
+         }
+     }
+-
+ }
+
+--- a/Gateway/Validator/AuthorizationValidator.php
++++ b/Gateway/Validator/AuthorizationValidator.php
+@@ -22,8 +22,7 @@ use Amazon\Payment\Domain\AmazonConstraint;
+ 
+ /**
+  * Class AuthorizationValidator
+- *
+- * @package Amazon\Payment\Gateway\Validator
++ * Validates authorization calls during gateway payment
+  */
+ class AuthorizationValidator extends AbstractValidator
+ {
+
+--- a/Gateway/Validator/CurrencyValidator.php
++++ b/Gateway/Validator/CurrencyValidator.php
+@@ -23,8 +23,7 @@ use Amazon\Core\Helper\Data;
+ 
+ /**
+  * Class CurrencyValidator
+- *
+- * @package Amazon\Payment\Gateway\Validator
++ * Validates allowable currencies for Amazon Pay
+  */
+ class CurrencyValidator extends AbstractValidator
+ {
+@@ -56,7 +55,6 @@ class CurrencyValidator extends AbstractValidator
+         parent::__construct($resultFactory);
+     }
+ 
+-
+     /**
+      * @param array $validationSubject
+      * @return \Magento\Payment\Gateway\Validator\ResultInterface
+
+--- a/Model/Method/AmazonLoginMethod.php
++++ b/Model/Method/AmazonLoginMethod.php
+@@ -19,8 +19,7 @@ use Amazon\Core\Helper\Data as AmazonCoreHelper;
+ 
+ /**
+  * Class AmazonLoginMethod
+- *
+- * @package Amazon\Payment\Model\Method
++ * For display of Amazon Pay in payment method list
+  */
+ class AmazonLoginMethod extends \Magento\Payment\Model\Method\AbstractMethod
+ {
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -341,12 +341,11 @@ class Authorization extends AbstractOperation
+             $invoice = $this->getInvoice($transactionId, $order);
+             $this->setPaymentReview($order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
+-            $message = __('Declined amount of %1 online', $formattedAmount);
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
+-            $message = __('Declined amount of %1 online', $formattedAmount);
+         }
+ 
++        $message = __('Declined amount of %1 online', $formattedAmount);
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $payment->addTransactionCommentsToOrder($transaction, $message);
+         $this->paymentManagement->closeTransaction($transactionId, $payment, $order);
+@@ -386,15 +385,13 @@ class Authorization extends AbstractOperation
+         if ($capture) {
+             $invoice = $this->getInvoiceAndSetCancelled($transactionId, $order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
+-            $message = __('Declined amount of %1 online', $formattedAmount);
+             $this->addCaptureDeclinedNotice($order);
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
+-            $message = __('Declined amount of %1 online', $formattedAmount);
+         }
+ 
++        $message = __('Declined amount of %1 online', $formattedAmount);
+         $this->setOnHold($order);
+-
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $payment->addTransactionCommentsToOrder($transaction, $message);
+         $this->paymentManagement->closeTransaction($transactionId, $payment, $order);
+@@ -505,7 +502,8 @@ class Authorization extends AbstractOperation
+         OrderInterface $order,
+         OrderPaymentInterface $payment,
+         PendingAuthorizationInterface $pendingAuthorization
+-    ) {
++    )
++    {
+         $capture = true;
+ 
+         try {
+
+--- /dev/null
++++ b/Test/Mftf/Data/AmazonPaymentData.xml
+@@ -0,0 +1,81 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++          xsi:noNamespaceSchemaLocation="../../../../../../../../dev/tests/acceptance/vendor/magento/magento2-functional-testing-framework/src/Magento/FunctionalTestingFramework/DataGenerator/etc/dataProfileSchema.xsd">
++    <entity name="SampleAmazonPaymentConfig" type="amazon_payment_config_state">
++        <requiredEntity type="merchant_id">SampleMerchantId</requiredEntity>
++        <requiredEntity type="access_key">SampleAccessKey</requiredEntity>
++        <requiredEntity type="secret_key">SampleSecretKey</requiredEntity>
++        <requiredEntity type="client_id">SampleClientId</requiredEntity>
++        <requiredEntity type="client_secret">SampleClientSecret</requiredEntity>
++        <requiredEntity type="payment_region">SamplePaymentRegion</requiredEntity>
++        <requiredEntity type="sandbox">SampleSandbox</requiredEntity>
++        <requiredEntity type="payment_action">SamplePaymentAction</requiredEntity>
++        <requiredEntity type="authorization_mode">SampleAuthorizationMode</requiredEntity>
++    </entity>
++    <entity name="SampleMerchantId" type="merchant_id">
++        <data key="value">someMerchantId</data>
++    </entity>
++    <entity name="SampleAccessKey" type="access_key">
++        <data key="value">someAccessKey</data>
++    </entity>
++    <entity name="SampleSecretKey" type="secret_key">
++        <data key="value">somePrivateKey</data>
++    </entity>
++    <entity name="SampleClientId" type="client_id">
++        <data key="value">someClientId</data>
++    </entity>
++    <entity name="SampleClientSecret" type="client_secret">
++        <data key="value">someClientSecret</data>
++    </entity>
++    <entity name="SamplePaymentRegion" type="payment_region">
++        <data key="value">us</data>
++    </entity>
++    <entity name="SampleSandbox" type="sandbox">
++        <data key="value">1</data>
++    </entity>
++    <entity name="SamplePaymentAction" type="payment_action">
++        <data key="value">authorize</data>
++    </entity>
++    <entity name="SampleAuthorizationMode" type="authorization_mode">
++        <data key="value">synchronous</data>
++    </entity>
++    <!-- default configuration used to restore Magento config -->
++    <entity name="DefaultAmazonPaymentConfig" type="amazon_payment_config_state">
++        <requiredEntity type="merchant_id">DefaultMerchantId</requiredEntity>
++        <requiredEntity type="access_key">DefaultAccessKey</requiredEntity>
++        <requiredEntity type="secret_key">DefaultSecretKey</requiredEntity>
++        <requiredEntity type="client_id">DefaultClientId</requiredEntity>
++        <requiredEntity type="client_secret">DefaultClientSecret</requiredEntity>
++        <requiredEntity type="payment_region">DefaultPaymentRegion</requiredEntity>
++        <requiredEntity type="sandbox">DefaultSandbox</requiredEntity>
++        <requiredEntity type="payment_action">DefaultPaymentAction</requiredEntity>
++        <requiredEntity type="authorization_mode">DefaultAuthorizationMode</requiredEntity>
++    </entity>
++    <entity name="DefaultMerchantId" type="merchant_id">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultAccessKey" type="access_key">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultSecretKey" type="secret_key">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultClientId" type="client_id">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultClientSecret" type="client_secret">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultPaymentRegion" type="payment_region">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultSandbox" type="sandbox">
++        <data key="value"/>
++    </entity>
++    <entity name="DefaultPaymentAction" type="payment_action">
++        <data key="value">authorize</data>
++    </entity>
++    <entity name="DefaultAuthorizationMode" type="authorization_mode">
++        <data key="value">synchronous</data>
++    </entity>
++</entities>
+
+--- /dev/null
++++ b/Test/Mftf/Metadata/amazon_payment_config-meta.xml
+@@ -0,0 +1,47 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<operations xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++            xsi:noNamespaceSchemaLocation="../../../../../../../dev/tests/acceptance/vendor/magento/magento2-functional-testing-framework/src/Magento/FunctionalTestingFramework/DataGenerator/etc/dataOperation.xsd">
++    <operation name="CreateAmazonPaymentConfigState" dataType="amazon_payment_config_state" type="create" auth="adminFormKey" url="/admin/system_config/save/section/payment/" method="POST">
++        <object key="groups" dataType="amazon_payment_config_state">
++            <object key="amazon_payment" dataType="amazon_payment_config_state">
++                <object key="groups" dataType="amazon_payment_config_state">
++                    <object key="amazon_payment" dataType="amazon_payment_config_state">
++                        <object key="groups" dataType="amazon_payment_config_state">
++                            <object key="amazon_payment_required" dataType="amazon_payment_config_state">
++                                <object key="fields" dataType="amazon_payment_config_state">
++                                    <object key="merchant_id" dataType="merchant_id">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="access_key" dataType="access_key">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="secret_key" dataType="secret_key">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="client_id" dataType="client_id">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="client_secret" dataType="client_secret">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="payment_region" dataType="payment_region">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="sandbox" dataType="sandbox">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="payment_action" dataType="payment_action">
++                                        <field key="value">string</field>
++                                    </object>
++                                    <object key="authorization_mode" dataType="authorization_mode">
++                                        <field key="value">string</field>
++                                    </object>
++                                </object>
++                            </object>
++                        </object>
++                    </object>
++                </object>
++            </object>
++        </object>
++    </operation>
++</operations>
+
+--- /dev/null
++++ b/Test/Mftf/README.md
+@@ -0,0 +1,3 @@
++# Amazon Payment Functional Tests
++
++Functional Test Module for Amazon Payment modules.
+\ No newline at end of file
+
+--- a/Test/Mftf/composer.json
++++ b/Test/Mftf/composer.json
+
+--- /dev/null
++++ b/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
+@@ -0,0 +1,267 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Test\Unit\Gateway\Command;
++
++use Amazon\Payment\Gateway\Command\CaptureStrategyCommand;
++use Amazon\Core\Helper\Data;
++use Magento\Framework\TestFramework\Unit\Helper\ObjectManager;
++use Magento\Framework\Api\SearchCriteriaBuilder;
++use Magento\Framework\Api\FilterBuilder;
++use Magento\Framework\Api\Search\SearchCriteria;
++use Magento\Payment\Gateway\Command\CommandPoolInterface;
++use Magento\Payment\Gateway\Command\GatewayCommand;
++use Magento\Payment\Gateway\Data\OrderAdapterInterface;
++use Magento\Payment\Gateway\Data\PaymentDataObject;
++use Magento\Sales\Api\TransactionRepositoryInterface;
++use Magento\Sales\Model\Order\Payment;
++use Magento\Sales\Model\ResourceModel\Order\Payment\Transaction\CollectionFactory;
++use PHPUnit_Framework_MockObject_MockObject as MockObject;
++
++/**
++ * Class CaptureStrategyCommandTest
++ *
++ * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ */
++class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
++{
++    /**
++     * @var CaptureStrategyCommand
++     */
++    private $strategyCommand;
++
++    /**
++     * @var CommandPoolInterface|MockObject
++     */
++    private $commandPool;
++
++    /**
++     * @var TransactionRepositoryInterface|MockObject
++     */
++    private $transactionRepository;
++
++    /**
++     * @var FilterBuilder|MockObject
++     */
++    private $filterBuilder;
++
++    /**
++     * @var SearchCriteriaBuilder|MockObject
++     */
++    private $searchCriteriaBuilder;
++
++    /**
++     * @var Payment|MockObject
++     */
++    private $payment;
++
++    /**
++     * @var GatewayCommand|MockObject
++     */
++    private $command;
++
++    /**
++     * @var Data|MockObject
++     */
++    private $coreHelper;
++
++    /**
++     * Sets up base classes needed to mock the command strategy class
++     */
++    protected function setUp()
++    {
++        $this->commandPool = $this->getMockBuilder(CommandPoolInterface::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['get', '__wakeup'])
++            ->getMock();
++
++        $this->initCommandMock();
++        $this->initTransactionRepositoryMock();
++        $this->initFilterBuilderMock();
++        $this->initSearchCriteriaBuilderMock();
++
++        $this->coreHelper = $this->getMockBuilder(\Amazon\Core\Helper\Data::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        $this->strategyCommand = new CaptureStrategyCommand(
++            $this->commandPool,
++            $this->transactionRepository,
++            $this->searchCriteriaBuilder,
++            $this->filterBuilder,
++            $this->coreHelper
++        );
++    }
++
++    /**
++     * Tests if command strategy class returns correct command value when item is authorized but not captured
++     * @throws \Magento\Payment\Gateway\Command\CommandException
++     */
++    public function testSaleExecute()
++    {
++        $paymentData = $this->getPaymentDataObjectMock();
++        $subject['payment'] = $paymentData;
++
++        $this->payment->method('getAuthorizationTransaction')
++            ->willReturn(false);
++
++        $this->payment->method('getId')
++            ->willReturn(1);
++
++        $this->coreHelper->method('getPaymentAction')->willReturn('authorize_capture');
++
++        $this->buildSearchCriteria();
++
++        $this->transactionRepository->method('getTotalCount')
++            ->willReturn(0);
++
++        $this->commandPool->method('get')
++            ->with(CaptureStrategyCommand::SALE)
++            ->willReturn($this->command);
++
++        $this->strategyCommand->execute($subject);
++    }
++
++    /**
++     * Tests if command strategy class returns correct command value when item is to be authorized and captured
++     * @throws \Magento\Payment\Gateway\Command\CommandException
++     */
++    public function testCaptureExecute()
++    {
++        $paymentData = $this->getPaymentDataObjectMock();
++        $subject['payment'] = $paymentData;
++        $lastTransId = 'transaction_id';
++
++        $this->payment->method('getAuthorizationTransaction')
++            ->willReturn(true);
++
++        $this->payment->method('getLastTransId')
++            ->willReturn($lastTransId);
++
++        $this->payment->method('getId')
++            ->willReturn(1);
++
++        $this->buildSearchCriteria();
++
++        $this->transactionRepository->method('getTotalCount')
++            ->willReturn(0);
++
++        $this->commandPool->method('get')
++            ->with(CaptureStrategyCommand::CAPTURE)
++            ->willReturn($this->command);
++
++        $this->strategyCommand->execute($subject);
++    }
++
++
++    /**
++     * Creates mock for payment data object and order payment
++     * @return MockObject
++     */
++    private function getPaymentDataObjectMock()
++    {
++        $this->payment = $this->getMockBuilder(Payment::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        $mock = $this->getMockBuilder(PaymentDataObject::class)
++            ->setMethods(['getPayment', 'getOrder'])
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        $mock->method('getPayment')
++            ->willReturn($this->payment);
++
++        $order = $this->getMockBuilder(OrderAdapterInterface::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        $mock->method('getOrder')
++            ->willReturn($order);
++
++        return $mock;
++    }
++
++    /**
++     * Creates mock for gateway command object
++     */
++    private function initCommandMock()
++    {
++        $this->command = $this->getMockBuilder(GatewayCommand::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['execute'])
++            ->getMock();
++
++        $this->command->method('execute')
++            ->willReturn([]);
++    }
++
++    /**
++     * Creates mock for filter object
++     */
++    private function initFilterBuilderMock()
++    {
++        $this->filterBuilder = $this->getMockBuilder(FilterBuilder::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['setField', 'setValue', 'create', '__wakeup'])
++            ->getMock();
++    }
++
++    /**
++     * Builds search criteria
++     */
++    private function buildSearchCriteria()
++    {
++        $this->filterBuilder->expects(self::exactly(2))
++            ->method('setField')
++            ->willReturnSelf();
++        $this->filterBuilder->expects(self::exactly(2))
++            ->method('setValue')
++            ->willReturnSelf();
++
++        $searchCriteria = new SearchCriteria();
++        $this->searchCriteriaBuilder->expects(self::exactly(2))
++            ->method('addFilters')
++            ->willReturnSelf();
++        $this->searchCriteriaBuilder->method('create')
++            ->willReturn($searchCriteria);
++
++        $this->transactionRepository->method('getList')
++            ->with($searchCriteria)
++            ->willReturnSelf();
++    }
++
++    /**
++     * Create mock for search criteria object
++     */
++    private function initSearchCriteriaBuilderMock()
++    {
++        $this->searchCriteriaBuilder = $this->getMockBuilder(SearchCriteriaBuilder::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['addFilters', 'create', '__wakeup'])
++            ->getMock();
++    }
++
++    /**
++     * Create mock for transaction repository
++     */
++    private function initTransactionRepositoryMock()
++    {
++        $this->transactionRepository = $this->getMockBuilder(TransactionRepositoryInterface::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['getList', 'getTotalCount', 'delete', 'get', 'save', 'create', '__wakeup'])
++            ->getMock();
++    }
++}
+
+--- /dev/null
++++ b/Test/Unit/Observer/AddAmazonButtonTest.php
+@@ -0,0 +1,66 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Test\Unit\Observer;
++
++use Amazon\Payment\Block\Minicart\Button;
++use Magento\Framework\TestFramework\Unit\Helper\ObjectManager;
++use Magento\Catalog\Block\ShortcutButtons;
++use Magento\Framework\Event;
++use Magento\Framework\Event\Observer;
++use Amazon\Payment\Observer\AddAmazonButton;
++
++/**
++ * Class AddAmazonButtonTest
++ *
++ * @see \Amazon\Payment\Observer\AddAmazonButton
++ */
++class AddAmazonButtonTest extends \PHPUnit\Framework\TestCase
++{
++    public function testExecute()
++    {
++
++        $objectManager = new ObjectManager($this);
++        $data = $objectManager->getObject(\Amazon\Core\Helper\Data::class);
++        $shortcutFactory = $objectManager->getObject(\Amazon\Payment\Helper\Shortcut\Factory::class);
++        $addAmazonButton = new AddAmazonButton($data, $shortcutFactory);
++
++        /** @var Observer|\PHPUnit_Framework_MockObject_MockObject $observerMock */
++        $observerMock = $this->getMockBuilder(Observer::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        /** @var Event|\PHPUnit_Framework_MockObject_MockObject $eventMock */
++        $eventMock = $this->getMockBuilder(Event::class)
++            ->setMethods(['getContainer'])
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        /** @var ShortcutButtons|\PHPUnit_Framework_MockObject_MockObject $shortcutButtonsMock */
++        $shortcutButtonsMock = $this->getMockBuilder(ShortcutButtons::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++
++        $observerMock->expects(self::once())
++            ->method('getEvent')
++            ->willReturn($eventMock);
++
++        $eventMock->expects(self::once())
++            ->method('getContainer')
++            ->willReturn($shortcutButtonsMock);
++
++        $addAmazonButton->execute($observerMock);
++    }
++}
+
+--- /dev/null
++++ b/Test/Unit/Observer/DataAssignObserverTest.php
+@@ -0,0 +1,66 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Test\Unit\Observer;
++
++use Magento\Framework\DataObject;
++use Magento\Framework\Event;
++use Magento\Payment\Model\InfoInterface;
++use Magento\Payment\Observer\AbstractDataAssignObserver;
++use Amazon\Payment\Observer\DataAssignObserver;
++use Magento\Quote\Api\Data\PaymentInterface;
++
++/**
++ * Class DataAssignObserverTest
++ */
++class DataAssignObserverTest extends \PHPUnit\Framework\TestCase
++{
++    const KEY_SANDBOX_SIMULATION_REFERENCE = 'sandbox_simulation_reference';
++
++    public function testExecute()
++    {
++        $observerContainer = $this->getMockBuilder(Event\Observer::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++        $event = $this->getMockBuilder(Event::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++        $paymentInfoModel = $this->createMock(InfoInterface::class);
++        $dataObject = new DataObject(
++            [
++                PaymentInterface::KEY_ADDITIONAL_DATA => [
++                    'sandbox_simulation_reference' => self::KEY_SANDBOX_SIMULATION_REFERENCE
++                ]
++            ]
++        );
++        $observerContainer->expects(static::atLeastOnce())
++            ->method('getEvent')
++            ->willReturn($event);
++        $event->expects(static::exactly(2))
++            ->method('getDataByKey')
++            ->willReturnMap(
++                [
++                    [AbstractDataAssignObserver::MODEL_CODE, $paymentInfoModel],
++                    [AbstractDataAssignObserver::DATA_CODE, $dataObject]
++                ]
++            );
++        $paymentInfoModel->expects(static::at(0))
++            ->method('setAdditionalInformation')
++            ->with('sandbox_simulation_reference', self::KEY_SANDBOX_SIMULATION_REFERENCE);
++
++        $observer = new DataAssignObserver();
++        $observer->execute($observerContainer);
++    }
++}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "2.1.0",
++  "version": "2.1.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.0.13|~7.1.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.1.0",
+-    "amzn/login-with-amazon-module": "^2.1.0",
++    "php": "~7.1.3||~7.2.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.1.1",
++    "amzn/login-with-amazon-module": "^2.1.1",
+     "magento/module-eav": "101.0.*",
+     "magento/module-sales": "101.0.*",
+     "magento/module-quote": "101.0.*",
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -120,7 +120,7 @@
+     <!-- Authorize command -->
+     <virtualType name="AmazonAuthorizeCommand" type="Amazon\Payment\Gateway\Command\AmazonAuthCommand">
+         <arguments>
+-            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequest
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder
+             </argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\CompleteAuthHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+@@ -132,7 +132,7 @@
+         </arguments>
+     </virtualType>
+ 
+-    <type name="Amazon\Payment\Gateway\Request\AuthorizationRequest">
++    <type name="Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder">
+         <arguments>
+             <argument name="config" xsi:type="object">AmazonGatewayConfig</argument>
+         </arguments>
+@@ -141,7 +141,7 @@
+     <!-- Authorize and Capture command -->
+     <virtualType name="AmazonSaleCommand" type="Amazon\Payment\Gateway\Command\AmazonAuthCommand">
+         <arguments>
+-            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequest
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder
+             </argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\CompleteSaleHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+@@ -156,7 +156,7 @@
+     <!-- Capture settlement command -->
+     <virtualType name="AmazonSettlementCommand" type="Amazon\Payment\Gateway\Command\AmazonAuthCommand">
+         <arguments>
+-            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\SettlementRequest
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\SettlementRequestBuilder
+             </argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\SettlementHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+@@ -169,7 +169,7 @@
+     </virtualType>
+ 
+     <!-- Capture Request -->
+-    <type name="Amazon\Payment\Gateway\Request\CaptureRequest">
++    <type name="Amazon\Payment\Gateway\Request\CaptureRequestBuilder">
+         <arguments>
+             <argument name="config" xsi:type="object">AmazonGatewayConfig</argument>
+             <argument name="coreHelper" xsi:type="object">Amazon\Core\Helper\Data</argument>
+@@ -180,7 +180,7 @@
+     <!-- Refund Command -->
+     <virtualType name="AmazonRefundCommand" type="Magento\Payment\Gateway\Command\GatewayCommand">
+         <arguments>
+-            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\RefundRequest</argument>
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\RefundRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\RefundHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+             <argument name="validator" xsi:type="object">Amazon\Payment\Gateway\Validator\AuthorizationValidator
+@@ -195,7 +195,7 @@
+     <!-- Void command -->
+     <virtualType name="AmazonVoidCommand" type="Magento\Payment\Gateway\Command\GatewayCommand">
+         <arguments>
+-            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\VoidRequest</argument>
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\VoidRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\VoidHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+             <argument name="validator" xsi:type="object">Amazon\Payment\Gateway\Validator\AuthorizationValidator
+@@ -208,7 +208,7 @@
+     </virtualType>
+ 
+     <!-- Void Request -->
+-    <type name="Amazon\Payment\Gateway\Request\VoidRequest">
++    <type name="Amazon\Payment\Gateway\Request\VoidRequestBuilder">
+         <arguments>
+             <argument name="config" xsi:type="object">AmazonGatewayConfig</argument>
+         </arguments>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="2.1.0" >
++    <module name="Amazon_Payment" setup_version="2.1.1" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/view/notification.js
++++ b/view/frontend/web/js/view/notification.js
+@@ -37,4 +37,3 @@ define(
+         );
+     }
+ );
+-
+
+--- a/view/frontend/web/template/payment/amazonlogin.html
++++ b/view/frontend/web/template/payment/amazonlogin.html
+@@ -14,34 +14,32 @@
+  * permissions and limitations under the License.
+  */
+ -->
+-<!-- ko if: isPwaVisible() -->
+-
+-<div class="payment-method" data-bind="css: {'_active': (getCode() == isChecked())}">
+-    <div class="payment-method-title field choice">
+-        <input type="radio"
+-               name="payment[method]"
+-               class="radio"
+-               data-bind="attr: {'id': getCode()}, value: getCode(), checked: isChecked, click: selectPaymentMethod, visible: isRadioButtonVisible()"/>
+-        <label data-bind="attr: {'for': getCode()}" class="label"><span data-bind="text: getTitle()"></span></label>
+-    </div>
+-
+-    <div class="payment-method-content">
+-
+-        <div class="amazon-button-container" data-bind="visible: true">
+-            <div class="amazon-button-container__cell">
+-                <div id="PayWithAmazon" class="login-with-amazon" data-bind="mageInit: {'amazonButton':{'buttonType': 'PwA'}}"></div>
+-            </div>
+-
+-            <div class="amazon-button-container__cell">
+-                <div class="field-tooltip toggle">
+-                    <span class="field-tooltip-action action-help" data-bind="mageInit: {'dropdown':{'activeClass': '_active'}}" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"></span>
+-                    <div class="field-tooltip-content" data-target="dropdown" aria-hidden="true">
+-                        <!-- ko i18n: 'Securely login into our website using your existing Amazon details.'--><!-- /ko -->
++<if args="isPwaVisible()">
++    <div class="payment-method" css="_active : (getCode() == isChecked())">
++        <div class="payment-method-title field choice">
++            <input type="radio"
++                   name="payment[method]"
++                   class="radio"
++                   ko-checked="isChecked" ko-value="getCode()" attr="{'id': getCode()}, click: selectPaymentMethod, visible: isRadioButtonVisible()"/>
++            <label attr="for : getCode()" class="label"><span text="getTitle()"></span></label>
++        </div>
++        <div class="payment-method-content">
++            <div class="amazon-button-container" data-bind="visible: true">
++                <div class="amazon-button-container__cell">
++                    <div id="PayWithAmazon" class="login-with-amazon"
++                         data-bind="mageInit: {'amazonButton':{'buttonType': 'PwA'}}"></div>
++                </div>
++                <div class="amazon-button-container__cell">
++                    <div class="field-tooltip toggle">
++                        <span class="field-tooltip-action action-help"
++                              data-bind="mageInit: {'dropdown':{'activeClass': '_active'}}" data-toggle="dropdown"
++                              aria-haspopup="true" aria-expanded="false"></span>
++                        <div class="field-tooltip-content" data-target="dropdown" aria-hidden="true">
++                            <translate args="'Securely login into our website using your existing Amazon details.'" />
++                        </div>
+                     </div>
+                 </div>
+             </div>
+         </div>
+-
+     </div>
+-</div>
+-<!--/ko-->
+\ No newline at end of file
++</if>
+

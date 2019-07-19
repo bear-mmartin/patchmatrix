@@ -1,0 +1,74 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "2.1.2",
++  "version": "2.2.14",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.1.2",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.14",
+     "magento/module-customer": "*",
+     "magento/module-store": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="2.1.1">
++    <module name="Amazon_Login" setup_version="2.2.14">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/view/frontend/templates/oAuthRedirect.phtml
++++ b/view/frontend/templates/oAuthRedirect.phtml
+@@ -15,7 +15,13 @@
+  */
+ ?>
+ <?php /** @var $block \Amazon\Login\Block\OAuthRedirect */ ?>
+-<div><?= $block->escapeHtml(__('You will be redirected shortly...')); ?></div>
++<div>
++    <?= $block->escapeHtml(__('You will be redirected shortly...')); ?><br/>
++    <?= $block->escapeHtml(__(
++            'If you are not redirected automatically, try refreshing the page,'
++            . ' or return to your cart and use another payment method.'
++        )); ?>
++</div>
+ <script>
+ require([
+     'jquery',
+
+--- a/view/frontend/web/js/amazon-redirect.js
++++ b/view/frontend/web/js/amazon-redirect.js
+@@ -43,7 +43,7 @@ define([
+             // we don't have the customer's consent or invalid request
+             this.redirectOnRequestWithError();
+             this.setAuthStateCookies();
+-            amazonCore.amazonDefined.subscribe(function () {
++            var onAmazonDefined = function () {
+                 //only set this on the redirect page
+                 amazon.Login.setUseCookie(true); //eslint-disable-line no-undef
+                 amazonCore.verifyAmazonLoggedIn().then(function (loggedIn) {
+@@ -51,7 +51,12 @@ define([
+                         self.redirect();
+                     }
+                 }, 0);
+-            }, this);
++            };
++            if (amazonCore.amazonDefined()) {
++                onAmazonDefined();
++            } else {
++                amazonCore.amazonDefined.subscribe(onAmazonDefined, this);
++            }
+         },
+ 
+         /**
+
