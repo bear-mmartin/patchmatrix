@@ -75,6 +75,8 @@ class PatchMatrix:
     def getCompatiblePairs(self):
         for compatSet in self.compatSets:
             for pair in self.getTagPairs(compatSet):
+                if semver.compare(pair[0].name, pair[1].name) > 0:
+                    pair = (pair[1], pair[0])  # Always compare older->newer
                 self._info('Processing version pair: %s->%s' % (pair[0].name, pair[1].name))
                 yield pair
     def _getPatchFromDiff(self, diff):
