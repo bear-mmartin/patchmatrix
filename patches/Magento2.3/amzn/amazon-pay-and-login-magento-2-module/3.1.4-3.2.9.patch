@@ -1,0 +1,1897 @@
+--- a/README.md
++++ b/README.md
+@@ -1,23 +1,51 @@
+ # Amazon Pay and Login with Amazon for Magento 2
+ 
++This extension provides an official integration of your Magento 2 store with **Amazon Pay and Login with Amazon** services. The extension is a checkout and payment solution that does not share any item level information (product information, prices, basket content, etc) with Amazon. The extension integrates Amazon Pay seamlessly into the Magento 2 shop backend (configuration, order management, billing, etc.).
++
+ ## About Amazon Pay for Magento 2
+ 
+ Amazon Pay offers a familiar and convenient buying experience that can help your customers spend more time shopping and less time checking out.   Amazon Pay is used by large and small companies.  From years of shopping safely with Amazon, customers trust their personal information will remain secure and know many transactions are covered by the Amazon A-to-z Guarantee.  Businesses have the reassurance of our advanced fraud protection and payment protection policy.
+ 
+ For more information about Amazon Pay and Magento 2, please visit our [Amazon Pay for Magento](https://pay.amazon.com/sp/magento) site or review our [Complete User Guide](https://amzn.github.io/amazon-payments-magento-2-plugin).
+ 
+-## Pre-Requisites
+-* Which version to download?
++## Extension features
++
++* `Amazon Pay` button in the shopping cart, mini-cart, on product pages and in the 1st step of checkout
++* `Login with Amazon` button on the customer login and registration page
++* `Amazon Pay` in the list of available payment methods during the final step of checkout
++* Configuration of `Amazon Pay` extension from within Magento admin
++* Support for payment authorizations, captures and refunds (also partial refunds)
++* Support for synchronous and asynchronous authorization mode
++* Supports `Amazon Pay` Instant Payment Notifications
++* Live & sandbox modes available
++* Options for simulating payment states in sandbox mode
++* [EU/UK only] Multi-currency support
++* [EU/UK only] Support for Strong Customer Authorization (PSD2 compliant)
++
++## Prerequisites
++
++* PHP 7.1 (or higher) when using the latest version of the extension. Older versions of the extension may support older PHP versions. 
++* Magento CE (2.1.0 or higher)
++* cURL for PHP
++* DOM / XML for PHP
++* valid SSL certificate
++* A verified Amazon Pay merchant account - [sign up here](https://pay.amazon.com/signup)!
++
++## Installation and Configuration
++
++The extension is available via composer, Magento Marketplace or, with Magento 2.2.4 and higher, already pre-installed as bundled extension.
++
++Please follow the instructions in the [User Guide](https://amzn.github.io/amazon-payments-magento-2-plugin) get more details concerning installation procedure.
++
++## Branch information
++
++The following table provides an overview on which Git branch is compatible to which Magento 2 version.
+ 
+ | Magento Version  | Github Branch |
+ | ------------- | ------------- |
+ | 2.1.0 - 2.2.3  | [1.x](https://github.com/amzn/amazon-payments-magento-2-plugin/tree/1.x) |
+ | 2.2.4 - 2.2.5  | [2.x](https://github.com/amzn/amazon-payments-magento-2-plugin/tree/2.x) |
+-| 2.2.6 and above  | [master](https://github.com/amzn/amazon-payments-magento-2-plugin/tree/master) |
++| 2.2.6 - 2.2.x  | [2.1.x](https://github.com/amzn/amazon-payments-magento-2-plugin/tree/2.1.x) |
++| 2.3.0 and above  | [master](https://github.com/amzn/amazon-payments-magento-2-plugin/tree/master) |
+ 
+-* SSL is installed on your site and active on Checkout and Login pages
+-* A verified Amazon Pay merchant account - [sign up here](https://pay.amazon.com/signup)!
+-
+-## Installation and Configuration
+ 
+-Please follow the instructions in the [User Guide](https://amzn.github.io/amazon-payments-magento-2-plugin)
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-magento-2-module",
+   "description": "Official Magento2 Plugin to integrate with Amazon Pay and Login with Amazon",
+   "type": "magento2-module",
+-  "version": "3.1.4",
++  "version": "3.2.9",
+   "license": [
+     "Apache-2.0"
+   ],
+@@ -12,17 +12,17 @@
+   },
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "magento/framework": "*",
+-    "magento/module-sales": "*",
+-    "magento/module-checkout": "*",
+-    "magento/module-payment": "*",
+-    "magento/module-eav": "*",
++    "magento/framework": "^102",
++    "magento/module-sales": "^102",
++    "magento/module-checkout": "^100.3",
++    "magento/module-payment": "^100.3",
++    "magento/module-eav": "^102",
+     "magento/module-developer": "*",
+-    "magento/module-config": "*",
+-    "magento/module-backend": "*",
+-    "magento/module-quote": "*",
+-    "magento/module-customer": "*",
+-    "magento/module-store": "*",
++    "magento/module-config": "^101.1",
++    "magento/module-backend": "^101",
++    "magento/module-quote": "^101.1",
++    "magento/module-customer": "^102",
++    "magento/module-store": "^101",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "repositories": [
+
+--- a/docs/conf.py
++++ b/docs/conf.py
+@@ -60,9 +60,9 @@ author = u'Amazon.com Inc or its affiliates'
+ # built documents.
+ #
+ # The short X.Y version.
+-version = u'3.1.4'
++version = u'3.2.9'
+ # The full version, including alpha/beta/rc tags.
+-release = u'3.1.4'
++release = u'3.2.9'
+ 
+ # The language for content autogenerated by Sphinx. Refer to documentation
+ # for a list of supported languages.
+
+--- a/docs/configuration.rst
++++ b/docs/configuration.rst
+@@ -1,9 +1,15 @@
+ Configuration
+ =============
+-After the successful installation you can proceed to the configuration. In Magento 2 admin go to :menuselection:`Stores --> Configuration --> Sales --> Payment Methods --> Amazon Pay`
+ 
+-General
+--------
++After the successful installation you can proceed to the configuration. In Magento 2 admin go to `Stores --> Configuration --> Sales --> Payment Methods`. Click the **Configure** button next to the Amazon Pay logo.
++
++.. image:: /images/configuration_amazon_pay.png
++
++You now have to choose whether you already have an existing Amazon Pay merchant account or if you want to register a new account. Please be aware that the base currency of the shop is used to decide in which region (US, UK, EU, etc.) the account will be registered. If you do have questions on the registration process, please contact Amazon Pay merchant support at https://sellercentral-europe.amazon.com/cu/contact-us
++
++.. image:: /images/configuration_amazon_pay_new-or-existing.png
++
++After completing the account registration, or if you already have an existing account, you can continue with the plugin configuration as described in the following sections. 
+ 
+ Credentials
+ '''''''''''
+@@ -26,7 +32,6 @@ The credentials can be found in Seller Central at :menuselection:`Integration --
+ Payment Region
+ ..............
+ Select the region where you registered your seller account from the provided list. If you're unsure about this information, please consult the Amazon Pay merchant support. Supported regions are:
+-
+ * Euro (use for countries that use EUR as their currency, e.g. Germany, France, Italy, Spain, etc.)
+ * United Kingdom
+ * United States
+@@ -54,7 +59,7 @@ By switching this option you can enable or disable **Amazon Pay**. This option m
+ 
+ Enable Login with Amazon
+ ........................
+-By switching this option you can toggle **Login with Amazon**. When enabled this will log customers into Magento via their Amazon account.
++By switching this option you can toggle **Login with Amazon**. When enabled this will log customers into Magento via their Amazon account. If disabled, customers using Amazon Pay will be handled as guests.
+ 
+ .. note:: Login with Amazon requires that Amazon Pay is enabled in order to function.
+ 
+@@ -65,12 +70,12 @@ Payment Action
+ 
+ Authorization Mode
+ ..................
+-* `Immediate` (default) - The authorization is processed during the checkout.
+-* `Automatic` - The authorization is processed during the checkout. In case this call times out, an asynchronous authorization will be done afterwards. 
++* `Immediate` (default) - The authorization is processed immediately during the checkout.
++* `Automatic` - The authorization is processed during the checkout. In case this call times out, an asynchronous authorization will be done afterwards.
+ 
+ Independent of the mode you decide for, make sure to only orders which are successfully authorized by Amazon Pay (order state: `Processing`).
+ 
+-.. note:: If you expect high order values, please use **Automatic** Authorization mode.
++.. note:: If you expect high order values, the **Automatic** authorization mode might be the best choice for your business.
+ 
+ Update Mechanism
+ ................
+@@ -79,47 +84,46 @@ Update Mechanism
+ 
+  
+ Advanced
+---------
++''''''''
+ 
+ Frontend
+-''''''''
++........
+ 
+ Button Display Language
+-.......................
++-----------------------
+ Allows input of a locale string to control button language should be in the format `en-gb`. By default the language of the store view is used.
+ 
+ Button Color
+-............
++------------
+ Allows selection of button color from a pre determined list.
+ 
+-Button Size
+-............
+-Allows selection of button size from a pre determined list.
++Show Amazon Pay button on product page
++--------------------------------------------
++Toggles whether to show the **Amazon Pay** button on the product detail pages.
+ 
+-Login with Amazon available in authentication popup
+-.................................................
+-Toggles whether to show **Login with Amazon** in Magento's account login popup.
++Show Amazon Pay button in minicart
++----------------------------------------
++Toggles whether to show the **Amazon Pay** button in the Magento minicart.
+ 
+-Amazon Pay button is visible on Product Page
+-.................................................
+-Toggles whether to show **Amazon Pay** on the product pages.
++Show Login with Amazon in authentication popup
++----------------------------------------------------
++Toggles whether to show **Login with Amazon** button in the Magento authentication popup.
+ 
+-Amazon Pay button is visible on minicart
+-.................................................
+-Toggles whether to show **Amazon Pay** in the minicart.
+-
+-Show Amazon Pay in payment methods
+-.................................................
++Show Amazon Pay Method
++----------------------------------------------------
+ If enabled, Amazon Pay is presented as an option in the list of available payment methods during the final step of checkout.
+ 
+-
+ Sales Options
+-'''''''''''''
++.............
+ 
+ Use Multi-currency
+-..................
++------------------
+ 	
+-Enables the multi-currency feature of Amazon Pay for Magento 2. Currencies supported include:
++Enables the multi-currency feature of Amazon Pay for Magento 2.
++
++.. note:: Multi-currency is currently supported for payment region EU and UK only. If you have configured a payment region different than this, this option will not be available. 
++
++This feature includes the following currencies:
+ 
+ * Australian Dollar (AUD)
+ * British Pound (GBP)
+@@ -138,23 +142,25 @@ The Amazon Pay multi-currency feature is designed for international merchants wh
+ 
+ The benefit to your customers is that they don’t need to worry about currency conversion or rates when shopping with their Amazon account. Any of our global 300MM Amazon buyers can check-out on your website with their existing Amazon account.
+ 
+-.. note:: Multi-currency is currently supported for payment region EU and UK only. If you have configured a payment region different than this, this option will not be available. 
+-
+ Store Name
+-................
++----------
+ Allows setting the store name submitted to Amazon Pay per Store View. 
+ 
+ .. note:: Store View name is provided by default.
+ 
+ Developer Options
+-'''''''''''''''''
++.................
+ 
+ Logging
+-.......
++-------
+ Enabled by default. This toggles whether to log all API calls and IPN notifications or not. The log files can be retrieved directly via the Magento 2 admin at :menuselection:`System --> Amazon Pay Logs --> Client`, respectively :menuselection:`System --> Amazon Pay Logs --> IPN`
+ 
+ Allowed IPs
+-...........
++-----------
+ For testing or debugging purposes you can restrict access to **Amazon Pay** checkout in your shop to certain IP addresses only. **Amazon Pay** button will be shown only for the visitors coming from allowed IPs. You can set more than one allowed IP, separated with commas.
+ 
+ .. note:: Due to caching restrictions this setting is not reflected on Product pages, Please  disable `Amazon Pay button is visible on Product Page` in this instance
++
++Developer Logs
++--------------
++Downloads a copy of the developer logs of the extension.
+\ No newline at end of file
+
+--- a/docs/flow.rst
++++ b/docs/flow.rst
+@@ -36,19 +36,19 @@ The actual order flow other than this remains the same, as it is for the standar
+ 
+ Payment authorization
+ ---------------------
+-An authorization is automatically requested on order placement there are 3 authorization flows, Synchronous, Asynchronous and a combination of both as defined in :doc:`configuration`.
++An authorization is automatically requested on order placement. There are two different authorization flows, Immediate and Automatic, as defined in :doc:`configuration`.
+ 
+-Synchronous
+-''''''''''''
++Immediate
++'''''''''
+ The customer will get instant feedback there are 3 possible outcomes
+ 
+ 1. `Authorization OK` - Order is placed with a state of `Processing`, Customer is redirected to the standard Magento 2 confirmation screen
+ 2. `Soft Decline` - Order is not placed and customer is asked to select an alternative payment instrument from the Amazon Pay widget
+ 3. `Hard Decline` - Order is not placed, the Amazon Pay specific checkout will be left (widgets are replaced by standard forms) and the customer is asked to select an alternative payment method for this order
+ 
+-Asynchronous
+-''''''''''''
+-Orders placed when in Asychronous mode should always complete as if authorization was OK however they will be in a `Pending` state with a `Payment Review` status. 
++Automatic
++'''''''''
++In this mode, the extension will try to authorize the order immediate (as described above). If this fails due to a timeout, it will fallback to an asynchronous authorization (returns `Pending` state with a `Payment Review` status).
+ 
+ The customer will always be redirected to the standard Magento 2 confirmation screen as authorization state will be processed by Amazon Pay after the order is placed. 
+ 
+@@ -58,11 +58,6 @@ A status update on the state of the authorization will be delivered by IPN or Cr
+ 2. `Soft Decline` - Authorization is closed, customer is emailed with a link to select an alternative payment instrument on the Amazon Pay website. When the customer changes the payment instrument, a new authorization is raised
+ 3. `Hard Decline` - Authorization is closed, customer is emailed with instructions to contact the merchant
+ 
+-Synchronous if possible 
+-'''''''''''''''''''''''
+-The customer will get instant feedback for all final states of the authorization like with the synchronous authorization while the customer benefits from the lower decline rate of the asynchronous authorization. In cases where a synchronous authorization would result in a decline but could be handled with the asynchronous workflow, the module automatically requests an asynchronous authorization and optimistically shows the customer the order confirmation page.
+-
+-
+ Payment capture
+ ---------------
+ Orders placed with `Charge on Order` mode enabled will automatically be captured. For orders placed using `Charge on Shipment` you will need to raise an invoice. To do this, the following steps are required:
+
+--- a/docs/images/amazon-pay-button.png
++++ b/docs/images/amazon-pay-button.png
+Binary files a/docs/images/amazon-pay-button.png and b/docs/images/amazon-pay-button.png differ
+
+--- a/docs/images/configuration_amazon_pay.png
++++ b/docs/images/configuration_amazon_pay.png
+Binary files /dev/null and b/docs/images/configuration_amazon_pay.png differ
+
+--- a/docs/images/configuration_amazon_pay_new-or-existing.png
++++ b/docs/images/configuration_amazon_pay_new-or-existing.png
+Binary files /dev/null and b/docs/images/configuration_amazon_pay_new-or-existing.png differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_1.png
++++ b/docs/images/seller-central/prerequisites_screenshot_1.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_1.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_10.png
++++ b/docs/images/seller-central/prerequisites_screenshot_10.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_10.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_11.png
++++ b/docs/images/seller-central/prerequisites_screenshot_11.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_11.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_2.png
++++ b/docs/images/seller-central/prerequisites_screenshot_2.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_2.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_3.png
++++ b/docs/images/seller-central/prerequisites_screenshot_3.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_3.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_4.png
++++ b/docs/images/seller-central/prerequisites_screenshot_4.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_4.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_5.png
++++ b/docs/images/seller-central/prerequisites_screenshot_5.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_5.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_6.png
++++ b/docs/images/seller-central/prerequisites_screenshot_6.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_6.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_7.png
++++ b/docs/images/seller-central/prerequisites_screenshot_7.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_7.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_8.png
++++ b/docs/images/seller-central/prerequisites_screenshot_8.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_8.png and /dev/null differ
+
+--- a/docs/images/seller-central/prerequisites_screenshot_9.png
++++ b/docs/images/seller-central/prerequisites_screenshot_9.png
+Binary files a/docs/images/seller-central/prerequisites_screenshot_9.png and /dev/null differ
+
+--- a/docs/index.rst
++++ b/docs/index.rst
+@@ -9,7 +9,6 @@ Amazon Pay and Login with Amazon extension for Magento 2
+    :maxdepth: 3
+ 
+    overview
+-   prerequisites
+    installation
+    configuration
+    login
+@@ -17,4 +16,5 @@ Amazon Pay and Login with Amazon extension for Magento 2
+    customisation
+    testing
+    troubleshooting
+-   faq
+\ No newline at end of file
++   faq
++   m1_m2_migration
+\ No newline at end of file
+
+--- a/docs/installation.rst
++++ b/docs/installation.rst
+@@ -20,12 +20,12 @@ In case you are not able or willing to use the web installation, you can install
+ 
+ * Sign in to your server via SSH
+ * `cd` into you Magento installation directory
+-* Install the extension via composer: `composer require amzn/amazon-payments-magento-2-plugin:^3.1.4`
++* Install the extension via composer: `composer require amzn/amazon-payments-magento-2-plugin:^3.2.9`
+ * Enable the extension: `php bin/magento module:enable Amazon_Core Amazon_Login Amazon_Payment`
+ * Upgrade the Magento installation: `php bin/magento setup:upgrade`
+ * Follow any advice the upgrade routine provides
+ 
+-.. note:: `composer require amzn/amazon-payments-magento-2-plugin:^3.1.4` will always install the most current, non-breaking, Amazon Pay extension for you, when you run an update. To fix it to a specifix version, please remove the `^`
++.. note:: `composer require amzn/amazon-payments-magento-2-plugin:^3.2.9` will always install the most current, non-breaking, Amazon Pay extension for you, when you run an update. To fix it to a specifix version, please remove the `^`
+ 
+ In production mode, you will also have to compile the code and the dependency injection (DI) configuration and deploy static content
+ 
+
+--- a/docs/login.rst
++++ b/docs/login.rst
+@@ -6,7 +6,10 @@ Customers who have logged in via Login with Amazon previously, will be recognize
+ 
+ Requirements
+ ------------
+-To offer the **Login with Amazon** service, you have to have a valid **Amazon Pay** merchant account (refer to the :ref:`prerequisites-amazon-account-setup` if you don't have one yet), registered application for **Login with Amazon** service (refer to the :ref:`prerequisites-registering-application-for-login-with-amazon` if you don't have one yet) and Magento 2 store with a valid SSL certificate installed and properly configured in your shop.
++To offer the **Login with Amazon** service, you have to have a valid **Amazon Pay** merchant account (`sign up here`_ if you don't have one yet), and registered an "Login with Amazon" application (see `LWA Client ID guide`_ for the setup).
++
++.. _`sign up here`: https://pay.amazon.com/signup
++.. _`LWA Client ID guide`: https://images-na.ssl-images-amazon.com/images/G/02/amazonservices/payments/website/AmazonPay_ClientID_UK._TTD_.pdf
+ 
+ `Login with Amazon` button
+ --------------------------
+
+--- /dev/null
++++ b/docs/m1_m2_migration.rst
+@@ -0,0 +1,54 @@
++Migration: Magento 1 to Magento 2
++=====================================
++To migrate your Amazon Pay integration successfully from Magento 1 to Magento 2, please follow the instructions below carefully.
++
++Step 1: Verify extension installation
++-------------------------------------
++With Magento 2.2.4 and higher, the Amazon Pay extension is bundled along with Magento 2. To verify if it's installed successfully, open the Magento 2 admin and go to Stores –> Configuration –> Sales –> Payment Methods. Amazon Pay should be listed under "OTHER PAYMENT METHODS" like shown below.
++
++.. image:: /images/configuration_amazon_pay.png
++
++If Amazon Pay is not listed here, please refer to the :doc:`installation` section to get more details concerning installation procedure.
++
++Step 2: Configure the extension
++-------------------------------
++* Add the **Allowed JavaScript Origins and Allowed Return URLs** to your Login with Amazon section of the Seller Central. Please note that the Allowed JavaScript Origins URL must only be changed if the base URL of your shop has changed (e.g. www.myshop.com => www.mygreatnewshop.com ). The Allowed Return URL **must be** changed as this requires a full URL and is different from the one used in Magento 1.
++* Add the **IPN URL** to the field Merchant URL at Settings ‣ Integration Settings of the Seller Central. Please note that the IPN URL can be specified separately for Production and Sandbox view, so please verify that it has been set correctly for both environment.
++* Refer to :doc:`configuration` to get more information about the other configuration settings.
++
++Step 3: Review the below settings
++---------------------------------
++In order to use the same settings you were using in your Magento 1 integration, please review the below table and choose the appropriate Amazon Pay settings for your shop. Please note that there are two different Amazon Pay extensions available for Magento 1, one for EU and one for US region. The table below lists the options from each extension and the corresponding option for Magento 2.
++
+++--------------------+-------------------------+-----------------------+--------------------+
++| Option             | Magento 1 (EU)          | Magento 1 (US)        | Magento 2          |
+++====================+=========================+=======================+====================+
++| Payment Action     | Authorize and capture   | Authorize and capture | Charge on order    |
++|                    +-------------------------+-----------------------+--------------------+
++|                    | Authorize               | Authorize             | Charge on shipment |
+++--------------------+-------------------------+-----------------------+--------------------+
++| Authorization Mode | Auto                    |                       | Automatic          |
++|                    +-------------------------+-----------------------+--------------------+
++|                    | Synchronous             | Async Mode: 'No'      | Immediate          |
+++                    +-------------------------+-----------------------+--------------------+
++|                    | Asynchronous            | Async Mode: 'Yes'     | Automatic          |
+++--------------------+-------------------------+-----------------------+--------------------+
++| Update Mechanism   | Instant Payment Notif.  | N/A                   | Instant Payment N. |
++|                    +-------------------------+-----------------------+--------------------+
++|                    | Data polling            | Default               | Data polling       |
+++--------------------+-------------------------+-----------------------+--------------------+
++
++Step 4: Front-end Customization
++---------------------------------
++If your are using a custom template please read the following sections from our documentation carefully: 
++
++* :doc:`customisation`
++* :doc:`faq`
++
++Step 5: Test your integration
++---------------------------------
++Before go-live, please thoroughly test the integration as described in :doc:`testing`.
++
++Step 6: Go live
++---------------------------------
++Now that your Magento 2 integration is up-to-date with your Magento 1 integration and is functioning normally, please diable the sandbox mode and remove any IP address whitelisting. It is best practice to perform a test transaction in live mode to ensure the integration is working as expected.
+\ No newline at end of file
+
+--- a/docs/overview.rst
++++ b/docs/overview.rst
+@@ -1,28 +1,64 @@
+ Overview
+ ========
++This extension provides an official integration of your Magento 2 store with **Amazon Pay and Login with Amazon** services. The extension is a checkout and payment solution that does not share any item level information (product information, prices, basket content, etc) with Amazon. The extension integrates Amazon Pay seamlessly into the Magento 2 shop backend (configuration, order management, billing, etc.).
+ 
+-This extension provides an official integration of your Magento 2 store with **Amazon Pay and Login with Amazon** services. They help your customers shop quickly, safely and securely. Your customers can pay on your website without re-entering their payment and address details. All Amazon Pay transactions are protected by Amazon's A-to-z Guarantee.
++About Amazon Pay
++----------------
+ 
+-The extension is a pure payment solution. No item level is communicated to Amazon Pay and it allows you to manage your orders directly from Magento 2.
++Amazon Pay offers a familiar and convenient buying experience that can help your customers spend more time shopping and less time checking out. Amazon Pay is used by large and small companies. From years of shopping safely with Amazon, customers trust their personal information will remain secure and know many transactions are covered by the Amazon A-to-z Guarantee. Businesses have the reassurance of our advanced fraud protection and payment protection policy.
+ 
+ Extension features
+ ------------------
+ 
+-* `Amazon Pay` button in the shopping cart, on product pages and in the 1st step of checkout
++* `Amazon Pay` button in the shopping cart, mini-cart, on product pages and in the 1st step of checkout
+ * `Login with Amazon` button on the customer login and registration page
+-* Customization of **Amazon Pay** widgets from within Magento admin
++* `Amazon Pay` in the list of available payment methods during the final step of checkout
++* Configuration of `Amazon Pay` extension from within Magento admin
+ * Support for payment authorizations, captures and refunds (also partial refunds)
+-* Support for synchronous and asynchronous authorization
+-* Supports Amazon Pay Instant Payment Notifications
++* Support for synchronous and asynchronous authorization mode
++* Supports `Amazon Pay` Instant Payment Notifications
+ * Live & sandbox modes available
+ * Options for simulating payment states in sandbox mode
++* [EU/UK only] Multi-currency support
++* [EU/UK only] Support for Strong Customer Authorization (PSD2 compliant)
+ 
+-Getting the extension
+----------------------
++Prerequisites
++-------------
+ 
+-The extension can be installed using the following methods:
++* PHP 7.1 (or higher) when using the latest version of the extension. Older versions of the extension may support older PHP versions. 
++* Magento CE (2.1.0 or higher)
++* cURL for PHP
++* DOM / XML for PHP
++* valid SSL certificate
++* A verified Amazon Pay merchant account - `sign up here`_!
+ 
+-* Preferred Method - From the Magento Marketplace using the Web Setup Wizard
+-* Manually using composer from the command line
++.. _`sign up here`: https://pay.amazon.com/signup
+ 
+-Refer to the :doc:`installation` section to get more details concerning installation procedure.
++Installation and Configuration
++------------------------------
++
++The extension is available via composer, Magento Marketplace or, with Magento 2.2.4 and higher, already pre-installed as bundled extension.
++
++Please refer to the :doc:`installation` section to get more details concerning installation procedure.
++
++Branch information
++------------------
++
++The following table provides an overview on which Git branch is compatible to which Magento 2 version.
++
+++---------------------+-------------------+
++| **Magento Version** | **Github Branch** |
+++---------------------+-------------------+
++| 2.1.0 - 2.2.3       | `1.x`_            |
+++---------------------+-------------------+
++| 2.2.4 - 2.2.5       | `2.x`_            |
+++---------------------+-------------------+
++| 2.2.6 - 2.2.x       | `2.1.x`_          |
+++---------------------+-------------------+
++| 2.3.0 and above     | `master`_         |
+++---------------------+-------------------+
++
++.. _`1.x`: https://github.com/amzn/amazon-payments-magento-2-plugin/tree/1.x
++.. _`2.x`: https://github.com/amzn/amazon-payments-magento-2-plugin/tree/2.x
++.. _`2.1.x`: https://github.com/amzn/amazon-payments-magento-2-plugin/tree/2.1.x
++.. _`master`: https://github.com/amzn/amazon-payments-magento-2-plugin/tree/master
+\ No newline at end of file
+
+--- a/docs/prerequisites.rst
++++ /dev/null
+@@ -1,145 +0,0 @@
+-Prerequisites
+-=============
+-
+-System requirements
+--------------------
+-
+-The **Amazon Pay and Login with Amazon** Magento 2 extension requires you to have a valid **Amazon Pay** merchant account (refer to the :ref:`prerequisites-amazon-account-setup` if you don't have one yet) and a webserver running a Magento 2 store instance with following conditions met:
+-
+-* Magento CE (2.1.0 or higher)
+-* cURL for PHP
+-* DOM / XML for PHP
+-* valid SSL certificate
+-
+-.. _prerequisites-amazon-account-setup:
+-
+-**Amazon Pay and Login with Amazon** account setup
+---------------------------------------------------
+-
+-
+-Registering an Amazon Pay merchant Account
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-
+-* Go to:
+-
+-  * DE merchants: `https://pay.amazon.com/de/signup <https://pay.amazon.com/de/signup>`_
+-  * UK merchants: `https://pay.amazon.com/uk/signup <https://pay.amazon.com/uk/signup>`_
+-  * US merchants: `https://pay.amazon.com/us/signup <https://pay.amazon.com/us/signup>`_
+-  * FR merchants: `https://pay.amazon.com/fr/signup <https://pay.amazon.com/fr/signup>`_
+-  * IT merchants: `https://pay.amazon.com/it/signup <https://pay.amazon.com/it/signup>`_
+-  * ES merchants: `https://pay.amazon.com/es/signup <https://pay.amazon.com/us/signup>`_
+-* Fill in the details and click :menuselection:`Submit`
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_1.png
+-
+-* Go through the questionnaire to find out if you qualify for using Amazon Pay, then click `Sign up now`
+-* At the moment you cannot add your **Amazon Pay** merchant account to an existing Amazon seller account. You have to register a new account specifically for Amazon Pay.
+-* Start registering a new account:
+-
+-  * If you see the link `Would you like to create a new account using a different e-mail address? Click here`, please do so.
+-  * Enter a name for your business. In case this name is already taken, please choose a different one.
+-  * Enter an email address and a password. You should choose a role email address that will be read directly by the people responsible for the Amazon Pay integration. You should avoid general addresses like **info@** that are only forwarded to the general administration.
+-  * Choose a secure password.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_2.png
+-
+-* Please fill in all requested information about your merchant account.
+-* Please be careful to provide exact and correct data. All information you provide will be verified by Amazon Pay, and incorrect information will delay the verification process.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_3.png
+-
+-* Please provide charge information to finish the registration
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_4.png
+-
+-* After your account is registered you will be forwarded to your Seller Central account.
+-* Please be aware that you cannot fully use your account yet. First you have to provide your identity data, and then the account has to go through the verification process.
+-* It may take some time until your sandbox is ready to use.
+-
+-
+-Entering identity data in Seller Central
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-
+-To get the verification process started, please log in to Seller Central.
+-
+-For a combined account (**Amazon Pay** added to an existing account), please make sure that you have selected the `Amazon Pay – Production View` in the drop down menu on the top.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_5.png
+-
+-At :menuselection:`Settings --> Account Info` please provide the requested missing information. Especially it is crucial to provide the ID information for all relevant persons.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_6.png
+-
+-
+-Verification Process / Verification of all given information by Amazon Pay
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-
+-After successful registration of the Amazon Pay seller account and entering the ID information Amazon Pay will check all information provided. Depending on the information provided Amazon Pay may request more information.
+-
+-.. _prerequisites-registering-application-for-login-with-amazon:
+-
+-Registering application for Login with Amazon service
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-
+-**Amazon Pay** and ''Login with Amazon** work together to provide a great buyer experience. To use **Login with Amazon** you have to register the application (Magento extension) that will be allowed to access buyers accounts through your Amazon Pay seller account. **Login with Amazon** configuration settings can be accessed through `Login with Amazon` Seller Central page.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_7.png
+-
+-In the App Console register a new application by clicking the `Register new Application` button. The `Register Your Application` form will appear.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_8.png
+-
+-In the application details page, add basic details about your web site. These details will be used on your website and mobile apps (if applicable).
+-
+-* `Name Shown to Users`. This is the name displayed on the consent screen when the users agree to share the information with your web site. This name applies to website versions of your application.
+-* `Description`. A description of your web site for Login with Amazon users.
+-* `Privacy Notice URL`. The Privacy URL is the location of your company privacy policy. It is also displayed on the consent screen. This link is displayed to users when they first login to your application (for example: `http://www.example.com/privacy.html`).
+-* `Logo Image File`. This logo will represent your business or website on **Amazon Pay and Login with Amazon** authentication pages. The logo will be displayed as a 150x150 pixel image; if you upload a file of a different size, it will be scaled to fit.
+-
+-When you are finished, click `Save` to save your changes.
+-
+-
+-Add a Website to your Application
+-'''''''''''''''''''''''''''''''''
+-
+-* From the Application screen, click `Web Settings`. You will automatically be assigned values for Client ID, which identifies your website.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_9.png
+-
+-* To add Allowed JavaScript Origins to your application, click `Edit`.
+-
+-An origin is the combination of protocol, your Magento shop domain name and port (for example: `https://www.example.com:8443`). Allowed origins must use the HTTPS protocol. If you are using a default port (443) you need only include the domain name of your shop (for example: `https://www.example.com`).
+-
+-Adding your domain here allows the SDK for JavaScript to communicate with your Magento shop directly during the login process. Web browsers normally block cross-origin communication between scripts unless the script specifically allows it.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_10.png
+-
+-To add more than one origin (in case you are running domain based multi-store Magento installation and all stores are using the same Amazon Pay seller account), click `Add Another`.
+-
+-.. note:: To use Login with Amazon with your Magento 2 shop, you **MUST** specify at least one allowed JavaScript origin.
+-
+-.. note:: Please add all allowed JavaScript Origins and Allowed Redirect URLs given by your Magento 2 shop to your Login with Amazon configuration section in the Seller Central.
+-
+-.. _prerequisites-where-to-find-the-required-credentials:
+-
+-Where to find the required credentials to configure the Magento 2 extension
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-
+-All credentials are listed in your Seller Central account :menuselection:`Integration --> MWS Access Key`.
+-
+-.. image:: /images/seller-central/prerequisites_screenshot_11.png
+-
+-Magento 2 extension requires you to enter information about your Amazon Pay seller account. This can be copied as a json string and pasted into Magento.
+-
+-You can find this information in your Amazon Pay seller account at :menuselection:`Integration --> MWS Access Key`.
+-
+-.. image:: /images/copy-your-keys.png
+-
+-Configuration required in Seller Central
+-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-
+-If you're planning to use IPN for the post-payment processing you need to enter a Merchant URL (IPN endpoint URL) in Seller Central. 
+-
+-You can do this at :menuselection:`Settings --> Integration Settings`, then click the `Edit` button at `Instant Notification Settings`.
+-
+-Your IPN endpoint URL can be obtained from Magento admin at :menuselection:`Stores --> Configuration --> Sales --> Payment Methods --> Amazon Pay --> General --> Credentials --> IPN URL`.
+
+--- a/marketplace-composer.json
++++ b/marketplace-composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/amazon-pay-and-login-magento-2-module",
+   "description": "Official Magento2 Plugin to integrate with Amazon Pay and Login with Amazon",
+   "type": "metapackage",
+-  "version": "3.1.4",
++  "version": "3.2.9",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "3.1.4",
+-    "amzn/login-with-amazon-module": "3.1.4",
+-    "amzn/amazon-pay-module": "3.1.4"
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "3.2.9",
++    "amzn/login-with-amazon-module": "3.2.9",
++    "amzn/amazon-pay-module": "3.2.9"
+   }
+ }
+
+--- a/src/Core/Controller/Simplepath/Listener.php
++++ b/src/Core/Controller/Simplepath/Listener.php
+@@ -16,11 +16,15 @@
+ 
+ namespace Amazon\Core\Controller\Simplepath;
+ 
++use Magento\Framework\App\CsrfAwareActionInterface;
++use Magento\Framework\App\Request\InvalidRequestException;
++use Magento\Framework\App\RequestInterface;
++
+ /**
+  * Class Listener
+  * Retrieves entered keys from Amazon Pay popup
+  */
+-class Listener extends \Magento\Framework\App\Action\Action
++class Listener extends \Magento\Framework\App\Action\Action implements CsrfAwareActionInterface
+ {
+ 
+     // @var \Magento\Framework\Controller\Result\JsonFactory
+@@ -53,11 +57,13 @@ class Listener extends \Magento\Framework\App\Action\Action
+      */
+     public function execute()
+     {
+-        $url = parse_url($this->simplepath->getEndpointRegister());
+-        $host = trim(preg_replace("/\r|\n/", "", $url['host']));
+-        $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++        $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
++        if(in_array($host, $this->simplepath->getListenerOrigins())) {
++            $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++        }
+         $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+         $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++        $this->getResponse()->setHeader('Vary', 'Origin');
+ 
+         $payload = $this->_request->getParam('payload');
+ 
+@@ -124,4 +130,24 @@ class Listener extends \Magento\Framework\App\Action\Action
+         }
+         return true;
+     }
++
++    /**
++     * @inheritDoc
++     */
++    public function createCsrfValidationException(
++        RequestInterface $request
++    ): ?InvalidRequestException
++    {
++        return null;
++    }
++
++    /**
++     * Disable Magento's CSRF validation.
++     *
++     * @inheritDoc
++     */
++    public function validateForCsrf(RequestInterface $request): ?bool
++    {
++        return true;
++    }
+ }
+
+--- a/src/Core/Domain/AmazonAddressDecoratorDe.php
++++ b/src/Core/Domain/AmazonAddressDecoratorDe.php
+@@ -178,6 +178,6 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+      */
+     public function getLine($lineNumber)
+     {
+-        $this->amazonAddress->getLine($lineNumber);
++        return $this->amazonAddress->getLine($lineNumber);
+     }
+ }
+
+--- a/src/Core/Exception/AmazonServiceUnavailableException.php
++++ b/src/Core/Exception/AmazonServiceUnavailableException.php
+@@ -15,9 +15,9 @@
+  */
+ namespace Amazon\Core\Exception;
+ 
+-use Magento\Framework\Exception\RemoteServiceUnavailableException;
++use Magento\Framework\Exception\LocalizedException;
+ 
+-class AmazonServiceUnavailableException extends RemoteServiceUnavailableException
++class AmazonServiceUnavailableException extends LocalizedException
+ {
+     const ERROR_MESSAGE = 'Amazon could not process your request.';
+ 
+
+--- a/src/Core/Model/Config/SimplePath.php
++++ b/src/Core/Model/Config/SimplePath.php
+@@ -194,6 +194,19 @@ class SimplePath
+         return $this->getEndpointDomain() . 'register/getpublickey';
+     }
+ 
++    /**
++     * Return listener origins
++     */
++    public function getListenerOrigins()
++    {
++        return [
++            'payments.amazon.com',
++            'payments-eu.amazon.com',
++            'sellercentral.amazon.com',
++            'sellercentral-europe.amazon.com'
++        ];
++    }
++
+     /**
+      * Generate and save RSA keys
+      */
+
+--- a/src/Core/composer.json
++++ b/src/Core/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.1.4",
++  "version": "3.2.9",
+   "license": [
+     "Apache-2.0"
+   ],
+@@ -20,6 +20,7 @@
+     "magento/module-backend": "*",
+     "magento/module-payment": "*",
+     "magento/module-paypal": "*",
++    "magento/module-eav": "*",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "autoload": {
+
+--- a/src/Core/etc/module.xml
++++ b/src/Core/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.1.4">
++    <module name="Amazon_Core" setup_version="3.2.9">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/src/Core/view/adminhtml/templates/system/config/simplepath_admin.phtml
++++ b/src/Core/view/adminhtml/templates/system/config/simplepath_admin.phtml
+@@ -17,7 +17,7 @@
+ -->
+ <br/>
+ <div data-mage-init='{
+-        "Amazon_Core/js/simplepath": <?php echo /* @noEscape */ $block->getJsonConfig() ?> }'
++        "Amazon_Core/js/simplepath": <?php echo $block->escapeHtml($block->getJsonConfig()) ?> }'
+     id="amazon_simplepath">
+ 
+     <?php if (!$block->getCurrency()) : // SimplePath not supported ?>
+
+--- a/src/Login/composer.json
++++ b/src/Login/composer.json
+@@ -2,17 +2,18 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.1.4",
++  "version": "3.2.9",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.1.4",
+-    "magento/module-customer": "*",
+-    "magento/module-store": "*",
+-    "magento/module-eav": "*",
+-    "magento/module-checkout": "*",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.9",
++    "magento/framework": "^102",
++    "magento/module-customer": "^102",
++    "magento/module-store": "^101",
++    "magento/module-eav": "^102",
++    "magento/module-checkout": "^100.3",
+     "magento/module-checkout-agreements": "*"
+ 
+   },
+
+--- a/src/Login/etc/module.xml
++++ b/src/Login/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.1.4">
++    <module name="Amazon_Login" setup_version="3.2.9">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/src/Login/view/frontend/templates/oAuthRedirect.phtml
++++ b/src/Login/view/frontend/templates/oAuthRedirect.phtml
+@@ -15,7 +15,13 @@
+  */
+ ?>
+ <?php /** @var $block \Amazon\Login\Block\OAuthRedirect */ ?>
+-<div><?= $block->escapeHtml(__('You will be redirected shortly...')); ?></div>
++<div>
++    <?= $block->escapeHtml(__('You will be redirected shortly...')); ?><br/>
++    <?= $block->escapeHtml(__(
++            'If you are not redirected automatically, try refreshing the page,'
++            . ' or return to your cart and use another payment method.'
++        )); ?>
++</div>
+ <script>
+ require([
+     'jquery',
+
+--- a/src/Login/view/frontend/web/js/amazon-redirect.js
++++ b/src/Login/view/frontend/web/js/amazon-redirect.js
+@@ -44,7 +44,7 @@ define([
+             // we don't have the customer's consent or invalid request
+             this.redirectOnRequestWithError();
+             this.setAuthStateCookies();
+-            amazonCore.amazonDefined.subscribe(function () {
++            var onAmazonDefined = function () {
+                 //only set this on the redirect page
+                 amazon.Login.setUseCookie(true); //eslint-disable-line no-undef
+                 amazonCore.verifyAmazonLoggedIn().then(function (loggedIn) {
+@@ -62,7 +62,12 @@ define([
+                         }]
+                     });
+                 });
+-            }, this);
++            };
++            if (amazonCore.amazonDefined()) {
++                onAmazonDefined();
++            } else {
++                amazonCore.amazonDefined.subscribe(onAmazonDefined, this);
++            }
+         },
+ 
+         /**
+
+--- /dev/null
++++ b/src/Payment/Controller/Payment/CompleteCheckout.php
+@@ -0,0 +1,120 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Controller\Payment;
++
++use Amazon\Core\Model\AmazonConfig;
++use Amazon\Core\Exception\AmazonWebapiException;
++use Magento\Framework\App\Action\Action;
++use Magento\Framework\App\Action\Context;
++use Magento\Quote\Api\CartManagementInterface;
++use Magento\Quote\Api\GuestCartManagementInterface;
++use Magento\Checkout\Model\Session as CheckoutSession;
++use Magento\Customer\Model\Session;
++use Magento\Framework\View\Result\PageFactory;
++use \Magento\Framework\Message\ManagerInterface as MessageManager;
++
++/**
++ * Class CompleteCheckout
++ *
++ * @package Amazon\Payment\Controller\Payment
++ */
++class CompleteCheckout extends Action
++{
++
++    /**
++     * @var AmazonConfig
++     */
++    private $amazonConfig;
++
++    /**
++     * @var CheckoutSession
++     */
++    private $checkoutSession;
++
++    /**
++     * @var CartManagementInterface
++     */
++    private $cartManagement;
++
++    /**
++     * @var PageFactory
++     */
++    private $pageFactory;
++
++    /**
++     * CompleteCheckout constructor.
++     *
++     * @param Context $context
++     * @param AmazonConfig $amazonConfig
++     * @param CartManagementInterface $cartManagement
++     * @param GuestCartManagementInterface $guestCartManagement
++     * @param CheckoutSession $checkoutSession
++     * @param Session $session
++     * @param PageFactory $pageFactory
++     */
++    public function __construct(
++        Context $context,
++        AmazonConfig $amazonConfig,
++        CartManagementInterface $cartManagement,
++        GuestCartManagementInterface $guestCartManagement,
++        CheckoutSession $checkoutSession,
++        Session $session,
++        PageFactory $pageFactory,
++        MessageManager $messageManager
++    ) {
++        parent::__construct($context);
++        $this->amazonConfig = $amazonConfig;
++        $this->cartManagement = $cartManagement;
++        $this->checkoutSession = $checkoutSession;
++        $this->session = $session;
++        $this->pageFactory = $pageFactory;
++        $this->messageManager = $messageManager;
++    }
++
++    /*
++     * @inheritdoc
++     */
++    public function execute()
++    {
++        $authenticationStatus = $this->getRequest()->getParam('AuthenticationStatus');
++        switch ($authenticationStatus) {
++            case 'Success':
++                try {
++                    if (!$this->session->isLoggedIn()) {
++                        $this->checkoutSession->getQuote()->setCheckoutMethod(CartManagementInterface::METHOD_GUEST);
++                    }
++                    $this->cartManagement->placeOrder($this->checkoutSession->getQuoteId());
++                    return $this->_redirect('checkout/onepage/success');
++                } catch (AmazonWebapiException $e) {
++                    $this->messageManager->addErrorMessage($e->getMessage());
++                }
++                break;
++            case 'Failure':
++                $this->messageManager->addErrorMessage(__(
++                    'Amazon Pay was unable to authenticate the payment instrument.  '
++                    . 'Please try again, or use a different payment method.'
++                ));
++                break;
++            case 'Abandoned':
++            default:
++                $this->messageManager->addErrorMessage(__(
++                    'The SCA challenge was not completed successfully.  '
++                    . 'Please try again, or use a different payment method.'
++                ));
++        }
++        return $this->_redirect('checkout/cart');
++    }
++}
+
+--- a/src/Payment/Gateway/Command/AmazonAuthCommand.php
++++ b/src/Payment/Gateway/Command/AmazonAuthCommand.php
+@@ -183,10 +183,6 @@ class AmazonAuthCommand implements CommandInterface
+             }
+         }
+ 
+-        if ($isDecline) {
+-            $messages[] = __("You will be redirected to the cart shortly.");
+-        }
+-
+         if ($isTimeout) {
+             return true;
+         }
+
+--- a/src/Payment/Model/Adapter/AmazonPaymentAdapter.php
++++ b/src/Payment/Model/Adapter/AmazonPaymentAdapter.php
+@@ -25,6 +25,8 @@ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterfaceFactory;
+ use Amazon\Payment\Api\Data\PendingCaptureInterfaceFactory;
++use Magento\Framework\UrlInterface;
++use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * Class AmazonPaymentAdapter
+@@ -80,6 +82,11 @@ class AmazonPaymentAdapter
+      */
+     private $pendingAuthorizationFactory;
+ 
++    /**
++     * @var UrlInterface
++     */
++    private $urlBuilder;
++
+     /**
+      * AmazonPaymentAdapter constructor.
+      * @param ClientFactoryInterface $clientFactory
+@@ -91,6 +98,7 @@ class AmazonPaymentAdapter
+      * @param SubjectReader $subjectReader
+      * @param Data $coreHelper
+      * @param Logger $logger
++     * @param UrlInterface $urlBuilder
+      */
+     public function __construct(
+         ClientFactoryInterface $clientFactory,
+@@ -101,7 +109,8 @@ class AmazonPaymentAdapter
+         PendingAuthorizationInterfaceFactory $pendingAuthorizationFactory,
+         SubjectReader $subjectReader,
+         Data $coreHelper,
+-        Logger $logger
++        Logger $logger,
++        UrlInterface $urlBuilder = null
+     ) {
+         $this->clientFactory = $clientFactory;
+         $this->amazonSetOrderDetailsResponseFactory = $amazonSetOrderDetailsResponseFactory;
+@@ -112,6 +121,7 @@ class AmazonPaymentAdapter
+         $this->coreHelper = $coreHelper;
+         $this->pendingCaptureFactory = $pendingCaptureFactory;
+         $this->pendingAuthorizationFactory = $pendingAuthorizationFactory;
++        $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->get(UrlInterface::class);
+     }
+ 
+     /**
+@@ -158,7 +168,9 @@ class AmazonPaymentAdapter
+ 
+         $response = $this->clientFactory->create($storeId)->confirmOrderReference(
+             [
+-                'amazon_order_reference_id' => $amazonOrderReferenceId
++                'amazon_order_reference_id' => $amazonOrderReferenceId,
++                'success_url' => $this->urlBuilder->getUrl('amazonpayments/payment/completecheckout'),
++                'failure_url' => $this->urlBuilder->getUrl('amazonpayments/payment/completecheckout')
+             ]
+         );
+ 
+@@ -229,15 +241,6 @@ class AmazonPaymentAdapter
+         $response['constraints'] = [];
+         $response['amazon_order_reference_id'] = $data['amazon_order_reference_id'];
+ 
+-        if (!$attempts) {
+-            $detailResponse = $this->setOrderReferenceDetails($storeId, $data);
+-
+-            if (isset($detailResponse['constraints']) && !empty($detailResponse['constraints'])) {
+-                $response['constraints'] = $detailResponse['constraints'];
+-                return $response;
+-            }
+-        }
+-
+         $confirmResponse = $this->confirmOrderReference($storeId, $data['amazon_order_reference_id']);
+ 
+         if ($confirmResponse->response['Status'] == 200) {
+
+--- a/src/Payment/Model/Method/AmazonLoginMethod.php
++++ b/src/Payment/Model/Method/AmazonLoginMethod.php
+@@ -60,7 +60,7 @@ class AmazonLoginMethod extends \Magento\Payment\Model\Method\AbstractMethod
+     public function isActive($storeId = null)
+     {
+         return (bool)(int)$this->_scopeConfig->getValue(
+-            'payment/amazon_pay/active',
++            AmazonCoreHelper::AMAZON_ACTIVE,
+             \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+             $storeId
+         ) && (bool)(int)$this->getConfigData('active', $storeId);
+
+--- a/src/Payment/Model/OrderInformationManagement.php
++++ b/src/Payment/Model/OrderInformationManagement.php
+@@ -32,6 +32,8 @@ use Magento\Quote\Model\Quote;
+ use Magento\Store\Model\ScopeInterface;
+ use AmazonPay\ResponseInterface;
+ use Psr\Log\LoggerInterface;
++use Magento\Framework\UrlInterface;
++use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+@@ -97,7 +99,8 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+         AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory,
+         QuoteLinkInterfaceFactory $quoteLinkFactory,
+         LoggerInterface $logger,
+-        ProductMetadata $productMetadata
++        ProductMetadata $productMetadata,
++        UrlInterface $urlBuilder = null
+     ) {
+         $this->session                              = $session;
+         $this->clientFactory                        = $clientFactory;
+@@ -107,6 +110,7 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+         $this->quoteLinkFactory                     = $quoteLinkFactory;
+         $this->logger                               = $logger;
+         $this->productMetadata                      = $productMetadata;
++        $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->get(UrlInterface::class);
+     }
+ 
+     /**
+@@ -188,7 +192,9 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+         try {
+             $response = $this->clientFactory->create($storeId)->confirmOrderReference(
+                 [
+-                    'amazon_order_reference_id' => $amazonOrderReferenceId
++                    'amazon_order_reference_id' => $amazonOrderReferenceId,
++                    'success_url' => $this->urlBuilder->getUrl('amazonpayments/payment/completecheckout'),
++                    'failure_url' => $this->urlBuilder->getUrl('amazonpayments/payment/completecheckout')
+                 ]
+             );
+ 
+
+--- /dev/null
++++ b/src/Payment/Plugin/ConfirmOrderReference.php
+@@ -0,0 +1,104 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++namespace Amazon\Payment\Plugin;
++
++use Amazon\Core\Exception\AmazonWebapiException;
++use Amazon\Payment\Api\Data\QuoteLinkInterface;
++use Magento\Checkout\Model\Session;
++use Magento\Checkout\Api\PaymentInformationManagementInterface;
++use Magento\Quote\Api\PaymentMethodManagementInterface;
++use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
++use Amazon\Payment\Model\OrderInformationManagement;
++use Magento\Quote\Api\Data\PaymentInterface;
++use Magento\Quote\Api\Data\AddressInterface;
++use Magento\Framework\Exception\LocalizedException;
++use Amazon\Payment\Gateway\Config\Config as GatewayConfig;
++use Magento\Quote\Api\CartRepositoryInterface;
++
++
++/**
++ * Class ConfirmOrderReference
++ *
++ * Confirm the OrderReference when payment details are saved
++ */
++class ConfirmOrderReference
++{
++    /**
++     * @var Session
++     */
++    private $checkoutSession;
++
++    /**
++     * @var OrderInformationManagement
++     */
++    private $orderInformationManagement;
++
++    /**
++     * @var CartRepositoryInterface
++     */
++    private $quoteRepository;
++
++    /**
++     * ConfirmOrderReference constructor.
++     * @param Session $checkoutSession
++     * @param OrderInformationManagement $orderInformationManagement
++     * @param CartRepositoryInterface $quoteRepository
++     */
++    public function __construct(
++        Session $checkoutSession,
++        OrderInformationManagement $orderInformationManagement,
++        CartRepositoryInterface $quoteRepository
++    ) {
++        $this->checkoutSession = $checkoutSession;
++        $this->orderInformationManagement = $orderInformationManagement;
++        $this->quoteRepository = $quoteRepository;
++    }
++
++    /**
++     * @param PaymentMethodManagementInterface $subject
++     * @param $result
++     * @param $cartId
++     * @param PaymentInterface $paymentMethod
++     * @param AddressInterface|null $billingAddress
++     * @return mixed
++     * @throws \Magento\Framework\Exception\LocalizedException
++     */
++    public function afterSet(
++        PaymentMethodManagementInterface $subject,
++        $result,
++        $cartId,
++        PaymentInterface $paymentMethod
++    ) {
++        if($paymentMethod->getMethod() == GatewayConfig::CODE) {
++            $quote = $this->quoteRepository->get($cartId);
++            $quoteExtensionAttributes = $quote->getExtensionAttributes();
++            if ($quoteExtensionAttributes) {
++                $amazonOrderReferenceId = $quoteExtensionAttributes
++                    ->getAmazonOrderReferenceId()
++                    ->getAmazonOrderReferenceId();
++
++                $this->orderInformationManagement->saveOrderInformation($amazonOrderReferenceId);
++                $this->orderInformationManagement->confirmOrderReference(
++                    $amazonOrderReferenceId,
++                    $quote->getStoreId()
++                );
++            }
++        }
++
++        return $result;
++    }
++}
+
+--- a/src/Payment/Plugin/ShippingInformationManagement.php
++++ b/src/Payment/Plugin/ShippingInformationManagement.php
+@@ -80,7 +80,9 @@ class ShippingInformationManagement
+             return $return;
+         }
+ 
+-        $amazonOrderReferenceId = $quote->getExtensionAttributes()->getAmazonOrderReferenceId();
++        $amazonOrderReferenceId = $quote->getExtensionAttributes()
++            ->getAmazonOrderReferenceId()
++            ->getAmazonOrderReferenceId();
+ 
+         if ($amazonOrderReferenceId) {
+             $this->orderInformationManagement->saveOrderInformation(
+@@ -92,6 +94,16 @@ class ShippingInformationManagement
+             );
+         }
+ 
++        /*
++         * Magento\Quote\Model\Quote::setShippingAddress merges into the existing shipping address,
++         *  rather than replacing it.  Because not all addresses have a region_id, make sure that
++         *  the region_id is explicitly emptied, to prevent the old one being used.
++         */
++        $shippingAddress = $shippingInformation->getShippingAddress();
++        if(!$shippingAddress->hasData('region_id')) {
++            $shippingAddress->setRegionId("");
++        }
++
+         return $return;
+     }
+ }
+
+--- a/src/Payment/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
++++ b/src/Payment/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
+@@ -15,6 +15,9 @@
+             <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+@@ -36,6 +39,9 @@
+             <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+@@ -63,6 +69,9 @@
+             <description value="Test CC decline message, logout, and redirect to cart with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+@@ -90,6 +99,9 @@
+             <description value="Test CC timeout message with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+@@ -116,6 +128,9 @@
+             <description value="Test CC timeout message with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+@@ -126,4 +141,64 @@
+         <!--Transaction declined error message-->
+         <waitForText userInput="Transaction has been declined" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
+     </test>
++    <test name="AmazonCheckoutSCAAbandoned" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Amazon SCA Abandoned"/>
++            <title value="(SCA) Amazon SCA Abandoned"/>
++            <description value="Perform checkout from cart page and ensure SCA Abandoned page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
++        </annotations>
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
++        <!--Place order with SCA Abandoned CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="4440" />
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="The SCA challenge was not completed successfully." selector="#checkoutError" stepKey="waitForText"/>
++    </test>
++    <test name="AmazonCheckoutSCAFailure" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Amazon SCA Failed"/>
++            <title value="(SCA) Amazon SCA Failed"/>
++            <description value="Perform checkout from cart page and ensure SCA Failure page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
++        </annotations>
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
++        <!--Place order with SCA Failure CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="8320" />
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="Amazon Pay was unable to authenticate the payment instrument." selector="#checkoutError" stepKey="waitForText"/>
++    </test>
+ </tests>
+
+--- a/src/Payment/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
++++ b/src/Payment/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
+@@ -16,6 +16,9 @@
+             <description value="Creates and loads simple product and adds it to cart using Amazon Pay button on product detail page."/>
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <before>
+@@ -46,6 +49,9 @@
+             <description value="Adds product to cart."/>
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <before>
+@@ -74,6 +80,9 @@
+             <description value="Perform checkout from product details page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <!--Place order-->
+@@ -87,6 +96,9 @@
+             <description value="Perform checkout from cart page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <!--Go to Cart-->
+@@ -109,6 +121,9 @@
+             <description value="Perform checkout from minicart and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <!--Open minicart-->
+@@ -131,6 +146,9 @@
+             <description value="Perform checkout from checkout page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <!--Go to Checkout-->
+@@ -153,6 +171,9 @@
+             <description value="Perform checkout after logging in from customer account page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
+         </annotations>
+ 
+         <!--Go to Customer page-->
+@@ -162,6 +183,31 @@
+         <click selector="{{AmazonCheckoutSection.loginButton}}" stepKey="clickAmazonCartButton"/>
+         <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+ 
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++    </test>
++    <test name="AmazonCheckoutSCASuccess" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="(SCA) Amazon Pay Checkout from Cart"/>
++            <description value="Perform checkout from cart page and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++            <skip>
++                <issueId>AmazonPayCredentialSupport</issueId>
++            </skip>
++        </annotations>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
++
+         <!--Place order-->
+         <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+
+--- a/src/Payment/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
++++ b/src/Payment/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
+@@ -17,6 +17,7 @@ namespace Amazon\Payment\Test\Unit\Gateway\Command;
+ 
+ use Amazon\Payment\Gateway\Command\CaptureStrategyCommand;
+ use Amazon\Core\Helper\Data;
++use Amazon\Payment\Gateway\Data\Order\OrderAdapterFactory;
+ use Magento\Framework\TestFramework\Unit\Helper\ObjectManager;
+ use Magento\Framework\Api\SearchCriteriaBuilder;
+ use Magento\Framework\Api\FilterBuilder;
+@@ -77,6 +78,11 @@ class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
+      */
+     private $coreHelper;
+ 
++    /**
++     * @var OrderAdapterFactory|MockObject
++     */
++    private $orderAdapterFactory;
++
+     /**
+      * Sets up base classes needed to mock the command strategy class
+      */
+@@ -91,6 +97,7 @@ class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
+         $this->initTransactionRepositoryMock();
+         $this->initFilterBuilderMock();
+         $this->initSearchCriteriaBuilderMock();
++        $this->initOrderAdapterFactoryMock();
+ 
+         $this->coreHelper = $this->getMockBuilder(\Amazon\Core\Helper\Data::class)
+             ->disableOriginalConstructor()
+@@ -101,7 +108,8 @@ class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
+             $this->transactionRepository,
+             $this->searchCriteriaBuilder,
+             $this->filterBuilder,
+-            $this->coreHelper
++            $this->coreHelper,
++            $this->orderAdapterFactory
+         );
+     }
+ 
+@@ -264,4 +272,26 @@ class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
+             ->setMethods(['getList', 'getTotalCount', 'delete', 'get', 'save', 'create', '__wakeup'])
+             ->getMock();
+     }
++
++    /**
++     * Create mock for Order Adapter Factory
++     */
++    public function initOrderAdapterFactoryMock()
++    {
++        $this->orderAdapterFactory = $this->getMockBuilder(OrderAdapterFactory::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['create'])
++            ->getMock();
++
++        $orderMock = $this->getMockBuilder(OrderAdapterInterface::class)
++            ->disableOriginalConstructor()
++            ->setMethods(['getAmazonOrderID'])
++            ->getMock();
++
++        $orderMock->method('getAmazonOrderID')
++            ->willReturn('123456');
++
++        $this->orderAdapterFactory->method('create')
++            ->willReturn($orderMock);
++    }
+ }
+
+--- a/src/Payment/composer.json
++++ b/src/Payment/composer.json
+@@ -2,25 +2,26 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.1.4",
++  "version": "3.2.9",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.1.4",
+-    "amzn/login-with-amazon-module": "^3.1.4",
+-    "magento/module-customer": "*",
+-    "magento/module-eav": "*",
+-    "magento/module-sales": "*",
+-    "magento/module-quote": "*",
+-    "magento/module-payment": "*",
+-    "magento/module-backend": "*",
+-    "magento/module-store": "*",
+-    "magento/module-checkout": "*",
+-    "magento/module-catalog": "*",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.9",
++    "amzn/login-with-amazon-module": "^3.2.9",
++    "magento/framework": "^102",
++    "magento/module-customer": "^102",
++    "magento/module-eav": "^102",
++    "magento/module-sales": "^102",
++    "magento/module-quote": "^101.1",
++    "magento/module-payment": "^100.3",
++    "magento/module-backend": "^101",
++    "magento/module-store": "^101",
++    "magento/module-checkout": "^100.3",
++    "magento/module-catalog": "^103",
+     "magento/module-paypal": "*",
+-    "magento/module-directory": "*"
++    "magento/module-directory": "^100.3"
+   },
+   "suggest": {
+     "magento/module-customer": "*",
+
+--- a/src/Payment/etc/di.xml
++++ b/src/Payment/etc/di.xml
+@@ -242,6 +242,9 @@
+     <type name="Amazon\Payment\Model\Method\AmazonLoginMethod">
+         <plugin name="disable_amazon_payment_method" type="Amazon\Payment\Plugin\DisableAmazonPaymentMethod" sortOrder="10" disabled="false"/>
+     </type>
++    <type name="Magento\Quote\Model\PaymentMethodManagement">
++        <plugin name="confirm_order_reference_on_payment_details_save" type="Amazon\Payment\Plugin\ConfirmOrderReference" sortOrder="10" disabled="false"/>
++    </type>
+ 
+     <type name="Amazon\Payment\Cron\ProcessAmazonRefunds">
+         <arguments>
+
+--- a/src/Payment/etc/module.xml
++++ b/src/Payment/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.1.4" >
++    <module name="Amazon_Payment" setup_version="3.2.9" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/src/Payment/view/frontend/web/js/action/place-order.js
++++ b/src/Payment/view/frontend/web/js/action/place-order.js
+@@ -22,9 +22,10 @@ define(
+         'Magento_Checkout/js/model/error-processor',
+         'Magento_Customer/js/model/customer',
+         'Magento_Checkout/js/model/full-screen-loader',
+-        'Amazon_Payment/js/model/storage'
++        'Amazon_Payment/js/model/storage',
++        'Amazon_Payment/js/model/amazonPaymentConfig'
+     ],
+-    function (quote, urlBuilder, storage, url, errorProcessor, customer, fullScreenLoader, amazonStorage) {
++    function (quote, urlBuilder, storage, url, errorProcessor, customer, fullScreenLoader, amazonStorage, amazonPaymentConfig) {
+         'use strict';
+ 
+         return function (paymentData, redirectOnSuccess) {
+@@ -34,7 +35,7 @@ define(
+ 
+             /** Checkout for guest and registered customer. */
+             if (!customer.isLoggedIn()) {
+-                serviceUrl = urlBuilder.createUrl('/guest-carts/:quoteId/payment-information', {
++                serviceUrl = urlBuilder.createUrl('/guest-carts/:quoteId/set-payment-information', {
+                     quoteId: quote.getQuoteId()
+                 });
+                 payload = {
+@@ -44,7 +45,7 @@ define(
+                     billingAddress: quote.billingAddress()
+                 };
+             } else {
+-                serviceUrl = urlBuilder.createUrl('/carts/mine/payment-information', {});
++                serviceUrl = urlBuilder.createUrl('/carts/mine/set-payment-information', {});
+                 payload = {
+                     cartId: quote.getQuoteId(),
+                     paymentMethod: paymentData,
+@@ -53,30 +54,55 @@ define(
+             }
+ 
+             fullScreenLoader.startLoader();
+-
+-            return storage.post(
+-                serviceUrl,
+-                JSON.stringify(payload)
+-            ).done(
+-                function () {
+-                    if (redirectOnSuccess) {
+-                        window.location.replace(url.build('checkout/onepage/success/'));
++            if(['de', 'uk'].indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
++                console.log('SCA enabled for region: ' + amazonPaymentConfig.getValue('region'));
++                return OffAmazonPayments.initConfirmationFlow(amazonPaymentConfig.getValue('merchantId'), amazonStorage.getOrderReference(), function(confirmationFlow) {
++                    return storage.post(
++                        serviceUrl,
++                        JSON.stringify(payload)
++                    ).done(
++                        function () {
++                            confirmationFlow.success();
++                        }
++                    ).fail(
++                        function (response) {
++                            confirmationFlow.error();
++                            errorProcessor.process(response);
++                            amazonStorage.amazonDeclineCode(response.responseJSON.code);
++                            fullScreenLoader.stopLoader(true);
++                            if (response.responseJSON.code === 4273) {
++                                setTimeout(function () {
++                                    window.location.replace(url.build('checkout/cart/'));
++                                }, 5000);
++                            }
++                        }
++                    );
++                });
++            } else {
++                console.log('SCA disabled for region: ' + amazonPaymentConfig.getValue('region'));
++                return storage.post(
++                    serviceUrl,
++                    JSON.stringify(payload)
++                ).done(
++                    function () {
++                        if(redirectOnSuccess) {
++                            window.location.replace(url.build('amazonpayments/payment/completecheckout/?AuthenticationStatus=Success'));
++                        }
+                     }
+-                }
+-            ).fail(
+-                function (response) {
+-                    errorProcessor.process(response);
+-                    amazonStorage.amazonDeclineCode(response.responseJSON.code);
+-                    fullScreenLoader.stopLoader(true);
+-                    if (response.responseJSON.code === 4273) {
+-                        intervalId = setInterval(function () {
+-                            clearInterval(intervalId);
+-                            window.location.replace(url.build('checkout/cart/'));
+-                        }, 5000);
+-
++                ).fail(
++                    function (response) {
++                        errorProcessor.process(response);
++                        amazonStorage.amazonDeclineCode(response.responseJSON.code);
++                        fullScreenLoader.stopLoader(true);
++                        if (response.responseJSON.code === 4273) {
++                            intervalId = setInterval(function () {
++                                clearInterval(intervalId);
++                                window.location.replace(url.build('checkout/cart/'));
++                            }, 5000);
++                        }
+                     }
+-                }
+-            );
++                );
++            }
+         };
+     }
+ );
+
+--- a/src/Payment/view/frontend/web/js/view/shipping-address/inline-form.js
++++ b/src/Payment/view/frontend/web/js/view/shipping-address/inline-form.js
+@@ -16,29 +16,25 @@ define([
+          */
+         initObservable: function () {
+             this._super();
+-            amazonStorage.isAmazonAccountLoggedIn.subscribe(function (value) {
+-                var elem = document.getElementById(this.formSelector);
+-
+-                if (elem && value === false) {
+-                    document.getElementById(this.formSelector).style.display = 'block';
+-                }
+-            }, this);
+-
++            amazonStorage.isAmazonAccountLoggedIn.subscribe(this.hideInlineForm, this);
+             return this;
+         },
+ 
+         /**
+-         * Show/hide inline form
++         * Show/hide inline form depending on Amazon login status
+          */
+         manipulateInlineForm: function () {
+-            var elem;
++            this.hideInlineForm(amazonStorage.isAmazonAccountLoggedIn());
++        },
+ 
+-            if (amazonStorage.isAmazonAccountLoggedIn()) {
+-                elem = document.getElementById(this.formSelector);
++        /**
++         * Show/hide inline form
++         */
++        hideInlineForm: function(hide) {
++            var elem = document.getElementById(this.formSelector);
+ 
+-                if (elem) {
+-                    document.getElementById(this.formSelector).style.display = 'none';
+-                }
++            if (elem) {
++                document.getElementById(this.formSelector).style.display = hide ? 'none' : 'block';
+             }
+         }
+     });
+
