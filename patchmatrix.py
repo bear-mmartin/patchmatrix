@@ -1,18 +1,49 @@
+#!/usr/bin/env python3
 from git import Repo, NoSuchPathError, InvalidGitRepositoryError
 import itertools
 import semver
 import sys
 import os
 
+## Defines a subdirectory within the repository to be used for generating module-relative patches
+class ModuleGroup:
+    def __init__(self, moduleName, prefix):
+        self.moduleName = moduleName
+        self.prefix = prefix
+
+class ModuleDiffProcessor:
+    def __init__(self, moduleGroups=[]):
+        self.moduleGroups = moduleGroups
+    def _matchPath(self, path):
+        for moduleGroup in self.moduleGroups:
+            if path.startswith(moduleGroup.prefix):
+                return moduleGroup
+        return None
+    def processPath(self, path):
+        if not path:
+            return None
+        moduleGroup = self._matchPath(path)
+        if moduleGroup:
+#            return path.replace(moduleGroup.prefix, moduleGroup.moduleName, 1)
+            return path[len(moduleGroup.prefix)+1:]
+        return path
+    def tag(self, diff):
+        path = diff.b_path if diff.b_path else diff.a_path
+        moduleGroup = self._matchPath(path)
+        if not moduleGroup:
+            raise Exception('Could not identify module for %s' % (path))
+        return (moduleGroup.moduleName,)
+
 class PatchMatrix:
-    def __init__(self, repoUrl=None, compatSets=[], path=None):
+    def __init__(self, repoUrl=None, compatSets=[], path=None, diffProcessor=None):
         self.path = path if path else 'repo'
         self.repoUrl = repoUrl
         self.repo = None
         self.compatSets = compatSets
+        self.diffProcessor = diffProcessor
         try:
             self.repo = Repo(self.path)
-            self._info('Repo found at %s.  Pulling from remote...' % (self.path))
+            self._info('Repo found at "%s".  Pulling from remote...' % (self.path))
             self.repo.remote().pull()
             self._info('done pulling')
         except NoSuchPathError:
@@ -44,45 +75,76 @@ class PatchMatrix:
     def getCompatiblePairs(self):
         for compatSet in self.compatSets:
             for pair in self.getTagPairs(compatSet):
-                self._info(pair)
+                self._info('Processing version pair: %s->%s' % (pair[0].name, pair[1].name))
                 yield pair
     def _getPatchFromDiff(self, diff):
         patch = ''
-        a_path = ("a/%s" % diff.a_path) if diff.a_path else '/dev/null'
-        b_path = ("b/%s" % diff.b_path) if diff.b_path else '/dev/null'
+        a_path = self.diffProcessor.processPath(diff.a_path) if self.diffProcessor else diff.a_path
+        b_path = self.diffProcessor.processPath(diff.b_path) if self.diffProcessor else diff.b_path
+        a_path = ("a/%s" % a_path) if a_path else '/dev/null'
+        b_path = ("b/%s" % b_path) if b_path else '/dev/null'
         patch = patch + "--- %s\n" % (a_path)
         patch = patch + "+++ %s\n" % (b_path)
         patch = patch + diff.diff.decode('UTF-8')
         patch = patch + "\n"
-        return patch
-    def _getPatchFromDiffIndex(self, diffIndex):
-        patch = ''
+        tags = self.diffProcessor.tag(diff) if self.diffProcessor else ()
+        return tags, patch
+    def _getPatchesFromDiffIndex(self, diffIndex):
         for diff in diffIndex:
-             patch = patch + self._getPatchFromDiff(diff)
-        return patch
+            try:
+                yield self._getPatchFromDiff(diff)
+            except Exception as e:
+                self._warn('Skipping patch: %s' % (e))
+                yield None, None
     def _getDiffIndexFromPair(self, pair):
             return pair[0].commit.diff(pair[1].commit, create_patch=True)
-    def _getPatchFromPair(self, pair):
-        return self._getPatchFromDiffIndex(self._getDiffIndexFromPair(pair))
     def compute(self):
         for pair in self.getCompatiblePairs():
-            yield (pair, self._getPatchFromPair(pair))
+            for patch in self._getPatchesFromDiffIndex(self._getDiffIndexFromPair(pair)):
+                yield (pair,) + patch
 
+class _PatchRange:
+    def __init__(self, compatSets=[], diffProcessor=None, rangeTags=()):
+        self.compatSets = compatSets
+        self.diffProcessor = diffProcessor
+        self.rangeTags = rangeTags
 
 if __name__ == "__main__":
     REPO='https://github.com/BearGroup/amazon-payments-magento-2-plugin.git'
-    COMPATSETS=[['>2.1.0','<2.2.0'],['>3.1.0','<4.0.0'],['>1.2.0','<1.3.0']]
-#    COMPATSETS=[['>=1.0.0','<4.0.0']]
     PATCHDIR='patches'
 
-    if not os.path.exists(PATCHDIR):
-        os.makedirs(PATCHDIR)
+    patchRanges = [
+        _PatchRange([['>=2.1.0', '<=3.0.0']], ModuleDiffProcessor([
+            ModuleGroup('amzn/amazon-pay-and-login-with-amazon-core-module', 'src/Core'),
+            ModuleGroup('amzn/amazon-pay-module', 'src/Payment'),
+            ModuleGroup('amzn/login-with-amazon-module', 'src/Login')
+          ]), ('Magento2.2',)),
+        _PatchRange([['>=3.1.0','<=4.0.0']], None, ('Magento2.3','amzn/amazon-pay-and-login-magento-2-module'))
+    ]
 
-    matrix = PatchMatrix(REPO, COMPATSETS)
-    for pair, patch in matrix.compute():
-        filename = '%s/%s-%s.patch' % (PATCHDIR, pair[0].name, pair[1].name)
-        print('Writing patch to %s' % (filename))
-        out = open(filename, 'w')
-        out.write(patch)
-        out.close()
+    matrix = PatchMatrix(REPO)
+
+    for patchRange in patchRanges:
+        matrix.compatSets = patchRange.compatSets
+        matrix.diffProcessor = patchRange.diffProcessor
+        patchesToWrite = {}
+        for pair, tags, patch in matrix.compute():
+            if not patch:
+                continue
+            path = PATCHDIR.rstrip('/') + '/'
+            tags = patchRange.rangeTags + tags
+            if tags:
+                path = path + '/'.join(tags) + '/'
+            filename = '%s%s-%s.patch' % (path, pair[0].name, pair[1].name)
+            if filename in patchesToWrite:
+                patchesToWrite[filename]['patch'] = patchesToWrite[filename]['patch'] + patch
+            else:
+                patchesToWrite[filename] = {'path': path, 'patch': patch}
+        for filename, patch in patchesToWrite.items():
+            if not os.path.exists(patch['path']):
+                os.makedirs(patch['path'], exist_ok=True)
+            print('Writing patch to %s' % (filename))
+            out = open(filename, 'w')
+            out.write(patch['patch'])
+            out.close()
 
