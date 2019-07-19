@@ -121,7 +121,12 @@ if __name__ == "__main__":
             ModuleGroup('amzn/amazon-pay-module', 'src/Payment'),
             ModuleGroup('amzn/login-with-amazon-module', 'src/Login')
           ]), ('Magento2.2',)),
-        _PatchRange([['>=3.1.0','<=4.0.0']], None, ('Magento2.3','amzn/amazon-pay-and-login-magento-2-module'))
+        _PatchRange([['>=3.1.0', '<=4.0.0']], ModuleDiffProcessor([
+            ModuleGroup('amzn/amazon-pay-and-login-with-amazon-core-module', 'src/Core'),
+            ModuleGroup('amzn/amazon-pay-module', 'src/Payment'),
+            ModuleGroup('amzn/login-with-amazon-module', 'src/Login')
+          ]), ('Magento2.3',)),
+#        _PatchRange([['>=3.1.0','<=4.0.0']], None, ('Magento2.3','amzn/amazon-pay-and-login-magento-2-module'))
     ]
 
     matrix = PatchMatrix(REPO)
