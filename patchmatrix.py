@@ -112,16 +112,16 @@ class _PatchRange:
         self.rangeTags = rangeTags
 
 if __name__ == "__main__":
-    REPO='https://github.com/BearGroup/amazon-payments-magento-2-plugin.git'
+    REPO='https://github.com/amzn/amazon-payments-magento-2-plugin.git'
     PATCHDIR='patches'
 
     patchRanges = [
-        _PatchRange([['>=2.1.0', '<=3.0.0']], ModuleDiffProcessor([
+        _PatchRange([['>=2.1.0', '<3.0.0']], ModuleDiffProcessor([
             ModuleGroup('amzn/amazon-pay-and-login-with-amazon-core-module', 'src/Core'),
             ModuleGroup('amzn/amazon-pay-module', 'src/Payment'),
             ModuleGroup('amzn/login-with-amazon-module', 'src/Login')
           ]), ('Magento2.2',)),
-        _PatchRange([['>=3.1.0', '<=4.0.0']], ModuleDiffProcessor([
+        _PatchRange([['>=3.0.0', '<4.0.0']], ModuleDiffProcessor([
             ModuleGroup('amzn/amazon-pay-and-login-with-amazon-core-module', 'src/Core'),
             ModuleGroup('amzn/amazon-pay-module', 'src/Payment'),
             ModuleGroup('amzn/login-with-amazon-module', 'src/Login')
