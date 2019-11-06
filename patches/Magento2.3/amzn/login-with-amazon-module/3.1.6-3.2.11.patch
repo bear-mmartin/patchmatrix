@@ -1,0 +1,100 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,17 +2,18 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.1.6",
++  "version": "3.2.11",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.1.6",
+-    "magento/module-customer": "*",
+-    "magento/module-store": "*",
+-    "magento/module-eav": "*",
+-    "magento/module-checkout": "*",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.11",
++    "magento/framework": "^102",
++    "magento/module-customer": "^102",
++    "magento/module-store": "^101",
++    "magento/module-eav": "^102",
++    "magento/module-checkout": "^100.3",
+     "magento/module-checkout-agreements": "*"
+ 
+   },
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.1.6">
++    <module name="Amazon_Login" setup_version="3.2.11">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/view/frontend/layout/default.xml
++++ b/view/frontend/layout/default.xml
+@@ -29,6 +29,8 @@
+                                     <item name="displayArea" xsi:type="string">additional-login-form-fields</item>
+                                     <item name="config" xsi:type="array">
+                                         <item name="tooltip" xsi:type="string" translate="true">Securely login into our website using your existing Amazon details.</item>
++                                        <item name="componentDisabled" xsi:type="helper"
++                                              helper="Amazon\Core\Model\AmazonConfig::isLwaDisabled"/>
+                                     </item>
+                                 </item>
+                             </item>
+
+--- a/view/frontend/templates/oAuthRedirect.phtml
++++ b/view/frontend/templates/oAuthRedirect.phtml
+@@ -15,7 +15,13 @@
+  */
+ ?>
+ <?php /** @var $block \Amazon\Login\Block\OAuthRedirect */ ?>
+-<div><?= $block->escapeHtml(__('You will be redirected shortly...')); ?></div>
++<div>
++    <?= $block->escapeHtml(__('You will be redirected shortly...')); ?><br/>
++    <?= $block->escapeHtml(__(
++            'If you are not redirected automatically, try refreshing the page,'
++            . ' or return to your cart and use another payment method.'
++        )); ?>
++</div>
+ <script>
+ require([
+     'jquery',
+
+--- a/view/frontend/web/js/amazon-redirect.js
++++ b/view/frontend/web/js/amazon-redirect.js
+@@ -44,25 +44,7 @@ define([
+             // we don't have the customer's consent or invalid request
+             this.redirectOnRequestWithError();
+             this.setAuthStateCookies();
+-            amazonCore.amazonDefined.subscribe(function () {
+-                //only set this on the redirect page
+-                amazon.Login.setUseCookie(true); //eslint-disable-line no-undef
+-                amazonCore.verifyAmazonLoggedIn().then(function (loggedIn) {
+-                    if (loggedIn) {
+-                        self.redirect();
+-                    } else {
+-                        window.location = amazonPaymentConfig.getValue('customerLoginPageUrl');
+-                    }
+-                }, function(error) {
+-                    $('body').trigger('processStop');
+-                    customerData.set('messages', {
+-                        messages: [{
+-                            type: 'error',
+-                            text: error
+-                        }]
+-                    });
+-                });
+-            }, this);
++            self.redirect();
+         },
+ 
+         /**
+

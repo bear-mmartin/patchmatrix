@@ -1,0 +1,30 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "2.2.18",
++  "version": "2.3.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.18",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.3.0",
+     "magento/module-customer": "*",
+     "magento/module-store": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="2.2.18">
++    <module name="Amazon_Login" setup_version="2.3.0">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+

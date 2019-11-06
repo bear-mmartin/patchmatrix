@@ -1,0 +1,155 @@
+--- /dev/null
++++ b/Domain/LayoutConfig.php
+@@ -0,0 +1,52 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++namespace Amazon\Login\Domain;
++use Magento\Framework\Model\AbstractModel;
++use Amazon\Core\Helper\Data as CoreHelper;
++
++
++/**
++ * Used for accessing Amazon Login layout configuration
++ */
++class LayoutConfig
++{
++    /**
++     * @var AmazonConfig
++     */
++    private $amazonConfig;
++
++    /**
++     * LayoutConfig constructor.
++     * @param AmazonConfig $amazonConfig
++     */
++    public function __construct(
++        CoreHelper $coreHelper
++    ) {
++        $this->coreHelper = $coreHelper;
++    }
++
++    /**
++     * Returns true if Login-related layout overrides should be disabled
++     *
++     * @return bool
++     */
++    public function isLwaLayoutDisabled()
++    {
++        return !$this->coreHelper->isLwaEnabled();
++    }
++
++}
+
+--- /dev/null
++++ b/Test/Unit/Model/LayoutConfigTest.php
+@@ -0,0 +1,53 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Test\Unit\Helper;
++
++use \Amazon\Login\Domain\LayoutConfig;
++use \Amazon\Core\Helper\Data as CoreHelper;
++
++/**
++ * Class LayoutConfigTest
++ *
++ * @see \Amazon\Login\Domain\LayoutConfig
++ */
++class LayoutConfigTest extends \PHPUnit\Framework\TestCase
++{
++    public function setUp()
++    {
++        $this->mockCoreHelper = $this->getMockBuilder(CoreHelper::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++    }
++
++    /**
++     * @dataProvider lwaLayoutDataProvider
++     */
++    public function testIsLwaLayoutDisabled($expected, $isLwaEnabled)
++    {
++        $this->mockCoreHelper->method('isLwaEnabled')->willReturn($isLwaEnabled);
++        $layoutConfig = new LayoutConfig($this->mockCoreHelper);
++        $this->assertEquals($expected, $layoutConfig->isLwaLayoutDisabled());
++    }
++
++    public function lwaLayoutDataProvider()
++    {
++        return [
++            [true, false],
++            [false, true]
++        ];
++    }
++
++}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "2.2.16",
++  "version": "2.2.18",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.16",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.18",
+     "magento/module-customer": "*",
+     "magento/module-store": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="2.2.16">
++    <module name="Amazon_Login" setup_version="2.2.18">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/view/frontend/layout/default.xml
++++ b/view/frontend/layout/default.xml
+@@ -30,7 +30,7 @@
+                                     <item name="config" xsi:type="array">
+                                         <item name="tooltip" xsi:type="string" translate="true">Securely login into our website using your existing Amazon details.</item>
+                                         <item name="componentDisabled" xsi:type="helper"
+-                                              helper="Amazon\Core\Helper\Data::isLwaDisabled"/>
++                                              helper="Amazon\Login\Domain\LayoutConfig::isLwaLayoutDisabled"/>
+                                     </item>
+                                 </item>
+                             </item>
+

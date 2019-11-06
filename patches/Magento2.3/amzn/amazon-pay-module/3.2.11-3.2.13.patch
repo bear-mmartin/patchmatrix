@@ -1,0 +1,290 @@
+--- a/Gateway/Command/CaptureStrategyCommand.php
++++ b/Gateway/Command/CaptureStrategyCommand.php
+@@ -108,7 +108,6 @@ class CaptureStrategyCommand implements CommandInterface
+     public function execute(array $commandSubject)
+     {
+         try {
+-            throw new \Exception('failed');
+             if (isset($commandSubject['payment'])) {
+                 $paymentDO = $commandSubject['payment'];
+                 $paymentInfo = $paymentDO->getPayment();
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.2.11",
++  "version": "3.2.13",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.11",
+-    "amzn/login-with-amazon-module": "^3.2.11",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.13",
++    "amzn/login-with-amazon-module": "^3.2.13",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.2.11" >
++    <module name="Amazon_Payment" setup_version="3.2.13" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -18,4 +18,5 @@
+ "Amazon could not process your request.","Amazon Pay konnte Ihre Anfrage nicht bearbeiten. Bitte versuchen Sie es noch einmal."
+ "Please select a payment method.","Wählen Sie eine Zahlungsweise aus."
+ "Your session has expired, please reload the page and try again.","Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite erneut und versuchen Sie es noch einmal."
+-"Return to standard checkout","Zum Standard Checkout zurückkehren"
+\ No newline at end of file
++"Return to standard checkout","Zum Standard Checkout zurückkehren"
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -18,4 +18,5 @@
+ "Amazon could not process your request.","Amazon Pay konnte Ihre Anfrage nicht bearbeiten. Bitte versuchen Sie es noch einmal."
+ "Please select a payment method.","Wählen Sie eine Zahlungsweise aus."
+ "Your session has expired, please reload the page and try again.","Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite erneut und versuchen Sie es noch einmal."
+-"Return to standard checkout","Zum Standard Checkout zurückkehren"
+\ No newline at end of file
++"Return to standard checkout","Zum Standard Checkout zurückkehren"
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay konnte Ihre Anfrage nicht bearbeiten. Bitte versuchen Sie es noch einmal."
+ "Please select a payment method.","Wählen Sie eine Zahlungsweise aus."
+ "Your session has expired, please reload the page and try again.","Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite erneut und versuchen Sie es noch einmal."
+-"Return to standard checkout","Zum Standard Checkout zurückkehren"
+\ No newline at end of file
++"Return to standard checkout","Zum Standard Checkout zurückkehren"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Beim Zahlungsvorgang ist ein Problem aufgetreten. Ihre Bestellung wurde nicht aufgegeben und Ihr Konto nicht belastet."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -115,4 +115,6 @@
+ "Welcome back!","Welcome back!"
+ "With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop.","With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop."
+ "You will be registering for a %1 account based on the base currency of your shop (%2).","You will be registering for a %1 account based on the base currency of your shop (%2)."
+-"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
+\ No newline at end of file
++"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","There was a problem with your payment. Your order hasn't been placed, and you haven't been charged."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Something's wrong with your payment method. To place your order, try another."
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay n'a pas pu traiter votre demande. Veuillez réessayer."
+ "Please select a payment method.","Sélectionnez un mode de paiement."
+ "Your session has expired, please reload the page and try again.","Votre session a expiré. Actualisez la page et réessayez."
+-"Return to standard checkout","Revenir à la commande standard"
+\ No newline at end of file
++"Return to standard checkout","Revenir à la commande standard"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Un problème s’est produit avec votre paiement. Votre commande n'a pas été passée et vous n'avez pas été débité."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Amazon Pay n'a pas pu traiter votre demande. Veuillez réessayer."
+ "Please select a payment method.","Sélectionnez un mode de paiement."
+ "Your session has expired, please reload the page and try again.","Votre session a expiré. Actualisez la page et réessayez."
+-"Return to standard checkout","Revenir à la commande standard"
+\ No newline at end of file
++"Return to standard checkout","Revenir à la commande standard"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Un problème s’est produit avec votre paiement. Votre commande n'a pas été passée et vous n'avez pas été débité."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -18,4 +18,5 @@
+ "Amazon could not process your request.","Il servizio Amazon Pay non ha potuto elaborare la tua richiesta. Riprova."
+ "Please select a payment method.","Seleziona un metodo di pagamento."
+ "Your session has expired, please reload the page and try again.","La sessione è scaduta. Ricarica la pagina e riprova."
+-"Return to standard checkout","Ritorna al tuo checkout originale"
+\ No newline at end of file
++"Return to standard checkout","Ritorna al tuo checkout originale"
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -18,4 +18,6 @@
+ "Amazon could not process your request.","Il servizio Amazon Pay non ha potuto elaborare la tua richiesta. Riprova."
+ "Please select a payment method.","Seleziona un metodo di pagamento."
+ "Your session has expired, please reload the page and try again.","La sessione è scaduta. Ricarica la pagina e riprova."
+-"Return to standard checkout","Ritorna al tuo checkout originale"
+\ No newline at end of file
++"Return to standard checkout","Ritorna al tuo checkout originale"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Si è verificato un problema con il pagamento. L'ordine non è stato effettuato, pertanto non ti è stato addebitato alcun importo."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
+
+--- a/view/frontend/web/js/amazon-core.js
++++ b/view/frontend/web/js/amazon-core.js
+@@ -18,10 +18,11 @@ define([
+     'ko',
+     'mage/url',
+     'amazonPaymentConfig',
++    'Magento_Ui/js/model/messageList',
+     'amazonWidgetsLoader',
+     'jquery/jquery-storageapi',
+     'mage/cookies'
+-], function ($, ko, url, amazonPaymentConfig) {
++], function ($, ko, url, amazonPaymentConfig, messageList) {
+     'use strict';
+ 
+     var amazonDefined = ko.observable(false),
+@@ -55,13 +56,6 @@ define([
+         $(window).trigger('OffAmazonPayments');
+     };
+ 
+-    /**
+-     * Set Client ID
+-     * @param {String} cid
+-     */
+-    function setClientId(cid) {
+-    }
+-
+     /**
+      * Log user out of amazon
+      */
+@@ -107,11 +101,12 @@ define([
+     }
+ 
+     function handleWidgetError(error) {
+-        console.log('OffAmazonPayments.Widgets.AddressBook', error.getErrorCode(), error.getErrorMessage());
++        console.log('OffAmazonPayments.Widgets', error.getErrorCode(), error.getErrorMessage());
+         switch (error.getErrorCode()) {
+             case 'BuyerSessionExpired':
+                 messageList.addErrorMessage({message: $.mage.__('Your Amazon session has expired.  Please sign in again by clicking the Amazon Pay Button.')});
+-                amazonStorage.amazonlogOut();
++                var storage = require('Amazon_Payment/js/model/storage'); //TODO: clean up this circular dependency
++                storage.amazonlogOut();
+                 break;
+             case 'ITP':
+                 // ITP errors are how handled within the widget code
+
