@@ -1,0 +1,242 @@
+--- a/Block/CheckoutErrorMessage.php
++++ /dev/null
+@@ -1,47 +0,0 @@
+-<?php
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+-
+-namespace Amazon\Payment\Block;
+-use Magento\Framework\View\Element\Template;
+-use \Magento\Checkout\Model\Session as CheckoutSession;
+-use \Magento\Framework\View\Element\Template\Context;
+-
+-/**
+- * @api
+- */
+-class CheckoutErrorMessage extends Template
+-{
+-    public function __construct(
+-        Context $context,
+-        CheckoutSession $checkoutSession
+-    ) {
+-        parent::__construct($context);
+-        $this->checkoutSession = $checkoutSession;
+-    }
+-
+-    public function getError() {
+-        $errorString = '';
+-        foreach($this->checkoutSession->getQuote()->getErrors() as $error) {
+-            $errorString .= $error->getText() . "\n";
+-        }
+-        return $errorString;
+-    }
+-
+-    public function getCheckoutUrl() {
+-        return $this->getUrl('checkout');
+-    }
+-}
+-
+
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -24,6 +24,7 @@ use Magento\Quote\Api\GuestCartManagementInterface;
+ use Magento\Checkout\Model\Session as CheckoutSession;
+ use Magento\Customer\Model\Session;
+ use Magento\Framework\View\Result\PageFactory;
++use \Magento\Framework\Message\ManagerInterface as MessageManager;
+ 
+ /**
+  * Class CompleteCheckout
+@@ -71,7 +72,8 @@ class CompleteCheckout extends Action
+         GuestCartManagementInterface $guestCartManagement,
+         CheckoutSession $checkoutSession,
+         Session $session,
+-        PageFactory $pageFactory
++        PageFactory $pageFactory,
++        MessageManager $messageManager
+     ) {
+         parent::__construct($context);
+         $this->amazonConfig = $amazonConfig;
+@@ -79,6 +81,7 @@ class CompleteCheckout extends Action
+         $this->checkoutSession = $checkoutSession;
+         $this->session = $session;
+         $this->pageFactory = $pageFactory;
++        $this->messageManager = $messageManager;
+     }
+ 
+     /*
+@@ -96,22 +99,22 @@ class CompleteCheckout extends Action
+                     $this->cartManagement->placeOrder($this->checkoutSession->getQuoteId());
+                     return $this->_redirect('checkout/onepage/success');
+                 } catch (AmazonWebapiException $e) {
+-                    $this->checkoutSession->getQuote()->addMessage($e->getMessage());
++                    $this->messageManager->addErrorMessage($e->getMessage());
+                 }
+                 break;
+             case 'Failure':
+-                $this->checkoutSession->getQuote()->addMessage(__(
++                $this->messageManager->addErrorMessage(__(
+                     'Amazon Pay was unable to authenticate the payment instrument.  '
+                     . 'Please try again, or use a different payment method.'
+                 ));
+                 break;
+             case 'Abandoned':
+             default:
+-                $this->checkoutSession->getQuote()->addMessage(__(
++                $this->messageManager->addErrorMessage(__(
+                     'The SCA challenge was not completed successfully.  '
+                     . 'Please try again, or use a different payment method.'
+                 ));
+         }
+-        return $this->pageFactory->create();
++        return $this->_redirect('checkout/cart');
+     }
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.2.6",
++  "version": "3.2.9",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.6",
+-    "amzn/login-with-amazon-module": "^3.2.6",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.9",
++    "amzn/login-with-amazon-module": "^3.2.9",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.2.6" >
++    <module name="Amazon_Payment" setup_version="3.2.9" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/layout/amazon_payments_payment_completecheckout.xml
++++ /dev/null
+@@ -1,29 +0,0 @@
+-<?xml version="1.0"?>
+-<!--
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+--->
+-<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="1column" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+-    <body>
+-        <referenceBlock name="content">
+-            <block
+-                    template="Amazon_Payment::checkout-error.phtml"
+-                    class="Amazon\Payment\Block\CheckoutErrorMessage"
+-                    name="amazonpayments_payment_completecheckout_error"
+-                    cacheable="false"
+-            />
+-        </referenceBlock>
+-    </body>
+-</page>
+
+--- a/view/frontend/templates/checkout-error.phtml
++++ /dev/null
+@@ -1,21 +0,0 @@
+-<?php
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+-?>
+-<h1><?=__('An error has occurred.')?></h1>
+-<p>
+-    <span id="checkoutError"><?=__($block->getError())?></span><br/>
+-    <a href="<?=$block->getCheckoutUrl()?>"><?=__('Click here to return to checkout.')?></a>
+-</p>
+
+--- a/view/frontend/web/js/view/shipping-address/inline-form.js
++++ b/view/frontend/web/js/view/shipping-address/inline-form.js
+@@ -16,29 +16,25 @@ define([
+          */
+         initObservable: function () {
+             this._super();
+-            amazonStorage.isAmazonAccountLoggedIn.subscribe(function (value) {
+-                var elem = document.getElementById(this.formSelector);
+-
+-                if (elem && value === false) {
+-                    document.getElementById(this.formSelector).style.display = 'block';
+-                }
+-            }, this);
+-
++            amazonStorage.isAmazonAccountLoggedIn.subscribe(this.hideInlineForm, this);
+             return this;
+         },
+ 
+         /**
+-         * Show/hide inline form
++         * Show/hide inline form depending on Amazon login status
+          */
+         manipulateInlineForm: function () {
+-            var elem;
++            this.hideInlineForm(amazonStorage.isAmazonAccountLoggedIn());
++        },
+ 
+-            if (amazonStorage.isAmazonAccountLoggedIn()) {
+-                elem = document.getElementById(this.formSelector);
++        /**
++         * Show/hide inline form
++         */
++        hideInlineForm: function(hide) {
++            var elem = document.getElementById(this.formSelector);
+ 
+-                if (elem) {
+-                    document.getElementById(this.formSelector).style.display = 'none';
+-                }
++            if (elem) {
++                document.getElementById(this.formSelector).style.display = hide ? 'none' : 'block';
+             }
+         }
+     });
+

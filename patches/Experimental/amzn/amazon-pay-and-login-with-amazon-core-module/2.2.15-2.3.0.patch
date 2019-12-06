@@ -1,0 +1,188 @@
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -30,16 +30,13 @@ class IpnUrl extends BaseField
+      */
+     protected function _renderValue(AbstractElement $element)
+     {
+-        $stores = $this->_storeManager->getStores();
++        $store = $this->_storeManager->getDefaultStoreView();
+         $valueReturn = '';
+ 
+-        if ($store = reset($stores))
+-        {
+-            $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
+-            if ($baseUrl) {
+-                $value       = $baseUrl . 'amazonpayments/payment/ipn/';
+-                $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+-            }
++        $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
++        if ($baseUrl) {
++            $value       = $baseUrl . 'amazonpayments/payment/ipn/';
++            $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+         }
+ 
+         return '<td class="value">' . $valueReturn . '</td>';
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -82,7 +82,8 @@ class Config extends Template
+             'isEuPaymentRegion'        => $this->coreHelper->isEuPaymentRegion(),
+             'oAuthHashRedirectUrl'     => $this->coreHelper->getOAuthRedirectUrl(),
+             'isQuoteDirty'             => $this->categoryExclusionHelper->isQuoteDirty(),
+-            'region'                   => $this->coreHelper->getRegion()
++            'region'                   => $this->coreHelper->getRegion(),
++            'scaRegions'               => $this->coreHelper->getScaRegions()
+         ];
+ 
+         if ($this->coreHelper->isSandboxEnabled()) {
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -44,6 +44,7 @@ class AmazonAddressFactory
+      *
+      * @param ObjectManagerInterface $objectManager
+      * @param AmazonNameFactory $amazonNameFactory
++     * @param null $escaper Deprecated, do not remove for backward compatibility
+      * @param array $addressDecoratorPool Per-country custom decorators of incoming address data.
+      *                                         The key as an "ISO 3166-1 alpha-2" country code and
+      *                                         the value as an FQCN of a child of AmazonAddress.
+@@ -51,6 +52,7 @@ class AmazonAddressFactory
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+         AmazonNameFactory $amazonNameFactory,
++        $escaper = null,
+         array $addressDecoratorPool = []
+     ) {
+         $this->objectManager = $objectManager;
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -23,8 +23,6 @@ use Magento\Store\Model\ScopeInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Module\ModuleListInterface;
+ use Magento\Framework\Module\StatusFactory;
+-use Magento\Framework\App\Cache\TypeListInterface;
+-use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
+@@ -59,11 +57,6 @@ class Data extends AbstractHelper
+      */
+     private $moduleStatusFactory;
+ 
+-    /**
+-     * @var TypeListInterface
+-     */
+-    private $cacheTypeList;
+-
+     /**
+      * Data constructor.
+      *
+@@ -73,7 +66,6 @@ class Data extends AbstractHelper
+      * @param StoreManagerInterface $storeManager
+      * @param ClientIp $clientIpHelper
+      * @param StatusFactory $moduleStatusFactory
+-     * @param TypeListInterface $cacheTypeList
+      */
+     public function __construct(
+         ModuleListInterface $moduleList,
+@@ -81,8 +73,7 @@ class Data extends AbstractHelper
+         EncryptorInterface $encryptor,
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+-        StatusFactory $moduleStatusFactory,
+-        TypeListInterface $cacheTypeList = null
++        StatusFactory $moduleStatusFactory
+     )
+     {
+         parent::__construct($context);
+@@ -91,7 +82,6 @@ class Data extends AbstractHelper
+         $this->storeManager = $storeManager;
+         $this->clientIpHelper = $clientIpHelper;
+         $this->moduleStatusFactory = $moduleStatusFactory;
+-        $this->cacheTypeList = $cacheTypeList ?: ObjectManager::getInstance()->get(TypeListInterface::class);
+     }
+ 
+     /*
+@@ -197,6 +187,20 @@ class Data extends AbstractHelper
+         return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
+     }
+ 
++    /**
++     * @return array
++     */
++    public function getScaRegions($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $regionList = $this->scopeConfig->getValue(
++            'payment/amazon_payment/sca_regions',
++            $scope,
++            $scopeCode
++        );
++        $regions = explode(',', $regionList);
++        return is_array($regions) ? $regions : [];
++    }
++
+     /*
+      * @return string
+      */
+@@ -326,6 +330,16 @@ class Data extends AbstractHelper
+         );
+     }
+ 
++    /*
++     * @return bool
++     *
++     * @deprecated - invert isLwaEnabled() at the point of use, or use Amazon\Login\Domain\LayoutConfig
++     */
++    public function isLwaDisabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return !$this->isLwaEnabled();
++    }
++
+     /*
+      * @return bool
+      */
+@@ -787,7 +801,6 @@ class Data extends AbstractHelper
+         // Make sure all of them are disabled if any one of them is disabled.
+         if ($isDisabled > 0 && $isDisabled != 3) {
+             $this->moduleStatusFactory->create()->setIsEnabled(false, ['Amazon_Payment', 'Amazon_Login', 'Amazon_Core']);
+-            $this->cacheTypeList->cleanType('config');
+         }
+     }
+ }
+
+--- a/Setup/UpgradeSchema.php
++++ b/Setup/UpgradeSchema.php
+@@ -27,7 +27,7 @@ class UpgradeSchema implements UpgradeSchemaInterface
+         $setup->startSetup();
+ 
+         if (version_compare($context->getVersion(), '1.0.0', '<=')) {
+-            $setup->getConnection()->addColumn(
++            $setup->getConnection('quote')->addColumn(
+                 $setup->getTable('quote_item'),
+                 'is_excluded_product',
+                 [
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "2.2.15",
++  "version": "2.3.0",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="2.2.15">
++    <module name="Amazon_Core" setup_version="2.3.0">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+

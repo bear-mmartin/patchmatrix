@@ -1,0 +1,204 @@
+--- /dev/null
++++ b/Domain/LayoutConfig.php
+@@ -0,0 +1,52 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++namespace Amazon\Login\Domain;
++use Magento\Framework\Model\AbstractModel;
++use Amazon\Core\Helper\Data as CoreHelper;
++
++
++/**
++ * Used for accessing Amazon Login layout configuration
++ */
++class LayoutConfig
++{
++    /**
++     * @var CoreHelper
++     */
++    private $coreHelper;
++
++    /**
++     * LayoutConfig constructor.
++     * @param CoreHelper $coreHelper
++     */
++    public function __construct(
++        CoreHelper $coreHelper
++    ) {
++        $this->coreHelper = $coreHelper;
++    }
++
++    /**
++     * Returns true if Login-related layout overrides should be disabled
++     *
++     * @return bool
++     */
++    public function isLwaLayoutDisabled()
++    {
++        return !$this->coreHelper->isLwaEnabled();
++    }
++
++}
+
+--- /dev/null
++++ b/Test/Unit/Model/LayoutConfigTest.php
+@@ -0,0 +1,53 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Test\Unit\Helper;
++
++use \Amazon\Login\Domain\LayoutConfig;
++use \Amazon\Core\Model\AmazonConfig;
++
++/**
++ * Class LayoutConfigTest
++ *
++ * @see \Amazon\Login\Domain\LayoutConfig
++ */
++class LayoutConfigTest extends \PHPUnit\Framework\TestCase
++{
++    public function setUp()
++    {
++        $this->mockAmazonConfig = $this->getMockBuilder(AmazonConfig::class)
++            ->disableOriginalConstructor()
++            ->getMock();
++    }
++
++    /**
++     * @dataProvider lwaLayoutDataProvider
++     */
++    public function testIsLwaLayoutDisabled($expected, $isLwaEnabled)
++    {
++        $this->mockAmazonConfig->method('isLwaEnabled')->willReturn($isLwaEnabled);
++        $layoutConfig = new LayoutConfig($this->mockAmazonConfig);
++        $this->assertEquals($expected, $layoutConfig->isLwaLayoutDisabled());
++    }
++
++    public function lwaLayoutDataProvider()
++    {
++        return [
++            [true, false],
++            [false, true]
++        ];
++    }
++
++}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.2.6",
++  "version": "3.2.13",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.6",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.13",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-store": "^101",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.2.6">
++    <module name="Amazon_Login" setup_version="3.2.13">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/view/frontend/layout/default.xml
++++ b/view/frontend/layout/default.xml
+@@ -29,6 +29,8 @@
+                                     <item name="displayArea" xsi:type="string">additional-login-form-fields</item>
+                                     <item name="config" xsi:type="array">
+                                         <item name="tooltip" xsi:type="string" translate="true">Securely login into our website using your existing Amazon details.</item>
++                                        <item name="componentDisabled" xsi:type="helper"
++                                              helper="Amazon\Login\Domain\LayoutConfig::isLwaLayoutDisabled"/>
+                                     </item>
+                                 </item>
+                             </item>
+
+--- a/view/frontend/templates/oAuthRedirect.phtml
++++ b/view/frontend/templates/oAuthRedirect.phtml
+@@ -15,7 +15,13 @@
+  */
+ ?>
+ <?php /** @var $block \Amazon\Login\Block\OAuthRedirect */ ?>
+-<div><?= $block->escapeHtml(__('You will be redirected shortly...')); ?></div>
++<div>
++    <?= $block->escapeHtml(__('You will be redirected shortly...')); ?><br/>
++    <?= $block->escapeHtml(__(
++            'If you are not redirected automatically, try refreshing the page,'
++            . ' or return to your cart and use another payment method.'
++        )); ?>
++</div>
+ <script>
+ require([
+     'jquery',
+
+--- a/view/frontend/web/js/amazon-redirect.js
++++ b/view/frontend/web/js/amazon-redirect.js
+@@ -44,25 +44,7 @@ define([
+             // we don't have the customer's consent or invalid request
+             this.redirectOnRequestWithError();
+             this.setAuthStateCookies();
+-            amazonCore.amazonDefined.subscribe(function () {
+-                //only set this on the redirect page
+-                amazon.Login.setUseCookie(true); //eslint-disable-line no-undef
+-                amazonCore.verifyAmazonLoggedIn().then(function (loggedIn) {
+-                    if (loggedIn) {
+-                        self.redirect();
+-                    } else {
+-                        window.location = amazonPaymentConfig.getValue('customerLoginPageUrl');
+-                    }
+-                }, function(error) {
+-                    $('body').trigger('processStop');
+-                    customerData.set('messages', {
+-                        messages: [{
+-                            type: 'error',
+-                            text: error
+-                        }]
+-                    });
+-                });
+-            }, this);
++            self.redirect();
+         },
+ 
+         /**
+

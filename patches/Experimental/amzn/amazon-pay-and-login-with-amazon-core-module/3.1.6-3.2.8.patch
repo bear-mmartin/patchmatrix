@@ -1,0 +1,144 @@
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -16,11 +16,15 @@
+ 
+ namespace Amazon\Core\Controller\Simplepath;
+ 
++use Magento\Framework\App\CsrfAwareActionInterface;
++use Magento\Framework\App\Request\InvalidRequestException;
++use Magento\Framework\App\RequestInterface;
++
+ /**
+  * Class Listener
+  * Retrieves entered keys from Amazon Pay popup
+  */
+-class Listener extends \Magento\Framework\App\Action\Action
++class Listener extends \Magento\Framework\App\Action\Action implements CsrfAwareActionInterface
+ {
+ 
+     // @var \Magento\Framework\Controller\Result\JsonFactory
+@@ -53,11 +57,13 @@ class Listener extends \Magento\Framework\App\Action\Action
+      */
+     public function execute()
+     {
+-        $url = parse_url($this->simplepath->getEndpointRegister());
+-        $host = trim(preg_replace("/\r|\n/", "", $url['host']));
+-        $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++        $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
++        if(in_array($host, $this->simplepath->getListenerOrigins())) {
++            $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++        }
+         $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+         $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++        $this->getResponse()->setHeader('Vary', 'Origin');
+ 
+         $payload = $this->_request->getParam('payload');
+ 
+@@ -124,4 +130,24 @@ class Listener extends \Magento\Framework\App\Action\Action
+         }
+         return true;
+     }
++
++    /**
++     * @inheritDoc
++     */
++    public function createCsrfValidationException(
++        RequestInterface $request
++    ): ?InvalidRequestException
++    {
++        return null;
++    }
++
++    /**
++     * Disable Magento's CSRF validation.
++     *
++     * @inheritDoc
++     */
++    public function validateForCsrf(RequestInterface $request): ?bool
++    {
++        return true;
++    }
+ }
+
+--- a/Exception/AmazonServiceUnavailableException.php
++++ b/Exception/AmazonServiceUnavailableException.php
+@@ -15,9 +15,9 @@
+  */
+ namespace Amazon\Core\Exception;
+ 
+-use Magento\Framework\Exception\RemoteServiceUnavailableException;
++use Magento\Framework\Exception\LocalizedException;
+ 
+-class AmazonServiceUnavailableException extends RemoteServiceUnavailableException
++class AmazonServiceUnavailableException extends LocalizedException
+ {
+     const ERROR_MESSAGE = 'Amazon could not process your request.';
+ 
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -194,6 +194,19 @@ class SimplePath
+         return $this->getEndpointDomain() . 'register/getpublickey';
+     }
+ 
++    /**
++     * Return listener origins
++     */
++    public function getListenerOrigins()
++    {
++        return [
++            'payments.amazon.com',
++            'payments-eu.amazon.com',
++            'sellercentral.amazon.com',
++            'sellercentral-europe.amazon.com'
++        ];
++    }
++
+     /**
+      * Generate and save RSA keys
+      */
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.1.6",
++  "version": "3.2.8",
+   "license": [
+     "Apache-2.0"
+   ],
+@@ -20,6 +20,7 @@
+     "magento/module-backend": "*",
+     "magento/module-payment": "*",
+     "magento/module-paypal": "*",
++    "magento/module-eav": "*",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "autoload": {
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.1.6">
++    <module name="Amazon_Core" setup_version="3.2.8">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/view/adminhtml/templates/system/config/simplepath_admin.phtml
++++ b/view/adminhtml/templates/system/config/simplepath_admin.phtml
+@@ -17,7 +17,7 @@
+ -->
+ <br/>
+ <div data-mage-init='{
+-        "Amazon_Core/js/simplepath": <?php echo /* @noEscape */ $block->getJsonConfig() ?> }'
++        "Amazon_Core/js/simplepath": <?php echo $block->escapeHtml($block->getJsonConfig()) ?> }'
+     id="amazon_simplepath">
+ 
+     <?php if (!$block->getCurrency()) : // SimplePath not supported ?>
+

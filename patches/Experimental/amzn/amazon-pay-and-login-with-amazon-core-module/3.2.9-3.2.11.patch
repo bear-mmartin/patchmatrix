@@ -1,0 +1,2120 @@
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -32,21 +32,16 @@ class IpnUrl extends BaseField
+     {
+         $stores = $this->_storeManager->getStores();
+         $valueReturn = '';
+-        $urlArray = [];
+ 
+-        foreach ($stores as $store) {
++        if ($store = reset($stores))
++        {
+             $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
+             if ($baseUrl) {
+-                $value      = $baseUrl . 'amazonpayments/payment/ipn/';
+-                $urlArray[] = "<div>".$this->escapeHtml($value)."</div>";
++                $value       = $baseUrl . 'amazonpayments/payment/ipn/';
++                $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+             }
+         }
+ 
+-        $urlArray = array_unique($urlArray);
+-        foreach ($urlArray as $uniqueUrl) {
+-            $valueReturn .= "<div>".$uniqueUrl."</div>";
+-        }
+-
+         return '<td class="value">' . $valueReturn . '</td>';
+     }
+ 
+
+--- a/Controller/Adminhtml/Simplepath/Poll.php
++++ b/Controller/Adminhtml/Simplepath/Poll.php
+@@ -17,6 +17,8 @@ namespace Amazon\Core\Controller\Adminhtml\Simplepath;
+ 
+ use Magento\Backend\App\Action\Context;
+ use Magento\Backend\Controller\Adminhtml\System;
++use Magento\Framework\App\ObjectManager;
++use Amazon\Core\Logger\ExceptionLogger;
+ 
+ class Poll extends System
+ {
+@@ -36,16 +38,23 @@ class Poll extends System
+      */
+     private $jsonResultFactory;
+ 
++    /**
++     * @var \Amazon\Core\Logger\ExceptionLogger
++     */
++    private $exceptionLogger;
++
+     public function __construct(
+         Context $context,
+         \Amazon\Core\Model\Config\SimplePath $simplePath,
+         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+-        \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory
++        \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
++        \Amazon\Core\Logger\ExceptionLogger $exceptionLogger = null
+     ) {
+         parent::__construct($context);
+         $this->simplePath = $simplePath;
+         $this->scopeConfig = $scopeConfig;
+         $this->jsonResultFactory = $jsonResultFactory;
++        $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
+     }
+ 
+     /**
+@@ -53,19 +62,24 @@ class Poll extends System
+      */
+     public function execute()
+     {
+-        // Keypair is destroyed when credentials are saved
+-        $shouldRefresh = !($this->scopeConfig->getValue(
+-            \Amazon\Core\Model\Config\SimplePath::CONFIG_XML_PATH_PUBLIC_KEY,
+-            'default',
+-            0
+-        ));
++        try {
++            // Keypair is destroyed when credentials are saved
++            $shouldRefresh = !($this->scopeConfig->getValue(
++                \Amazon\Core\Model\Config\SimplePath::CONFIG_XML_PATH_PUBLIC_KEY,
++                'default',
++                0
++            ));
+ 
+-        if ($shouldRefresh) {
+-            $this->simplePath->autoEnable();
+-        }
++            if ($shouldRefresh) {
++                $this->simplePath->autoEnable();
++            }
+ 
+-        $result = $this->jsonResultFactory->create();
+-        $result->setData((int)$shouldRefresh);
+-        return $result;
++            $result = $this->jsonResultFactory->create();
++            $result->setData((int)$shouldRefresh);
++            return $result;
++        } catch(\Exception $e) {
++            $this->exceptionLogger->logException($e);
++            throw $e;
++        }
+     }
+ }
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -16,9 +16,11 @@
+ 
+ namespace Amazon\Core\Controller\Simplepath;
+ 
++use Amazon\Core\Logger\ExceptionLogger;
+ use Magento\Framework\App\CsrfAwareActionInterface;
+ use Magento\Framework\App\Request\InvalidRequestException;
+ use Magento\Framework\App\RequestInterface;
++use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * Class Listener
+@@ -33,22 +35,28 @@ class Listener extends \Magento\Framework\App\Action\Action implements CsrfAware
+     // @var \Amazon\Core\Model\Config\SimplePath
+     private $simplepath;
+ 
++    // @var \Amazon\Core\Logger\ExceptionLogger
++    private $exceptionLogger;
++
+     /**
+      * Listener constructor.
+      * @param \Magento\Framework\App\Action\Context $context
+      * @param \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory
+      * @param \Amazon\Core\Model\Config\SimplePath $simplepath
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     * @param \Amazon\Core\Logger\ExceptionLogger $exceptionLogger
+      */
+     public function __construct(
+         \Magento\Framework\App\Action\Context $context,
+         \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
+         \Amazon\Core\Model\Config\SimplePath $simplepath,
+-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
++        ExceptionLogger $exceptionLogger = null
+     ) {
+         $this->simplepath = $simplepath;
+         $this->jsonResultFactory = $jsonResultFactory;
+         $this->scopeConfig = $scopeConfig;
++        $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
+         parent::__construct($context);
+     }
+ 
+@@ -57,43 +65,48 @@ class Listener extends \Magento\Framework\App\Action\Action implements CsrfAware
+      */
+     public function execute()
+     {
+-        $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
+-        if(in_array($host, $this->simplepath->getListenerOrigins())) {
+-            $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
+-        }
+-        $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+-        $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
+-        $this->getResponse()->setHeader('Vary', 'Origin');
++        try {
++            $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
++            if (in_array($host, $this->simplepath->getListenerOrigins())) {
++                $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++            }
++            $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
++            $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++            $this->getResponse()->setHeader('Vary', 'Origin');
+ 
+-        $payload = $this->_request->getParam('payload');
++            $payload = $this->_request->getParam('payload');
+ 
+-        $result = $this->jsonResultFactory->create();
++            $result = $this->jsonResultFactory->create();
+ 
+-        $return = ['result' => 'error', 'message' => 'Empty payload'];
++            $return = ['result' => 'error', 'message' => 'Empty payload'];
+ 
+-        try {
+-            if (strpos($payload, 'encryptedKey') === false) {
+-                $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
+-            } elseif ($payload) {
+-                $json = $this->simplepath->decryptPayload($payload, false);
++            try {
++                if (strpos($payload, 'encryptedKey') === false) {
++                    $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
++                } elseif ($payload) {
++                    $json = $this->simplepath->decryptPayload($payload, false);
+ 
+-                if ($json) {
+-                    $return = ['result' => 'success'];
++                    if ($json) {
++                        $return = ['result' => 'success'];
++                    }
++                } else {
++                    $return = ['result' => 'error', 'message' => 'payload parameter not found.'];
+                 }
+-            } else {
+-                $return = ['result' => 'error', 'message' => 'payload parameter not found.'];
++            } catch (\Exception $e) {
++                $return = ['result' => 'error', 'message' => $e->getMessage()];
+             }
+-        } catch (\Exception $e) {
+-            $return = ['result' => 'error', 'message' => $e->getMessage()];
+-        }
+ 
+-        if ($this->_request->isPost() && (empty($return['result']) || $return['result'] == 'error')) {
+-            $result->setHttpResponseCode(\Magento\Framework\Webapi\Exception::HTTP_BAD_REQUEST);
+-        }
++            if ($this->_request->isPost() && (empty($return['result']) || $return['result'] == 'error')) {
++                $result->setHttpResponseCode(\Magento\Framework\Webapi\Exception::HTTP_BAD_REQUEST);
++            }
+ 
+-        $result->setData($return);
++            $result->setData($return);
+ 
+-        return $result;
++            return $result;
++        } catch(\Exception $e) {
++            $this->exceptionLogger->logException($e);
++            throw $e;
++        }
+     }
+ 
+     /**
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -23,10 +23,6 @@ use Magento\Framework\Escaper;
+ 
+ class AmazonAddressFactory
+ {
+-    /**
+-     * @var Escaper
+-     */
+-    private $escaper;
+ 
+     /**
+      * @var ObjectManagerInterface
+@@ -48,7 +44,6 @@ class AmazonAddressFactory
+      *
+      * @param ObjectManagerInterface $objectManager
+      * @param AmazonNameFactory $amazonNameFactory
+-     * @param Escaper $escaper
+      * @param array $addressDecoratorPool Per-country custom decorators of incoming address data.
+      *                                         The key as an "ISO 3166-1 alpha-2" country code and
+      *                                         the value as an FQCN of a child of AmazonAddress.
+@@ -56,12 +51,10 @@ class AmazonAddressFactory
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+         AmazonNameFactory $amazonNameFactory,
+-        Escaper $escaper,
+         array $addressDecoratorPool = []
+     ) {
+         $this->objectManager = $objectManager;
+         $this->amazonNameFactory = $amazonNameFactory;
+-        $this->escaper = $escaper;
+         $this->addressDecoratorPool = $addressDecoratorPool;
+     }
+ 
+@@ -76,22 +69,22 @@ class AmazonAddressFactory
+         $address = $responseData['address'];
+         $amazonName = $this->amazonNameFactory->create(
+             [
+-                'name' => $this->escaper->escapeHtml($address['Name']),
+-                'country' => $this->escaper->escapeHtml($address['CountryCode'])]
++                'name' => $address['Name'],
++                'country' => $address['CountryCode']]
+         );
+ 
+         $data = [
+-            AmazonAddressInterface::POSTAL_CODE => isset($address['PostalCode']) ? $this->escaper->escapeHtml($address['PostalCode']) : '',
+-            AmazonAddressInterface::COUNTRY_CODE => $this->escaper->escapeHtml($address['CountryCode']),
+-            AmazonAddressInterface::TELEPHONE => isset($address['Phone']) ? $this->escaper->escapeHtml($address['Phone']) : '',
+-            AmazonAddressInterface::STATE_OR_REGION => isset($address['StateOrRegion']) ? $this->escaper->escapeHtml($address['StateOrRegion']) : '',
+-            AmazonAddressInterface::FIRST_NAME => $this->escaper->escapeHtml($amazonName->getFirstName()),
+-            AmazonAddressInterface::LAST_NAME => $this->escaper->escapeHtml($amazonName->getLastName()),
++            AmazonAddressInterface::POSTAL_CODE => isset($address['PostalCode']) ? $address['PostalCode'] : '',
++            AmazonAddressInterface::COUNTRY_CODE => $address['CountryCode'],
++            AmazonAddressInterface::TELEPHONE => isset($address['Phone']) ? $address['Phone'] : '',
++            AmazonAddressInterface::STATE_OR_REGION => isset($address['StateOrRegion']) ? $address['StateOrRegion'] : '',
++            AmazonAddressInterface::FIRST_NAME => $amazonName->getFirstName(),
++            AmazonAddressInterface::LAST_NAME => $amazonName->getLastName(),
+             AmazonAddressInterface::LINES => $this->getLines($address)
+         ];
+ 
+         if (isset($address['City'])) {
+-            $data[AmazonAddressInterface::CITY] = $this->escaper->escapeHtml($address['City']);
++            $data[AmazonAddressInterface::CITY] = $address['City'];
+         }
+ 
+         $amazonAddress = $this->objectManager->create(AmazonAddress::class, ['data' => $data]);
+@@ -131,7 +124,7 @@ class AmazonAddressFactory
+         $lines = [];
+         for ($i = 1; $i <= 3; $i++) {
+             if (isset($responseData['AddressLine' . $i]) && $responseData['AddressLine' . $i]) {
+-                $lines[$i] = $this->escaper->escapeHtml($responseData['AddressLine' . $i]);
++                $lines[$i] = $responseData['AddressLine' . $i];
+             }
+         }
+ 
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -33,31 +33,6 @@ class Data extends AbstractHelper
+ 
+     const AMAZON_ACTIVE = 'payment/amazon_payment/active';
+ 
+-    /**
+-     * @var EncryptorInterface
+-     */
+-    private $encryptor;
+-
+-    /**
+-     * @var StoreManagerInterface
+-     */
+-    private $storeManager;
+-
+-    /**
+-     * @var \Amazon\Core\Helper\ClientIp
+-     */
+-    private $clientIpHelper;
+-
+-    /**
+-     * @var ModuleListInterface
+-     */
+-    private $moduleList;
+-
+-    /**
+-     * @var StatusFactory
+-     */
+-    private $moduleStatusFactory;
+-
+     /**
+      * @var Config
+      */
+@@ -66,6 +41,11 @@ class Data extends AbstractHelper
+     /**
+      * Data constructor.
+      *
++     * Because most of these methods have been moved to Amazon\Core\Model\AmazonConfig,
++     * there are several unused dependencies here which are not
++     * assigned in the constructor.
++     * They have been left in the constructor signature to avoid changing the API.
++     *
+      * @param ModuleListInterface $moduleList
+      * @param Context $context
+      * @param EncryptorInterface $encryptor
+@@ -75,87 +55,66 @@ class Data extends AbstractHelper
+      * @param AmazonConfig $config
+      */
+     public function __construct(
+-        ModuleListInterface $moduleList,
++        ModuleListInterface $moduleList = null,
+         Context $context,
+-        EncryptorInterface $encryptor,
+-        StoreManagerInterface $storeManager,
+-        ClientIp $clientIpHelper,
+-        StatusFactory $moduleStatusFactory,
++        EncryptorInterface $encryptor = null,
++        StoreManagerInterface $storeManager = null,
++        ClientIp $clientIpHelper = null,
++        StatusFactory $moduleStatusFactory = null,
+         AmazonConfig $config
+     ) {
+         parent::__construct($context);
+-        $this->moduleList = $moduleList;
+-        $this->encryptor = $encryptor;
+-        $this->storeManager = $storeManager;
+-        $this->clientIpHelper = $clientIpHelper;
+-        $this->moduleStatusFactory = $moduleStatusFactory;
+         $this->config = $config;
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getMerchantId($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/merchant_id',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getMerchantId($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getAccessKey($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/access_key',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getAccessKey($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getSecretKey($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $secretKey = $this->scopeConfig->getValue(
+-            'payment/amazon_payment/secret_key',
+-            $scope,
+-            $scopeCode
+-        );
+-        $secretKey = $this->encryptor->decrypt($secretKey);
+-
+-        return $secretKey;
++        return $this->config->getSecretKey($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getClientId($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/client_id',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getClientId($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getClientSecret($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $clientSecret = $this->scopeConfig->getValue(
+-            'payment/amazon_payment/client_secret',
+-            $scope,
+-            $scopeCode
+-        );
+-        $clientSecret = $this->encryptor->decrypt($clientSecret);
+-
+-        return $clientSecret;
++        return $this->config->getClientSecret($scope, $scopeCode);
+     }
+ 
+     /*
+@@ -165,63 +124,37 @@ class Data extends AbstractHelper
+      */
+     public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/payment_region',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getPaymentRegion($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->getPaymentRegion($scope, $scopeCode);
++        return $this->config->getRegion($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getCurrencyCode($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $paymentRegion = $this->getPaymentRegion($scope, $scopeCode);
+-
+-        $currencyCodeMap = [
+-            'de' => 'EUR',
+-            'uk' => 'GBP',
+-            'us' => 'USD',
+-            'jp' => 'JPY'
+-        ];
+-
+-        return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
++        return $this->config->getCurrencyCode($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getWidgetUrl($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $paymentRegion = $this->getPaymentRegion($scope, $scopeCode);
+-        $sandboxEnabled = $this->isSandboxEnabled($scope, $scopeCode);
+-
+-        $widgetUrlMap = [
+-            'de' => $this->getWidgetPath('production/de'),
+-            'uk' => $this->getWidgetPath('production/uk'),
+-            'us' => $this->getWidgetPath('production/us'),
+-            'jp' => $this->getWidgetPath('production/jp')
+-        ];
+-
+-        if ($sandboxEnabled) {
+-            $widgetUrlMap = [
+-                'de' => $this->getWidgetPath('sandbox/de'),
+-                'uk' => $this->getWidgetPath('sandbox/uk'),
+-                'us' => $this->getWidgetPath('sandbox/us'),
+-                'jp' => $this->getWidgetPath('sandbox/jp')
+-            ];
+-        }
+-
+-        return array_key_exists($paymentRegion, $widgetUrlMap) ? $widgetUrlMap[$paymentRegion] : '';
++        return $this->config->getWidgetUrl($scope, $scopeCode);
+     }
+ 
+     /**
+@@ -230,14 +163,12 @@ class Data extends AbstractHelper
+      * @param $key
+      * @param null $store
+      * @return mixed
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getWidgetPath($key, $store = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'widget/' . $key,
+-            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+-            $store
+-        );
++        return $this->config->getWidgetPath($key, $store);
+     }
+ 
+     /**
+@@ -245,229 +176,164 @@ class Data extends AbstractHelper
+      * @param null|string $scopeCode
+      *
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getLoginScope($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $paymentRegion = $this->getPaymentRegion($scope, $scopeCode);
+-
+-        $scope = [
+-            'profile',
+-            'payments:widget',
+-            'payments:shipping_address',
+-            'payments:billing_address'
+-        ];
+-
+-        return implode(' ', $scope);
++        return $this->config->getLoginScope($scope, $scopeCode);
+     }
+ 
+     /**
+      * @param string $scope
+      *
+      * @return boolean
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isEuPaymentRegion($scope = ScopeInterface::SCOPE_STORE)
+     {
+-        $paymentRegion = $this->getPaymentRegion($scope);
+-
+-        return (in_array($paymentRegion, ['uk', 'de']));
++        return $this->config->isEuPaymentRegion($scope);
+     }
+ 
+     /*
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isSandboxEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return (bool)$this->scopeConfig->getValue(
+-            'payment/amazon_payment/sandbox',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->isSandboxEnabled($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isPwaEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        if (!$this->moduleList->has('Amazon_Payment') || !$this->moduleList->has('Amazon_Login')) {
+-            $this->updateModuleStatus();
+-            return false;
+-        }
+-
+-        if (!$this->clientIpHelper->clientHasAllowedIp()) {
+-            return false;
+-        }
+-
+-        return $this->scopeConfig->isSetFlag(
+-            self::AMAZON_ACTIVE,
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->isPwaEnabled($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isLwaEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        if (!$this->moduleList->has('Amazon_Payment') || !$this->moduleList->has('Amazon_Login')) {
+-            $this->updateModuleStatus();
+-            return false;
+-        }
+-
+-        if (!$this->clientIpHelper->clientHasAllowedIp()) {
+-            return false;
+-        }
+-
+-        return $this->scopeConfig->isSetFlag(
+-            'payment/amazon_payment/lwa_enabled',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->isLwaEnabled($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        if (!$this->moduleList->has('Amazon_Payment') || !$this->moduleList->has('Amazon_Login')) {
+-            $this->updateModuleStatus();
+-            return false;
+-        }
+-
+-        return $this->isLwaEnabled($scope, $scopeCode) || $this->isPwaEnabled($scope, $scopeCode);
++        return $this->config->isEnabled($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getPaymentAction($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/payment_action',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getPaymentAction($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getAuthorizationMode($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/authorization_mode',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getAuthorizationMode($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getUpdateMechanism($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/update_mechanism',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getUpdateMechanism($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getButtonDisplayLanguage($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $buttonConfigLang = $this->scopeConfig
+-            ->getValue('payment/amazon_payment/button_display_language', $scope, $scopeCode);
+-
+-        if (empty($buttonConfigLang)) {
+-            $buttonConfigLang = $this->scopeConfig->getValue('general/locale/code', $scope, $scopeCode);
+-        }
+-
+-        return str_replace('_', '-', $buttonConfigLang);
++        return $this->config->getButtonDisplayLanguage($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getButtonType($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/button_type',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getButtonType($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getButtonTypePwa($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $buttonType = $this->getButtonType($scope, $scopeCode);
+-
+-        $buttonTypeMap = [
+-            'full' => 'PwA',
+-            'short' => 'Pay',
+-            'logo' => 'A',
+-        ];
+-
+-        return array_key_exists($buttonType, $buttonTypeMap) ? $buttonTypeMap[$buttonType] : '';
++        return $this->config->getButtonTypePwa($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getButtonTypeLwa($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $buttonType = $this->getButtonType($scope, $scopeCode);
+-
+-        $buttonTypeMap = [
+-            'full' => 'LwA',
+-            'short' => 'Login',
+-            'logo' => 'A',
+-        ];
+-
+-        return array_key_exists($buttonType, $buttonTypeMap) ? $buttonTypeMap[$buttonType] : '';
++        return $this->config->getButtonTypeLwa($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getButtonColor($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/button_color',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getButtonColor($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getButtonSize($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/button_size',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getButtonSize($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getEmailStoreName($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/email_store_name',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getEmailStoreName($scope, $scopeCode);
+     }
+ 
+     /*
+@@ -475,145 +341,113 @@ class Data extends AbstractHelper
+      */
+     public function getAdditionalAccessScope($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/additional_access_scope',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getAdditionalAccessScope($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isLoggingEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return (bool)$this->scopeConfig->getValue(
+-            'payment/amazon_payment/logging',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->isLoggingEnabled($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getStoreName($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'payment/amazon_payment/storename',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->getStoreName($scope, $scopeCode);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getStoreFrontName($storeId)
+     {
+-        return $this->storeManager->getStore($storeId)->getName();
++        return $this->config->getStoreFrontName($storeId);
+     }
+ 
+     /*
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getRedirectUrl()
+     {
+-        $urlPath = $this->isLwaEnabled() ? 'amazon/login/authorize' : 'amazon/login/guest';
+-        return $this->_getUrl($urlPath, ['_secure' => true]);
++        return $this->config->getRedirectUrl();
+     }
+ 
+     /**
+      * @param string|null $context
+      *
+      * @return array
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getSandboxSimulationStrings($context = null)
+     {
+-        $simulationStrings = [
+-            'default' => null
+-        ];
+-
+-        if (in_array($context, ['authorization', 'authorization_capture'])) {
+-            $simulationStrings['Authorization:Declined:InvalidPaymentMethod']
+-                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"InvalidPaymentMethod", ' .
+-                '"PaymentMethodUpdateTimeInMins":5}}';
+-            $simulationStrings['Authorization:Declined:AmazonRejected']
+-                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"AmazonRejected"}}';
+-            $simulationStrings['Authorization:Declined:TransactionTimedOut']
+-                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"TransactionTimedOut"}}';
+-        }
+-
+-        if (in_array($context, ['capture', 'authorization_capture'])) {
+-            $simulationStrings['Capture:Declined:AmazonRejected']
+-                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"AmazonRejected"}}';
+-            $simulationStrings['Capture:Pending']
+-                = '{"SandboxSimulation": {"State":"Pending"}}';
+-        }
+-
+-        if (in_array($context, ['refund'])) {
+-            $simulationStrings['Refund:Declined']
+-                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"AmazonRejected"}}';
+-        }
+-
+-        return $simulationStrings;
++        return $this->config->getSandboxSimulationStrings($context);
+     }
+ 
+     /**
+      * @return array
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getSandboxSimulationOptions()
+     {
+-        $simulationlabels = [
+-            'default' => __('No Simulation'),
+-            'Authorization:Declined:InvalidPaymentMethod' => __('Authorization soft decline'),
+-            'Authorization:Declined:AmazonRejected' => __('Authorization hard decline'),
+-            'Authorization:Declined:TransactionTimedOut' => __('Authorization timed out')
+-        ];
+-
+-        return $simulationlabels;
++        return $this->config->getSandboxSimulationOptions();
+     }
+ 
+     /**
+      * @param string $scope
+      * @param null $scopeCode
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isPaymentButtonEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return ($this->isPwaEnabled($scope, $scopeCode) && $this->isCurrentCurrencySupportedByAmazon());
++        return $this->config->isPaymentButtonEnabled($scope, $scopeCode);
+     }
+ 
+     /**
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isLoginButtonEnabled()
+     {
+-        return ($this->isLwaEnabled() && $this->isPwaEnabled() && $this->isCurrentCurrencySupportedByAmazon());
++        return $this->config->isLoginButtonEnabled();
+     }
+ 
+     /**
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isCurrentCurrencySupportedByAmazon()
+     {
+-        return $this->config->getBaseCurrencyCode() == $this->getCurrencyCode();
++        return $this->config->isCurrentCurrencySupportedByAmazon();
+     }
+ 
+     /**
+      * @param string $paymentRegion E.g. "uk", "us", "de", "jp".
+      *
+      * @return mixed
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getAmazonAccountUrlByPaymentRegion($paymentRegion)
+     {
+-        $url = $this->getPaymentRegionUrl($paymentRegion);
+-
+-        if (!$url || empty($url)) {
+-            throw new \InvalidArgumentException("$paymentRegion is not a valid payment region");
+-        }
+-
+-        return $url;
++        return $this->config->getAmazonAccountUrlByPaymentRegion($paymentRegion);
+     }
+ 
+     /**
+@@ -622,14 +456,12 @@ class Data extends AbstractHelper
+      * @param $key
+      * @param null $store
+      * @return mixed
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getPaymentRegionUrl($key, $store = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'region/country/' . $key,
+-            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+-            $store
+-        );
++        return $this->config->getPaymentRegionUrl($key, $store);
+     }
+ 
+     /**
+@@ -638,14 +470,12 @@ class Data extends AbstractHelper
+      * @param $key
+      * @param null $store
+      * @return mixed
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getClientPath($key, $store = null)
+     {
+-        return $this->scopeConfig->getValue(
+-            'client/paths/' . $key,
+-            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+-            $store
+-        );
++        return $this->config->getClientPath($key, $store);
+     }
+ 
+     /**
+@@ -653,11 +483,12 @@ class Data extends AbstractHelper
+      * @param null|string $scopeCode
+      *
+      * @return array
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getBlackListedTerms($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        $terms = $this->scopeConfig->getValue('payment/amazon_payment/packstation_terms', $scope, $scopeCode);
+-        return explode(',', $terms);
++        return $this->config->getBlackListedTerms($scope, $scopeCode);
+     }
+ 
+     /**
+@@ -665,19 +496,22 @@ class Data extends AbstractHelper
+      * @param null|string $scopeCode
+      *
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isBlacklistedTermValidationEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig
+-            ->isSetFlag('payment/amazon_payment/packstation_terms_validation_enabled', $scope, $scopeCode);
++        return $this->config->isBlacklistedTermValidationEnabled($scope, $scopeCode);
+     }
+ 
+     /**
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getOAuthRedirectUrl()
+     {
+-        return $this->_getUrl('amazon/login/processAuthHash', ['_secure' => true]);
++        return $this->config->getOAuthRedirectUrl();
+     }
+ 
+     /**
+@@ -685,35 +519,36 @@ class Data extends AbstractHelper
+      * @param null|string $scopeCode
+      *
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isPwaButtonVisibleOnProductPage($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->isPaymentButtonEnabled($scope, $scopeCode)
+-            && $this->scopeConfig->isSetFlag('payment/amazon_payment/pwa_pp_button_is_visible', $scope, $scopeCode);
++        return $this->config->isPwaButtonVisibleOnProductPage($scope, $scopeCode);
+     }
+ 
+     /**
+      * @param string $scope
+      * @param null $scopeCode
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function isPayButtonAvailableInMinicart($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->isSetFlag('payment/amazon_payment/minicart_button_is_visible', $scope, $scopeCode);
++        return $this->config->isPayButtonAvailableInMinicart($scope, $scopeCode);
+     }
+ 
+     /**
+      * @param string $scope
+      * @param null $scopeCode
+      * @return bool
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function allowAmLoginLoading($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig->isSetFlag(
+-            'payment/amazon_payment/amazon_login_in_popup',
+-            $scope,
+-            $scopeCode
+-        );
++        return $this->config->allowAmLoginLoading($scope, $scopeCode);
+     }
+ 
+     /**
+@@ -721,64 +556,41 @@ class Data extends AbstractHelper
+      * @param null|string $scopeCode
+      *
+      * @return string
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getCredentialsJson($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+-        return $this->scopeConfig
+-            ->getValue('payment/amazon_payment/credentials_json', $scope, $scopeCode);
++        return $this->config->getCredentialsJson($scope, $scopeCode);
+     }
+ 
+     /**
+      * @return array
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getAmazonCredentialsFields()
+     {
+-        return [
+-            $this->getClientPath('secretkey'),
+-            $this->getClientPath('accesskey'),
+-            $this->getClientPath('merchantid'),
+-            $this->getClientPath('clientid'),
+-            $this->getClientPath('clientsecret')
+-        ];
++        return $this->config->getAmazonCredentialsFields();
+     }
+ 
+     /**
+      * @return array
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getAmazonCredentialsEncryptedFields()
+     {
+-        return [
+-            $this->getClientPath('secretkey'),
+-            $this->getClientPath('clientsecret')
+-        ];
++        return $this->config->getAmazonCredentialsEncryptedFields();
+     }
+ 
+     /**
+      * @return null
++     *
++     * @deprecated Use \Amazon\Core\Model\AmazonConfig instead
+      */
+     public function getVersion()
+     {
+-        $version = $this->moduleList->getOne('Amazon_Core');
+-        if ($version && isset($version['setup_version'])) {
+-            return $version['setup_version'];
+-        } else {
+-            return null;
+-        }
+-    }
+-
+-    /**
+-     * Ensures all modules are disabled if one of them is disabled. Amazon Payment or Amazon Login modules will cause
+-     * the frontend to break if they are in different enabled states.
+-     */
+-    private function updateModuleStatus()
+-    {
+-        $isDisabled = $this->moduleList->has('Amazon_Payment') ? 0 : 1;
+-        $isDisabled += $this->moduleList->has('Amazon_Login') ? 0 : 1;
+-        $isDisabled += $this->moduleList->has('Amazon_Core') ? 0 : 1;
+-
+-        // Make sure all of them are disabled if any one of them is disabled.
+-        if ($isDisabled > 0 && $isDisabled != 3) {
+-            $this->moduleStatusFactory->create()->setIsEnabled(false, ['Amazon_Payment', 'Amazon_Login', 'Amazon_Core']);
+-        }
++        return $this->config->getVersion();
+     }
+ }
+
+--- /dev/null
++++ b/Logger/ExceptionLogger.php
+@@ -0,0 +1,31 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Core\Logger;
++
++use Psr\Log\LoggerInterface;
++
++class ExceptionLogger
++{
++    private $logger;
++
++    public function __construct(LoggerInterface $logger) {
++        $this->logger = $logger;
++    }
++    public function logException(\Exception $e) {
++        $message = (string) $e;
++        $this->logger->addError($message);
++    }
++}
+
+--- a/Model/AmazonConfig.php
++++ b/Model/AmazonConfig.php
+@@ -16,12 +16,22 @@
+ 
+ namespace Amazon\Core\Model;
+ 
++use Magento\Framework\Profiler\Driver\Standard\Stat;
+ use Magento\Store\Model\ScopeInterface;
+ use Magento\Framework\App\Config\ScopeConfigInterface;
+ use Magento\Store\Model\StoreManagerInterface;
++use Magento\Framework\UrlInterface;
++use Magento\Framework\Module\ModuleListInterface;
++use Magento\Framework\Encryption\EncryptorInterface;
++use Amazon\Core\Helper\ClientIp;
++use Magento\Framework\Module\StatusFactory;
++use Magento\Framework\App\ObjectManager;
+ 
+ class AmazonConfig
+ {
++
++    const AMAZON_ACTIVE = 'payment/amazon_payment/active';
++
+     /**
+      * @var \Magento\Framework\App\Config\ScopeConfigInterface
+      */
+@@ -32,18 +42,58 @@ class AmazonConfig
+      */
+     private $storeManager;
+ 
++    /**
++     * @var UrlInterface
++     */
++    private $urlBuilder;
++
++    /**
++     * @var ModuleListInterface
++     */
++    private $moduleList;
++
++    /**
++     * @var EncryptorInterface
++     */
++    private $encryptor;
++
++    /**
++     * @var ClientIp
++     */
++    private $clientIpHelper;
++
++    /**
++     * @var StatusFactory
++     */
++    private $moduleStatusFactory;
++
+     /**
+      * Config constructor.
+      *
+      * @param StoreManagerInterface $storeManager
+      * @param ScopeConfigInterface $scopeConfig
++     * @param UrlInterface $urlBuilder
++     * @param ModuleListInterface $moduleList
++     * @param EncryptorInterface $encryptor
++     * @param ClientIp $clientIpHelper
++     * @param StatusFactory $moduleStatusFactory
+      */
+     public function __construct(
+         StoreManagerInterface $storeManager,
+-        ScopeConfigInterface $scopeConfig
++        ScopeConfigInterface $scopeConfig,
++        UrlInterface $urlBuilder = null,
++        ModuleListInterface $moduleList = null,
++        EncryptorInterface $encryptor = null,
++        ClientIp $clientIpHelper = null,
++        StatusFactory $moduleStatusFactory = null
+     ) {
+         $this->storeManager = $storeManager;
+         $this->scopeConfig = $scopeConfig;
++        $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->create(UrlInterface::class);
++        $this->moduleList = $moduleList ?: ObjectManager::getInstance()->create(ModuleListInterface::class);
++        $this->encryptor = $encryptor ?: ObjectManager::getInstance()->create(EncryptorInterface::class);
++        $this->clientIpHelper = $clientIpHelper ?: ObjectManager::getInstance()->create(ClientIp::class);
++        $this->moduleStatusFactory = $moduleStatusFactory ?: ObjectManager::getInstance()->create(StatusFactory::class);
+     }
+ 
+     /**
+@@ -58,21 +108,6 @@ class AmazonConfig
+         return $this->storeManager->getStore()->getCurrentCurrency()->getCode();
+     }
+ 
+-    /**
+-     * @param string $scope
+-     * @param null $scopeCode
+-     *
+-     * @return mixed
+-     */
+-    public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+-    {
+-        return $this->scopeConfig->getValue(
+-          'payment/amazon_payment/payment_region',
+-          $scope,
+-          $scopeCode
+-        );
+-    }
+-
+     /**
+      * Checks to see if store's selected region is a multicurrency region.
+      * @param string $scope
+@@ -83,9 +118,9 @@ class AmazonConfig
+     public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
+     {
+         $mcRegions = $this->scopeConfig->getValue(
+-          'multicurrency/regions',
+-          $scope,
+-          $store
++            'multicurrency/regions',
++            $scope,
++            $store
+         );
+ 
+         if ($mcRegions) {
+@@ -111,9 +146,9 @@ class AmazonConfig
+     public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
+     {
+         $enabled = $this->scopeConfig->getValue(
+-          'payment/amazon_payment/multicurrency',
+-          $scope,
+-          $scopeCode
++            'payment/amazon_payment/multicurrency',
++            $scope,
++            $scopeCode
+         );
+ 
+         if ($enabled) {
+@@ -134,9 +169,9 @@ class AmazonConfig
+         if ($this->multiCurrencyEnabled()) {
+             // get allowed presentment currencies from config.xml
+             $currencies = $this->scopeConfig->getValue(
+-              'multicurrency/currencies',
+-              ScopeInterface::SCOPE_STORE,
+-              $store
++                'multicurrency/currencies',
++                ScopeInterface::SCOPE_STORE,
++                $store
+             );
+ 
+             if ($currencies) {
+@@ -167,10 +202,707 @@ class AmazonConfig
+     public function getBaseCurrencyCode($store = null)
+     {
+         return $this->scopeConfig->getValue(
+-          'currency/options/base',
+-          ScopeInterface::SCOPE_STORE,
+-          $store
++            'currency/options/base',
++            ScopeInterface::SCOPE_STORE,
++            $store
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getMerchantId($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/merchant_id',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getAccessKey($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/access_key',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getSecretKey($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $secretKey = $this->scopeConfig->getValue(
++            'payment/amazon_payment/secret_key',
++            $scope,
++            $scopeCode
++        );
++        $secretKey = $this->encryptor->decrypt($secretKey);
++
++        return $secretKey;
++    }
++
++    /*
++     * @return string
++     */
++    public function getClientId($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/client_id',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getClientSecret($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $clientSecret = $this->scopeConfig->getValue(
++            'payment/amazon_payment/client_secret',
++            $scope,
++            $scopeCode
++        );
++        $clientSecret = $this->encryptor->decrypt($clientSecret);
++
++        return $clientSecret;
++    }
++
++    /*
++     * @return string
++     *
++     * @deprecated - use \Amazon\Core\Model\AmazonConfig::getPaymentRegion() instead
++     */
++    public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/payment_region',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->getPaymentRegion($scope, $scopeCode);
++    }
++
++    /*
++     * @return string
++     */
++    public function getCurrencyCode($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $paymentRegion = $this->getPaymentRegion($scope, $scopeCode);
++
++        $currencyCodeMap = [
++            'de' => 'EUR',
++            'uk' => 'GBP',
++            'us' => 'USD',
++            'jp' => 'JPY'
++        ];
++
++        return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
++    }
++
++    /*
++     * @return string
++     */
++    public function getWidgetUrl($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $paymentRegion = $this->getPaymentRegion($scope, $scopeCode);
++        $sandboxEnabled = $this->isSandboxEnabled($scope, $scopeCode);
++
++        $widgetUrlMap = [
++            'de' => $this->getWidgetPath('production/de'),
++            'uk' => $this->getWidgetPath('production/uk'),
++            'us' => $this->getWidgetPath('production/us'),
++            'jp' => $this->getWidgetPath('production/jp')
++        ];
++
++        if ($sandboxEnabled) {
++            $widgetUrlMap = [
++                'de' => $this->getWidgetPath('sandbox/de'),
++                'uk' => $this->getWidgetPath('sandbox/uk'),
++                'us' => $this->getWidgetPath('sandbox/us'),
++                'jp' => $this->getWidgetPath('sandbox/jp')
++            ];
++        }
++
++        return array_key_exists($paymentRegion, $widgetUrlMap) ? $widgetUrlMap[$paymentRegion] : '';
++    }
++
++    /**
++     * Retrieves region path from config.xml settings
++     *
++     * @param $key
++     * @param null $store
++     * @return mixed
++     */
++    public function getWidgetPath($key, $store = null)
++    {
++        return $this->scopeConfig->getValue(
++            'widget/' . $key,
++            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
++            $store
+         );
+     }
+ 
+-}
+\ No newline at end of file
++    /**
++     * @param string $scope
++     * @param null|string $scopeCode
++     *
++     * @return string
++     */
++    public function getLoginScope($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $paymentRegion = $this->getPaymentRegion($scope, $scopeCode);
++
++        $scope = [
++            'profile',
++            'payments:widget',
++            'payments:shipping_address',
++            'payments:billing_address'
++        ];
++
++        return implode(' ', $scope);
++    }
++
++    /**
++     * @param string $scope
++     *
++     * @return boolean
++     */
++    public function isEuPaymentRegion($scope = ScopeInterface::SCOPE_STORE)
++    {
++        $paymentRegion = $this->getPaymentRegion($scope);
++
++        return (in_array($paymentRegion, ['uk', 'de']));
++    }
++
++    /*
++     * @return bool
++     */
++    public function isSandboxEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return (bool)$this->scopeConfig->getValue(
++            'payment/amazon_payment/sandbox',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return bool
++     */
++    public function isPwaEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        if (!$this->moduleList->has('Amazon_Payment') || !$this->moduleList->has('Amazon_Login')) {
++            $this->updateModuleStatus();
++            return false;
++        }
++
++        if (!$this->clientIpHelper->clientHasAllowedIp()) {
++            return false;
++        }
++
++        return $this->scopeConfig->isSetFlag(
++            self::AMAZON_ACTIVE,
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return bool
++     */
++    public function isLwaEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        if (!$this->moduleList->has('Amazon_Payment') || !$this->moduleList->has('Amazon_Login')) {
++            $this->updateModuleStatus();
++            return false;
++        }
++
++        if (!$this->clientIpHelper->clientHasAllowedIp()) {
++            return false;
++        }
++
++        return $this->scopeConfig->isSetFlag(
++            'payment/amazon_payment/lwa_enabled',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return bool
++     */
++    public function isLwaDisabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return !$this->isLwaEnabled($scope, $scopeCode);
++    }
++
++    /*
++     * @return bool
++     */
++    public function isEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        if (!$this->moduleList->has('Amazon_Payment') || !$this->moduleList->has('Amazon_Login')) {
++            $this->updateModuleStatus();
++            return false;
++        }
++
++        return $this->isLwaEnabled($scope, $scopeCode) || $this->isPwaEnabled($scope, $scopeCode);
++    }
++
++    /*
++     * @return string
++     */
++    public function getPaymentAction($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/payment_action',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getAuthorizationMode($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/authorization_mode',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getUpdateMechanism($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/update_mechanism',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getButtonDisplayLanguage($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $buttonConfigLang = $this->scopeConfig
++            ->getValue('payment/amazon_payment/button_display_language', $scope, $scopeCode);
++
++        if (empty($buttonConfigLang)) {
++            $buttonConfigLang = $this->scopeConfig->getValue('general/locale/code', $scope, $scopeCode);
++        }
++
++        return str_replace('_', '-', $buttonConfigLang);
++    }
++
++    /*
++     * @return string
++     */
++    public function getButtonType($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/button_type',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getButtonTypePwa($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $buttonType = $this->getButtonType($scope, $scopeCode);
++
++        $buttonTypeMap = [
++            'full' => 'PwA',
++            'short' => 'Pay',
++            'logo' => 'A',
++        ];
++
++        return array_key_exists($buttonType, $buttonTypeMap) ? $buttonTypeMap[$buttonType] : '';
++    }
++
++    /*
++     * @return string
++     */
++    public function getButtonTypeLwa($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $buttonType = $this->getButtonType($scope, $scopeCode);
++
++        $buttonTypeMap = [
++            'full' => 'LwA',
++            'short' => 'Login',
++            'logo' => 'A',
++        ];
++
++        return array_key_exists($buttonType, $buttonTypeMap) ? $buttonTypeMap[$buttonType] : '';
++    }
++
++    /*
++     * @return string
++     */
++    public function getButtonColor($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/button_color',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getButtonSize($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/button_size',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getEmailStoreName($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/email_store_name',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getAdditionalAccessScope($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/additional_access_scope',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return bool
++     */
++    public function isLoggingEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return (bool)$this->scopeConfig->getValue(
++            'payment/amazon_payment/logging',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getStoreName($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/storename',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /*
++     * @return string
++     */
++    public function getStoreFrontName($storeId)
++    {
++        return $this->storeManager->getStore($storeId)->getName();
++    }
++
++    /*
++     * @return string
++     */
++    public function getRedirectUrl()
++    {
++        $urlPath = $this->isLwaEnabled() ? 'amazon/login/authorize' : 'amazon/login/guest';
++        return $this->urlBuilder->getUrl($urlPath, ['_secure' => true]);
++    }
++
++    /**
++     * @param string|null $context
++     *
++     * @return array
++     */
++    public function getSandboxSimulationStrings($context = null)
++    {
++        $simulationStrings = [
++            'default' => null
++        ];
++
++        if (in_array($context, ['authorization', 'authorization_capture'])) {
++            $simulationStrings['Authorization:Declined:InvalidPaymentMethod']
++                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"InvalidPaymentMethod", ' .
++                '"PaymentMethodUpdateTimeInMins":5}}';
++            $simulationStrings['Authorization:Declined:AmazonRejected']
++                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"AmazonRejected"}}';
++            $simulationStrings['Authorization:Declined:TransactionTimedOut']
++                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"TransactionTimedOut"}}';
++        }
++
++        if (in_array($context, ['capture', 'authorization_capture'])) {
++            $simulationStrings['Capture:Declined:AmazonRejected']
++                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"AmazonRejected"}}';
++            $simulationStrings['Capture:Pending']
++                = '{"SandboxSimulation": {"State":"Pending"}}';
++        }
++
++        if (in_array($context, ['refund'])) {
++            $simulationStrings['Refund:Declined']
++                = '{"SandboxSimulation": {"State":"Declined", "ReasonCode":"AmazonRejected"}}';
++        }
++
++        return $simulationStrings;
++    }
++
++    /**
++     * @return array
++     */
++    public function getSandboxSimulationOptions()
++    {
++        $simulationlabels = [
++            'default' => __('No Simulation'),
++            'Authorization:Declined:InvalidPaymentMethod' => __('Authorization soft decline'),
++            'Authorization:Declined:AmazonRejected' => __('Authorization hard decline'),
++            'Authorization:Declined:TransactionTimedOut' => __('Authorization timed out')
++        ];
++
++        return $simulationlabels;
++    }
++
++    /**
++     * @param string $scope
++     * @param null $scopeCode
++     * @return bool
++     */
++    public function isPaymentButtonEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return ($this->isPwaEnabled($scope, $scopeCode) && $this->isCurrentCurrencySupportedByAmazon());
++    }
++
++    /**
++     * @return bool
++     */
++    public function isLoginButtonEnabled()
++    {
++        return ($this->isLwaEnabled() && $this->isPwaEnabled() && $this->isCurrentCurrencySupportedByAmazon());
++    }
++
++    /**
++     * @return bool
++     */
++    public function isCurrentCurrencySupportedByAmazon()
++    {
++        return $this->getBaseCurrencyCode() == $this->getCurrencyCode();
++    }
++
++    /**
++     * @param string $paymentRegion E.g. "uk", "us", "de", "jp".
++     *
++     * @return mixed
++     */
++    public function getAmazonAccountUrlByPaymentRegion($paymentRegion)
++    {
++        $url = $this->getPaymentRegionUrl($paymentRegion);
++
++        if (!$url || empty($url)) {
++            throw new \InvalidArgumentException("$paymentRegion is not a valid payment region");
++        }
++
++        return $url;
++    }
++
++    /**
++     * Retrieves region path from config.xml settings
++     *
++     * @param $key
++     * @param null $store
++     * @return mixed
++     */
++    public function getPaymentRegionUrl($key, $store = null)
++    {
++        return $this->scopeConfig->getValue(
++            'region/country/' . $key,
++            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
++            $store
++        );
++    }
++
++    /**
++     * Retrieves client path from config.xml settings
++     *
++     * @param $key
++     * @param null $store
++     * @return mixed
++     */
++    public function getClientPath($key, $store = null)
++    {
++        return $this->scopeConfig->getValue(
++            'client/paths/' . $key,
++            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
++            $store
++        );
++    }
++
++    /**
++     * @param string $scope
++     * @param null|string $scopeCode
++     *
++     * @return array
++     */
++    public function getBlackListedTerms($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $terms = $this->scopeConfig->getValue('payment/amazon_payment/packstation_terms', $scope, $scopeCode);
++        return explode(',', $terms);
++    }
++
++    /**
++     * @param string $scope
++     * @param null|string $scopeCode
++     *
++     * @return bool
++     */
++    public function isBlacklistedTermValidationEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig
++            ->isSetFlag('payment/amazon_payment/packstation_terms_validation_enabled', $scope, $scopeCode);
++    }
++
++    /**
++     * @return string
++     */
++    public function getOAuthRedirectUrl()
++    {
++        return $this->urlBuilder->getUrl('amazon/login/processAuthHash', ['_secure' => true]);
++    }
++
++    /**
++     * @param string $scope
++     * @param null|string $scopeCode
++     *
++     * @return bool
++     */
++    public function isPwaButtonVisibleOnProductPage($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->isPaymentButtonEnabled($scope, $scopeCode)
++            && $this->scopeConfig->isSetFlag('payment/amazon_payment/pwa_pp_button_is_visible', $scope, $scopeCode);
++    }
++
++    /**
++     * @param string $scope
++     * @param null $scopeCode
++     * @return bool
++     */
++    public function isPayButtonAvailableInMinicart($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->isSetFlag('payment/amazon_payment/minicart_button_is_visible', $scope, $scopeCode);
++    }
++
++    /**
++     * @param string $scope
++     * @param null $scopeCode
++     * @return bool
++     */
++    public function allowAmLoginLoading($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->isSetFlag(
++            'payment/amazon_payment/amazon_login_in_popup',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /**
++     * @param string $scope
++     * @param null|string $scopeCode
++     *
++     * @return string
++     */
++    public function getCredentialsJson($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig
++            ->getValue('payment/amazon_payment/credentials_json', $scope, $scopeCode);
++    }
++
++    /**
++     * @return array
++     */
++    public function getAmazonCredentialsFields()
++    {
++        return [
++            $this->getClientPath('secretkey'),
++            $this->getClientPath('accesskey'),
++            $this->getClientPath('merchantid'),
++            $this->getClientPath('clientid'),
++            $this->getClientPath('clientsecret')
++        ];
++    }
++
++    /**
++     * @return array
++     */
++    public function getAmazonCredentialsEncryptedFields()
++    {
++        return [
++            $this->getClientPath('secretkey'),
++            $this->getClientPath('clientsecret')
++        ];
++    }
++
++    /**
++     * @return null
++     */
++    public function getVersion()
++    {
++        $version = $this->moduleList->getOne('Amazon_Core');
++        if ($version && isset($version['setup_version'])) {
++            return $version['setup_version'];
++        } else {
++            return null;
++        }
++    }
++
++    /**
++     * Ensures all modules are disabled if one of them is disabled. Amazon Payment or Amazon Login modules will cause
++     * the frontend to break if they are in different enabled states.
++     */
++    private function updateModuleStatus()
++    {
++        $isDisabled = $this->moduleList->has('Amazon_Payment') ? 0 : 1;
++        $isDisabled += $this->moduleList->has('Amazon_Login') ? 0 : 1;
++        $isDisabled += $this->moduleList->has('Amazon_Core') ? 0 : 1;
++
++        // Make sure all of them are disabled if any one of them is disabled.
++        if ($isDisabled > 0 && $isDisabled != 3) {
++            $this->moduleStatusFactory->create()->setIsEnabled(false, ['Amazon_Payment', 'Amazon_Login', 'Amazon_Core']);
++        }
++    }
++}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.2.9",
++  "version": "3.2.11",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.2.9">
++    <module name="Amazon_Core" setup_version="3.2.11">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+

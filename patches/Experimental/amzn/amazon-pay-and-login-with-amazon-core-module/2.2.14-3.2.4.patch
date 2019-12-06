@@ -1,0 +1,1629 @@
+--- a/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
++++ b/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
+@@ -55,8 +55,7 @@ class DeveloperLogs extends \Magento\Config\Block\System\Config\Form\Field
+         DirectoryList $directoryList,
+         UrlInterface $urlBuilder,
+         $data = []
+-    )
+-    {
++    ) {
+         $this->directoryList = $directoryList;
+         $this->urlBuilder = $urlBuilder;
+         parent::__construct($context, $data);
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -17,12 +17,16 @@ namespace Amazon\Core\Block;
+ 
+ use Amazon\Core\Helper\CategoryExclusion;
+ use Amazon\Core\Helper\Data;
++use Amazon\Core\Model\AmazonConfig;
+ use Magento\Customer\Model\Url;
+ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+ 
+ /**
+  * Config
++ *
++ * @api
++ *
+  * Provides a block that displays links to available custom error logs in Amazon Pay admin/config section.
+  */
+ class Config extends Template
+@@ -42,14 +46,29 @@ class Config extends Template
+      */
+     private $categoryExclusionHelper;
+ 
++    /**
++     * @var AmazonConfig
++     */
++    private $config;
++
++    /**
++     * Config constructor.
++     * @param Context $context
++     * @param Data $coreHelper
++     * @param AmazonConfig $config
++     * @param Url $url
++     * @param CategoryExclusion $categoryExclusionHelper
++     */
+     public function __construct(
+         Context $context,
+         Data $coreHelper,
++        AmazonConfig $config,
+         Url $url,
+         CategoryExclusion $categoryExclusionHelper
+     ) {
+         parent::__construct($context);
+         $this->coreHelper = $coreHelper;
++        $this->config = $config;
+         $this->url = $url;
+         $this->categoryExclusionHelper = $categoryExclusionHelper;
+     }
+@@ -80,9 +99,11 @@ class Config extends Template
+             'loginScope'               => $this->coreHelper->getLoginScope(),
+             'allowAmLoginLoading'      => $this->coreHelper->allowAmLoginLoading(),
+             'isEuPaymentRegion'        => $this->coreHelper->isEuPaymentRegion(),
++            'presentmentCurrency'      => $this->config->getPresentmentCurrency(),
+             'oAuthHashRedirectUrl'     => $this->coreHelper->getOAuthRedirectUrl(),
+             'isQuoteDirty'             => $this->categoryExclusionHelper->isQuoteDirty(),
+-            'region'                   => $this->coreHelper->getRegion()
++            'region'                   => $this->coreHelper->getRegion(),
++            'useMultiCurrency'         => $this->config->useMultiCurrency()
+         ];
+ 
+         if ($this->coreHelper->isSandboxEnabled()) {
+@@ -105,7 +126,7 @@ class Config extends Template
+      */
+     public function isExtensionEnabled()
+     {
+-	    return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
++        return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
+     }
+ 
+     /**
+
+--- a/Controller/Adminhtml/Download/ClientLog.php
++++ b/Controller/Adminhtml/Download/ClientLog.php
+@@ -40,8 +40,7 @@ class ClientLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+
+--- a/Controller/Adminhtml/Download/IpnLog.php
++++ b/Controller/Adminhtml/Download/IpnLog.php
+@@ -40,8 +40,7 @@ class IpnLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -41,8 +41,7 @@ class Listener extends \Magento\Framework\App\Action\Action
+         \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
+         \Amazon\Core\Model\Config\SimplePath $simplepath,
+         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
+-    )
+-    {
++    ) {
+         $this->simplepath = $simplepath;
+         $this->jsonResultFactory = $jsonResultFactory;
+         $this->scopeConfig = $scopeConfig;
+@@ -54,13 +53,11 @@ class Listener extends \Magento\Framework\App\Action\Action
+      */
+     public function execute()
+     {
+-        $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
+-        if(in_array($host, $this->simplepath->getListenerOrigins())) {
+-            $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
+-        }
++        $url = parse_url($this->simplepath->getEndpointRegister());
++        $host = trim(preg_replace("/\r|\n/", "", $url['host']));
++        $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
+         $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+         $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
+-        $this->getResponse()->setHeader('Vary', 'Origin');
+ 
+         $payload = $this->_request->getParam('payload');
+ 
+@@ -71,7 +68,7 @@ class Listener extends \Magento\Framework\App\Action\Action
+         try {
+             if (strpos($payload, 'encryptedKey') === false) {
+                 $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
+-            } else if ($payload) {
++            } elseif ($payload) {
+                 $json = $this->simplepath->decryptPayload($payload, false);
+ 
+                 if ($json) {
+
+--- a/Domain/AmazonAddressDecoratorJp.php
++++ b/Domain/AmazonAddressDecoratorJp.php
+@@ -27,8 +27,9 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+     /**
+      * @param AmazonAddressInterface $amazonAddress
+      */
+-    public function __construct(AmazonAddressInterface $amazonAddress)
+-    {
++    public function __construct(
++        AmazonAddressInterface $amazonAddress
++    ) {
+         $this->amazonAddress = $amazonAddress;
+     }
+ 
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -23,6 +23,7 @@ use Magento\Store\Model\ScopeInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Module\ModuleListInterface;
+ use Magento\Framework\Module\StatusFactory;
++use Amazon\Core\Model\AmazonConfig;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
+@@ -57,6 +58,11 @@ class Data extends AbstractHelper
+      */
+     private $moduleStatusFactory;
+ 
++    /**
++     * @var Config
++     */
++    private $config;
++
+     /**
+      * Data constructor.
+      *
+@@ -66,6 +72,7 @@ class Data extends AbstractHelper
+      * @param StoreManagerInterface $storeManager
+      * @param ClientIp $clientIpHelper
+      * @param StatusFactory $moduleStatusFactory
++     * @param AmazonConfig $config
+      */
+     public function __construct(
+         ModuleListInterface $moduleList,
+@@ -73,15 +80,16 @@ class Data extends AbstractHelper
+         EncryptorInterface $encryptor,
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+-        StatusFactory $moduleStatusFactory
+-    )
+-    {
++        StatusFactory $moduleStatusFactory,
++        AmazonConfig $config
++    ) {
+         parent::__construct($context);
+         $this->moduleList = $moduleList;
+         $this->encryptor = $encryptor;
+         $this->storeManager = $storeManager;
+         $this->clientIpHelper = $clientIpHelper;
+         $this->moduleStatusFactory = $moduleStatusFactory;
++        $this->config = $config;
+     }
+ 
+     /*
+@@ -152,6 +160,8 @@ class Data extends AbstractHelper
+ 
+     /*
+      * @return string
++     *
++     * @deprecated - use \Amazon\Core\Model\AmazonConfig::getPaymentRegion() instead
+      */
+     public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+@@ -587,15 +597,7 @@ class Data extends AbstractHelper
+      */
+     public function isCurrentCurrencySupportedByAmazon()
+     {
+-        return $this->getCurrentCurrencyCode() == $this->getCurrencyCode();
+-    }
+-
+-    /**
+-     * @return mixed
+-     */
+-    protected function getCurrentCurrencyCode()
+-    {
+-        return $this->storeManager->getStore()->getCurrentCurrency()->getCode();
++        return $this->config->getBaseCurrencyCode() == $this->getCurrencyCode();
+     }
+ 
+     /**
+
+--- a/LICENSE
++++ /dev/null
+@@ -1,202 +0,0 @@
+-                                 Apache License
+-                           Version 2.0, January 2004
+-                        http://www.apache.org/licenses/
+-
+-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+-
+-   1. Definitions.
+-
+-      "License" shall mean the terms and conditions for use, reproduction,
+-      and distribution as defined by Sections 1 through 9 of this document.
+-
+-      "Licensor" shall mean the copyright owner or entity authorized by
+-      the copyright owner that is granting the License.
+-
+-      "Legal Entity" shall mean the union of the acting entity and all
+-      other entities that control, are controlled by, or are under common
+-      control with that entity. For the purposes of this definition,
+-      "control" means (i) the power, direct or indirect, to cause the
+-      direction or management of such entity, whether by contract or
+-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+-      outstanding shares, or (iii) beneficial ownership of such entity.
+-
+-      "You" (or "Your") shall mean an individual or Legal Entity
+-      exercising permissions granted by this License.
+-
+-      "Source" form shall mean the preferred form for making modifications,
+-      including but not limited to software source code, documentation
+-      source, and configuration files.
+-
+-      "Object" form shall mean any form resulting from mechanical
+-      transformation or translation of a Source form, including but
+-      not limited to compiled object code, generated documentation,
+-      and conversions to other media types.
+-
+-      "Work" shall mean the work of authorship, whether in Source or
+-      Object form, made available under the License, as indicated by a
+-      copyright notice that is included in or attached to the work
+-      (an example is provided in the Appendix below).
+-
+-      "Derivative Works" shall mean any work, whether in Source or Object
+-      form, that is based on (or derived from) the Work and for which the
+-      editorial revisions, annotations, elaborations, or other modifications
+-      represent, as a whole, an original work of authorship. For the purposes
+-      of this License, Derivative Works shall not include works that remain
+-      separable from, or merely link (or bind by name) to the interfaces of,
+-      the Work and Derivative Works thereof.
+-
+-      "Contribution" shall mean any work of authorship, including
+-      the original version of the Work and any modifications or additions
+-      to that Work or Derivative Works thereof, that is intentionally
+-      submitted to Licensor for inclusion in the Work by the copyright owner
+-      or by an individual or Legal Entity authorized to submit on behalf of
+-      the copyright owner. For the purposes of this definition, "submitted"
+-      means any form of electronic, verbal, or written communication sent
+-      to the Licensor or its representatives, including but not limited to
+-      communication on electronic mailing lists, source code control systems,
+-      and issue tracking systems that are managed by, or on behalf of, the
+-      Licensor for the purpose of discussing and improving the Work, but
+-      excluding communication that is conspicuously marked or otherwise
+-      designated in writing by the copyright owner as "Not a Contribution."
+-
+-      "Contributor" shall mean Licensor and any individual or Legal Entity
+-      on behalf of whom a Contribution has been received by Licensor and
+-      subsequently incorporated within the Work.
+-
+-   2. Grant of Copyright License. Subject to the terms and conditions of
+-      this License, each Contributor hereby grants to You a perpetual,
+-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+-      copyright license to reproduce, prepare Derivative Works of,
+-      publicly display, publicly perform, sublicense, and distribute the
+-      Work and such Derivative Works in Source or Object form.
+-
+-   3. Grant of Patent License. Subject to the terms and conditions of
+-      this License, each Contributor hereby grants to You a perpetual,
+-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+-      (except as stated in this section) patent license to make, have made,
+-      use, offer to sell, sell, import, and otherwise transfer the Work,
+-      where such license applies only to those patent claims licensable
+-      by such Contributor that are necessarily infringed by their
+-      Contribution(s) alone or by combination of their Contribution(s)
+-      with the Work to which such Contribution(s) was submitted. If You
+-      institute patent litigation against any entity (including a
+-      cross-claim or counterclaim in a lawsuit) alleging that the Work
+-      or a Contribution incorporated within the Work constitutes direct
+-      or contributory patent infringement, then any patent licenses
+-      granted to You under this License for that Work shall terminate
+-      as of the date such litigation is filed.
+-
+-   4. Redistribution. You may reproduce and distribute copies of the
+-      Work or Derivative Works thereof in any medium, with or without
+-      modifications, and in Source or Object form, provided that You
+-      meet the following conditions:
+-
+-      (a) You must give any other recipients of the Work or
+-          Derivative Works a copy of this License; and
+-
+-      (b) You must cause any modified files to carry prominent notices
+-          stating that You changed the files; and
+-
+-      (c) You must retain, in the Source form of any Derivative Works
+-          that You distribute, all copyright, patent, trademark, and
+-          attribution notices from the Source form of the Work,
+-          excluding those notices that do not pertain to any part of
+-          the Derivative Works; and
+-
+-      (d) If the Work includes a "NOTICE" text file as part of its
+-          distribution, then any Derivative Works that You distribute must
+-          include a readable copy of the attribution notices contained
+-          within such NOTICE file, excluding those notices that do not
+-          pertain to any part of the Derivative Works, in at least one
+-          of the following places: within a NOTICE text file distributed
+-          as part of the Derivative Works; within the Source form or
+-          documentation, if provided along with the Derivative Works; or,
+-          within a display generated by the Derivative Works, if and
+-          wherever such third-party notices normally appear. The contents
+-          of the NOTICE file are for informational purposes only and
+-          do not modify the License. You may add Your own attribution
+-          notices within Derivative Works that You distribute, alongside
+-          or as an addendum to the NOTICE text from the Work, provided
+-          that such additional attribution notices cannot be construed
+-          as modifying the License.
+-
+-      You may add Your own copyright statement to Your modifications and
+-      may provide additional or different license terms and conditions
+-      for use, reproduction, or distribution of Your modifications, or
+-      for any such Derivative Works as a whole, provided Your use,
+-      reproduction, and distribution of the Work otherwise complies with
+-      the conditions stated in this License.
+-
+-   5. Submission of Contributions. Unless You explicitly state otherwise,
+-      any Contribution intentionally submitted for inclusion in the Work
+-      by You to the Licensor shall be under the terms and conditions of
+-      this License, without any additional terms or conditions.
+-      Notwithstanding the above, nothing herein shall supersede or modify
+-      the terms of any separate license agreement you may have executed
+-      with Licensor regarding such Contributions.
+-
+-   6. Trademarks. This License does not grant permission to use the trade
+-      names, trademarks, service marks, or product names of the Licensor,
+-      except as required for reasonable and customary use in describing the
+-      origin of the Work and reproducing the content of the NOTICE file.
+-
+-   7. Disclaimer of Warranty. Unless required by applicable law or
+-      agreed to in writing, Licensor provides the Work (and each
+-      Contributor provides its Contributions) on an "AS IS" BASIS,
+-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+-      implied, including, without limitation, any warranties or conditions
+-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+-      PARTICULAR PURPOSE. You are solely responsible for determining the
+-      appropriateness of using or redistributing the Work and assume any
+-      risks associated with Your exercise of permissions under this License.
+-
+-   8. Limitation of Liability. In no event and under no legal theory,
+-      whether in tort (including negligence), contract, or otherwise,
+-      unless required by applicable law (such as deliberate and grossly
+-      negligent acts) or agreed to in writing, shall any Contributor be
+-      liable to You for damages, including any direct, indirect, special,
+-      incidental, or consequential damages of any character arising as a
+-      result of this License or out of the use or inability to use the
+-      Work (including but not limited to damages for loss of goodwill,
+-      work stoppage, computer failure or malfunction, or any and all
+-      other commercial damages or losses), even if such Contributor
+-      has been advised of the possibility of such damages.
+-
+-   9. Accepting Warranty or Additional Liability. While redistributing
+-      the Work or Derivative Works thereof, You may choose to offer,
+-      and charge a fee for, acceptance of support, warranty, indemnity,
+-      or other liability obligations and/or rights consistent with this
+-      License. However, in accepting such obligations, You may act only
+-      on Your own behalf and on Your sole responsibility, not on behalf
+-      of any other Contributor, and only if You agree to indemnify,
+-      defend, and hold each Contributor harmless for any liability
+-      incurred by, or claims asserted against, such Contributor by reason
+-      of your accepting any such warranty or additional liability.
+-
+-   END OF TERMS AND CONDITIONS
+-
+-   APPENDIX: How to apply the Apache License to your work.
+-
+-      To apply the Apache License to your work, attach the following
+-      boilerplate notice, with the fields enclosed by brackets "{}"
+-      replaced with your own identifying information. (Don't include
+-      the brackets!)  The text should be enclosed in the appropriate
+-      comment syntax for the file format. We also recommend that a
+-      file or class name and description of purpose be included on the
+-      same "printed page" as the copyright notice for easier
+-      identification within third-party archives.
+-
+-   Copyright {yyyy} {name of copyright owner}
+-
+-   Licensed under the Apache License, Version 2.0 (the "License");
+-   you may not use this file except in compliance with the License.
+-   You may obtain a copy of the License at
+-
+-       http://www.apache.org/licenses/LICENSE-2.0
+-
+-   Unless required by applicable law or agreed to in writing, software
+-   distributed under the License is distributed on an "AS IS" BASIS,
+-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-   See the License for the specific language governing permissions and
+-   limitations under the License.
+-
+
+--- /dev/null
++++ b/Model/AmazonConfig.php
+@@ -0,0 +1,176 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++namespace Amazon\Core\Model;
++
++use Magento\Store\Model\ScopeInterface;
++use Magento\Framework\App\Config\ScopeConfigInterface;
++use Magento\Store\Model\StoreManagerInterface;
++
++class AmazonConfig
++{
++    /**
++     * @var \Magento\Framework\App\Config\ScopeConfigInterface
++     */
++    protected $scopeConfig;
++
++    /**
++     * @var StoreManagerInterface
++     */
++    private $storeManager;
++
++    /**
++     * Config constructor.
++     *
++     * @param StoreManagerInterface $storeManager
++     * @param ScopeConfigInterface $scopeConfig
++     */
++    public function __construct(
++        StoreManagerInterface $storeManager,
++        ScopeConfigInterface $scopeConfig
++    ) {
++        $this->storeManager = $storeManager;
++        $this->scopeConfig = $scopeConfig;
++    }
++
++    /**
++     * Gets customer's current currency
++     *
++     * @param null $store
++     * @return mixed
++     * @throws \Magento\Framework\Exception\NoSuchEntityException
++     */
++    protected function getCurrentCurrencyCode($store = null)
++    {
++        return $this->storeManager->getStore()->getCurrentCurrency()->getCode();
++    }
++
++    /**
++     * @param string $scope
++     * @param null $scopeCode
++     *
++     * @return mixed
++     */
++    public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++          'payment/amazon_payment/payment_region',
++          $scope,
++          $scopeCode
++        );
++    }
++
++    /**
++     * Checks to see if store's selected region is a multicurrency region.
++     * @param string $scope
++     * @param null $scopeCode
++     * @param null $store
++     * @return bool
++     */
++    public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
++    {
++        $mcRegions = $this->scopeConfig->getValue(
++          'multicurrency/regions',
++          $scope,
++          $store
++        );
++
++        if ($mcRegions) {
++            $allowedRegions = explode(',', $mcRegions);
++
++            if (in_array($this->getPaymentRegion(), $allowedRegions)) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    /**
++     * Check to see if multicurrency is enabled and if it's available for given endpoint/region
++     *
++     * @param string $scope
++     * @param null $scopeCode
++     * @param null $store
++     *
++     * @return bool
++     */
++    public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
++    {
++        $enabled = $this->scopeConfig->getValue(
++          'payment/amazon_payment/multicurrency',
++          $scope,
++          $scopeCode
++        );
++
++        if ($enabled) {
++            return $this->isMulticurrencyRegion($scope, $scopeCode, $store);
++        }
++
++        return false;
++    }
++
++    /**
++     * Only certain currency codes are allowed to be used with multi-currency
++     *
++     * @param null $store
++     * @return bool
++     */
++    public function useMultiCurrency($store = null)
++    {
++        if ($this->multiCurrencyEnabled()) {
++            // get allowed presentment currencies from config.xml
++            $currencies = $this->scopeConfig->getValue(
++              'multicurrency/currencies',
++              ScopeInterface::SCOPE_STORE,
++              $store
++            );
++
++            if ($currencies) {
++                $allowedCurrencies = explode(',', $currencies);
++
++                if (in_array($this->getCurrentCurrencyCode(), $allowedCurrencies)) {
++                    return true;
++                }
++            }
++        }
++        return false;
++    }
++
++    /*
++     * @return string
++    */
++    public function getPresentmentCurrency()
++    {
++        return $this->getCurrentCurrencyCode();
++    }
++
++    /**
++     * Retrieves the base currency of the store.
++     *
++     * @param null $store
++     * @return mixed
++     */
++    public function getBaseCurrencyCode($store = null)
++    {
++        return $this->scopeConfig->getValue(
++          'currency/options/base',
++          ScopeInterface::SCOPE_STORE,
++          $store
++        );
++    }
++
++}
+\ No newline at end of file
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -17,6 +17,7 @@
+ namespace Amazon\Core\Model\Config;
+ 
+ use Amazon\Core\Helper\Data as CoreHelper;
++use Amazon\Core\Model\AmazonConfig;
+ use Magento\Framework\App\State;
+ use Magento\Framework\App\Cache\Type\Config as CacheTypeConfig;
+ use Magento\Backend\Model\UrlInterface;
+@@ -31,6 +32,7 @@ class SimplePath
+ {
+ 
+     const CONFIG_XML_PATH_PRIVATE_KEY = 'payment/amazon_payments/simplepath/privatekey';
++
+     const CONFIG_XML_PATH_PUBLIC_KEY  = 'payment/amazon_payments/simplepath/publickey';
+ 
+     private $_spIds = [
+@@ -47,16 +49,40 @@ class SimplePath
+         'JPY' => 'ja',
+     ];
+ 
++    /**
++     * @var
++     */
+     private $_storeId;
++
++    /**
++     * @var
++     */
+     private $_websiteId;
++
++    /**
++     * @var string
++     */
+     private $_scope;
++
++    /**
++     * @var int
++     */
+     private $_scopeId;
+ 
++    /**
++     * @var CoreHelper
++     */
+     private $coreHelper;
+ 
++    /**
++     * @var AmazonConfig
++     */
++    private $amazonConfig;
++
+     /**
+      * SimplePath constructor.
+      * @param CoreHelper $coreHelper
++     * @param AmazonConfig $amazonConfig
+      * @param \Magento\Framework\App\Config\ConfigResource\ConfigInterface $config
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
+      * @param \Magento\Framework\App\ProductMetadataInterface $productMeta
+@@ -75,6 +101,7 @@ class SimplePath
+      */
+     public function __construct(
+         CoreHelper $coreHelper,
++        AmazonConfig $amazonConfig,
+         \Magento\Framework\App\Config\ConfigResource\ConfigInterface $config,
+         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+         \Magento\Framework\App\ProductMetadataInterface $productMeta,
+@@ -90,6 +117,7 @@ class SimplePath
+         \Psr\Log\LoggerInterface $logger
+     ) {
+         $this->coreHelper    = $coreHelper;
++        $this->amazonConfig  = $amazonConfig;
+         $this->config        = $config;
+         $this->scopeConfig   = $scopeConfig;
+         $this->productMeta   = $productMeta;
+@@ -166,19 +194,6 @@ class SimplePath
+         return $this->getEndpointDomain() . 'register/getpublickey';
+     }
+ 
+-    /**
+-     * Return listener origins
+-     */
+-    public function getListenerOrigins()
+-    {
+-        return [
+-            'payments.amazon.com',
+-            'payments-eu.amazon.com',
+-            'sellercentral.amazon.com',
+-            'sellercentral-europe.amazon.com'
+-        ];
+-    }
+-
+     /**
+      * Generate and save RSA keys
+      */
+@@ -212,7 +227,9 @@ class SimplePath
+     /**
+      * Return RSA public key
+      *
+-     * @param bool $pemformat Return key in PEM format
++     * @param bool $pemformat
++     * @param bool $reset
++     * @return mixed|string|string[]|null
+      */
+     public function getPublicKey($pemformat = false, $reset = false)
+     {
+@@ -287,7 +304,8 @@ class SimplePath
+             // Retrieve Amazon public key to verify signature
+             try {
+                 $client = new \Zend_Http_Client(
+-                    $this->getEndpointPubkey(), [
++                    $this->getEndpointPubkey(),
++                    [
+                         'maxredirects' => 2,
+                         'timeout'      => 30,
+                     ]
+@@ -321,23 +339,12 @@ class SimplePath
+                     OPENSSL_PKCS1_OAEP_PADDING
+                 );
+ 
+-                // Decrypt final payload (AES 128-bit CBC)
+-                if (function_exists('mcrypt_decrypt')) {
+-                    $finalPayload = @mcrypt_decrypt(
+-                        MCRYPT_RIJNDAEL_128,
+-                        $decryptedKey,
+-                        base64_decode($payload->encryptedPayload),
+-                        MCRYPT_MODE_CBC,
+-                        base64_decode($payload->iv)
+-                    );
+-                } else {
+-                    // This library uses openssl_decrypt, which may have issues
+-                    $aes = new AES();
+-                    $aes->setKey($decryptedKey);
+-                    $aes->setIV(base64_decode($payload->iv, true));
+-                    $aes->setKeyLength(128);
+-                    $finalPayload = $aes->decrypt($payload->encryptedPayload);
+-                }
++                // Decrypt final payload (AES 256-bit CBC)
++                $aes = new AES();
++                $aes->setKey($decryptedKey);
++                $aes->setIV(base64_decode($payload->iv, true));
++                $aes->setKeyLength(256);
++                $finalPayload = $aes->decrypt(base64_decode($payload->encryptedPayload));
+ 
+                 // Remove binary characters
+                 $finalPayload = preg_replace('/[\x00-\x1F\x80-\xFF]/', '', $finalPayload);
+@@ -359,7 +366,8 @@ class SimplePath
+             $this->messageManager->addError(
+                 __(
+                     "If you're experiencing consistent errors with transferring keys, " .
+-                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.", $link
++                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.",
++                    $link
+                 )
+             );
+         }
+@@ -370,7 +378,9 @@ class SimplePath
+     /**
+      * Save values to Mage config
+      *
+-     * @param string $json
++     * @param $json
++     * @param bool $autoEnable
++     * @return bool
+      */
+     public function saveToConfig($json, $autoEnable = true)
+     {
+@@ -558,6 +568,7 @@ class SimplePath
+             'isSecure'      => (int) ($this->request->isSecure()),
+             'hasOpenssl'    => (int) (extension_loaded('openssl')),
+             'formParams'    => $this->getFormParams(),
++            'isMultiCurrencyRegion' => (int) $this->amazonConfig->isMulticurrencyRegion(),
+         ];
+     }
+ }
+
+--- a/Model/EnvironmentChecker.php
++++ /dev/null
+@@ -1,66 +0,0 @@
+-<?php
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+-namespace Amazon\Core\Model;
+-
+-use Amazon\Core\Helper\Data;
+-use Magento\Framework\App\Config\ScopeConfigInterface;
+-use Magento\Framework\App\State;
+-
+-class EnvironmentChecker
+-{
+-    /**
+-     * @var ScopeConfigInterface
+-     */
+-    private $config;
+-
+-    /**
+-     * @var Data
+-     */
+-    private $coreHelper;
+-
+-    /**
+-     * @var State
+-     */
+-    private $state;
+-
+-    /**
+-     * EnvironmentChecker constructor.
+-     *
+-     * @param ScopeConfigInterface $config
+-     * @param Data                 $coreHelper
+-     * @param State                $state
+-     */
+-    public function __construct(ScopeConfigInterface $config, Data $coreHelper, State $state)
+-    {
+-        $this->config     = $config;
+-        $this->coreHelper = $coreHelper;
+-        $this->state      = $state;
+-    }
+-
+-    /**
+-     * Check if behat is running
+-     *
+-     * @return bool
+-     */
+-    public function isTestMode()
+-    {
+-        return (
+-            '1' === $this->config->getValue('is_behat_running')
+-            && $this->coreHelper->isSandboxEnabled()
+-            && State::MODE_PRODUCTION !== $this->state->getMode()
+-        );
+-    }
+-}
+
+--- a/Setup/UpgradeSchema.php
++++ /dev/null
+@@ -1,47 +0,0 @@
+-<?php
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+-namespace Amazon\Core\Setup;
+-
+-use Magento\Framework\Setup\ModuleContextInterface;
+-use Magento\Framework\Setup\SchemaSetupInterface;
+-use Magento\Framework\Setup\UpgradeSchemaInterface;
+-
+-class UpgradeSchema implements UpgradeSchemaInterface
+-{
+-
+-    public function upgrade(SchemaSetupInterface $setup, ModuleContextInterface $context)
+-    {
+-        $setup->startSetup();
+-
+-        if (version_compare($context->getVersion(), '1.0.0', '<=')) {
+-            $setup->getConnection()->addColumn(
+-                $setup->getTable('quote_item'),
+-                'is_excluded_product',
+-                [
+-                    'type' => \Magento\Framework\DB\Ddl\Table::TYPE_SMALLINT,
+-                    'visible' => false,
+-                    'required' => false,
+-                    'default' => 0,
+-                    'nullable' => false,
+-                    'unsigned' => true,
+-                    'comment' => 'Flags whether or not product is excluded from Amazon Pay'
+-                ]
+-            );
+-        }
+-
+-        $setup->endSetup();
+-    }
+-}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,23 +2,25 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "2.2.14",
++  "version": "3.2.4",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "magento/framework": "*",
+-    "magento/module-config": "*",
+-    "magento/module-store": "*",
++    "php": "~7.1.3||~7.2.0",
++    "magento/framework": "^102",
++    "magento/module-sales": "^102",
++    "magento/module-config": "101.1",
++    "magento/module-store": "^101",
+     "magento/module-developer": "*",
+-    "magento/module-quote": "*",
+-    "magento/module-catalog": "*",
+-    "magento/module-customer": "*",
+-    "magento/module-checkout": "*",
++    "magento/module-quote": "^101.1",
++    "magento/module-catalog": "^103",
++    "magento/module-customer": "^102",
++    "magento/module-checkout": "^100.3",
+     "magento/module-backend": "*",
+-    "magento/module-payment": "*",
++    "magento/module-payment": "^100.3",
+     "magento/module-paypal": "*",
++    "magento/module-eav": "^102",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "autoload": {
+
+--- a/etc/adminhtml/routes.xml
++++ b/etc/adminhtml/routes.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
+     <router id="admin">
+         <route id="amazonlogs" frontName="amazonlogs">
+@@ -8,4 +24,4 @@
+             <module name="Amazon_Core" />
+         </route>
+     </router>
+-</config>
+\ No newline at end of file
++</config>
+
+--- a/etc/adminhtml/system.xml
++++ b/etc/adminhtml/system.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+     <system>
+         <section id="payment">
+@@ -114,17 +130,17 @@
+                             <config_path>payment/amazon_payment/button_size</config_path>
+                         </field>
+                         <field id="pwa_pp_button_is_visible" translate="label" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+-                            <label>Amazon Pay button on Product Page</label>
++                            <label>Show Amazon Pay button on product page</label>
+                             <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                             <config_path>payment/amazon_payment/pwa_pp_button_is_visible</config_path>
+                         </field>
+                         <field id="minicart_button_is_visible" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+-                            <label>Amazon Pay button in minicart</label>
++                            <label>Show Amazon Pay button in minicart</label>
+                             <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                             <config_path>payment/amazon_payment/minicart_button_is_visible</config_path>
+                         </field>
+                         <field id="amazonloggin" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+-                            <label>Display Amazon Pay Method</label>
++                            <label>Show Amazon Pay in payment methods</label>
+                             <comment><![CDATA[If enabled, Amazon Pay is presented as an option in the list of available payment methods during the final step of checkout.]]></comment>
+                             <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                             <config_path>payment/amazonlogin/active</config_path>
+@@ -136,6 +152,12 @@
+                             <label>Store Name</label>
+                             <config_path>payment/amazon_payment/storename</config_path>
+                         </field>
++                        <field id="multicurrency" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
++                            <label>Use Multi-currency</label>
++                            <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
++                            <config_path>payment/amazon_payment/multicurrency</config_path>
++                            <comment><![CDATA[Amazon Pay currently supports multi-currency only for UK and EU endpoints. Currencies supported include: AUD, GBP, DKK, EUR, HKD, JPY, NZD, NOK, ZAR, SEK, CHF USD.]]></comment>
++                        </field>
+                     </group>
+                     <group id="extra_options" translate="label" type="text" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                         <label>Developer Options</label>
+@@ -163,4 +185,4 @@
+             </group>
+         </section>
+     </system>
+-</config>
+\ No newline at end of file
++</config>
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -1,3 +1,20 @@
++<?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+     <default>
+         <region>
+@@ -8,6 +25,10 @@
+                 <jp>https://payments.amazon.co.jp/overview</jp>
+             </country>
+         </region>
++        <multicurrency>
++            <regions>uk,de</regions>
++            <currencies>AUD,GBP,DKK,EUR,HKD,JPY,NZD,NOK,ZAR,SEK,CHF,USD</currencies>
++        </multicurrency>
+         <client>
+             <paths>
+                 <secretkey>secret_key</secretkey>
+
+--- /dev/null
++++ b/etc/db_schema.xml
+@@ -0,0 +1,46 @@
++<?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
++<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
++    <table name="amazon_quote" resource="checkout" engine="innodb" comment="amazon_quote">
++        <column xsi:type="int" name="entity_id" padding="10" unsigned="true" nullable="false" identity="true" comment="Entity ID"/>
++        <column xsi:type="int" name="quote_id" padding="10" unsigned="true" nullable="false" identity="false" comment="Quote ID"/>
++        <column xsi:type="varchar" name="amazon_order_reference_id" nullable="false" length="255" comment="Amazon Order Reference ID"/>
++        <column xsi:type="varchar" name="sandbox_simulation_reference" nullable="true" length="255" comment="Sandbox simulation reference"/>
++        <column xsi:type="smallint" name="confirmed" padding="5" unsigned="true" nullable="false" identity="false" default="0" comment="Quote confirmed with Amazon"/>
++        <constraint xsi:type="primary" referenceId="PRIMARY">
++            <column name="entity_id"/>
++        </constraint>
++        <constraint xsi:type="foreign" referenceId="AMAZON_QUOTE_QUOTE_ID_QUOTE_ENTITY_ID" table="amazon_quote" column="quote_id" referenceTable="quote" referenceColumn="entity_id" onDelete="CASCADE"/>
++        <constraint xsi:type="unique" referenceId="AMAZON_QUOTE_QUOTE_ID">
++            <column name="quote_id"/>
++        </constraint>
++    </table>
++    <table name="amazon_sales_order" resource="sales" engine="innodb" comment="amazon_sales_order">
++        <column xsi:type="int" name="entity_id" padding="10" unsigned="true" nullable="false" identity="true" comment="Entity ID"/>
++        <column xsi:type="int" name="order_id" padding="10" unsigned="true" nullable="false" identity="false" comment="Order ID"/>
++        <column xsi:type="varchar" name="amazon_order_reference_id" nullable="false" length="255" comment="Amazon Order Reference ID"/>
++        <constraint xsi:type="primary" referenceId="PRIMARY">
++            <column name="entity_id"/>
++        </constraint>
++        <constraint xsi:type="foreign" referenceId="AMAZON_SALES_ORDER_ORDER_ID_SALES_ORDER_ENTITY_ID" table="amazon_sales_order" column="order_id" referenceTable="sales_order" referenceColumn="entity_id" onDelete="CASCADE"/>
++        <constraint xsi:type="unique" referenceId="AMAZON_SALES_ORDER_ORDER_ID">
++            <column name="order_id"/>
++        </constraint>
++    </table>
++</schema>
+
+--- a/etc/db_schema_whitelist.json
++++ b/etc/db_schema_whitelist.json
+@@ -7,12 +7,10 @@
+             "sandbox_simulation_reference": true,
+             "confirmed": true
+         },
+-        "index": {
+-            "AMAZON_QUOTE_QUOTE_ID": true
+-        },
+         "constraint": {
+             "PRIMARY": true,
+-            "AMAZON_QUOTE_QUOTE_ID_QUOTE_ENTITY_ID": true
++            "AMAZON_QUOTE_QUOTE_ID_QUOTE_ENTITY_ID": true,
++            "AMAZON_QUOTE_QUOTE_ID": true
+         }
+     },
+     "amazon_sales_order": {
+@@ -21,12 +19,10 @@
+             "order_id": true,
+             "amazon_order_reference_id": true
+         },
+-        "index": {
+-            "AMAZON_SALES_ORDER_ORDER_ID": true
+-        },
+         "constraint": {
+             "PRIMARY": true,
+-            "AMAZON_SALES_ORDER_ORDER_ID_SALES_ORDER_ENTITY_ID": true
++            "AMAZON_SALES_ORDER_ORDER_ID_SALES_ORDER_ENTITY_ID": true,
++            "AMAZON_SALES_ORDER_ORDER_ID": true
+         }
+     }
+-}
++}
+\ No newline at end of file
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -1,10 +1,25 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+     <preference for="Amazon\Core\Client\ClientFactoryInterface" type="Amazon\Core\Client\ClientFactory" />
+     <preference for="Amazon\Core\Api\Data\AmazonNameInterface" type="Amazon\Core\Domain\AmazonName" />
+     <preference for="Amazon\Core\Api\Data\AmazonCustomerInterface" type="Amazon\Core\Domain\AmazonCustomer" />
+     <preference for="Amazon\Core\Api\Data\AmazonAddressInterface" type="Amazon\Core\Domain\AmazonAddress" />
+-
+     <preference for="AmazonPay\ClientInterface" type="Amazon\Core\Client\Client" />
+     <type name="Amazon\Core\Client\Client">
+         <arguments>
+@@ -67,4 +82,24 @@
+     <type name="Magento\Checkout\CustomerData\Cart">
+         <plugin name="amazon_core_cart_section" type="Amazon\Core\Plugin\CartSection" />
+     </type>
++    <type name="Magento\Config\Model\Config\TypePool">
++        <arguments>
++            <argument name="sensitive" xsi:type="array">
++                <item name="payment/amazon_payments/simplepath/privatekey" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/client_secret" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/secret_key" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/credentials_json" xsi:type="string">1</item>
++            </argument>
++            <argument name="environment" xsi:type="array">
++                <item name="payment/amazon_payments/simplepath/publickey" xsi:type="string">1</item>
++                <item name="payment/amazon_payments/simplepath/privatekey" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/merchant_id" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/client_id" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/client_secret" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/access_key" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/secret_key" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/sandbox" xsi:type="string">1</item>
++            </argument>
++        </arguments>
++    </type>
+ </config>
+
+--- a/etc/events.xml
++++ b/etc/events.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+     <event name="admin_system_config_changed_section_payment">
+         <observer name="amazon_core_save_payment_config_after" instance="Amazon\Core\Observer\PaymentConfigSaveAfter" />
+
+--- a/etc/frontend/routes.xml
++++ b/etc/frontend/routes.xml
+@@ -1,8 +1,24 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
+     <router id="standard">
+         <route id="amazon_core" frontName="amazon_core">
+             <module name="Amazon_Core" />
+         </route>
+     </router>
+-</config>
+\ No newline at end of file
++</config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,22 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="2.2.14">
++    <module name="Amazon_Core" setup_version="3.2.4">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/etc/validation.xml
++++ b/etc/validation.xml
+@@ -1,4 +1,20 @@
+-<?xml version="1.0" encoding="UTF-8"?>
++<?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <validation xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Validator/etc/validation.xsd">
+     <entity name="amazon_address">
+         <rules>
+
+--- a/view/adminhtml/templates/system/config/logs.phtml
++++ b/view/adminhtml/templates/system/config/logs.phtml
+@@ -16,4 +16,4 @@
+  */
+ 
+ ?>
+-<div id="amazon-payment-log-list"><?php echo $block->getLinks(); ?></div>
+\ No newline at end of file
++<div id="amazon-payment-log-list"><?php echo /* @noEscape */ $block->getLinks(); ?></div>
+\ No newline at end of file
+
+--- a/view/adminhtml/web/js/simplepath.js
++++ b/view/adminhtml/web/js/simplepath.js
+@@ -37,6 +37,8 @@ define(
+                     $container: null,
+                     pollInterval: 1500,
+                     $form: null,
++                    apSimplePathSelector: '#amazon_simplepath',
++                    apSimplePathBackSelector: '#amazon_simplepath_back',
+                 },
+ 
+                 /**
+@@ -45,7 +47,8 @@ define(
+                  */
+                 initObservable: function () {
+                     var self = this;
+-                    self.$amazonSimplepath = $('#amazon_simplepath');
++
++                    self.$amazonSimplepath = $(self.apSimplePathSelector);
+                     self.$amazonFields = $('#payment_' + self.getCountry() + '_' + self.selector + ' .form-list');
+                     self.$amazonCredentialsHeader = $('#payment_' + self.getCountry() + '_' + self.selector
+                         + '_credentials-head');
+@@ -53,9 +56,18 @@ define(
+                         + '_credentials_credentials_json');
+                     self.$amazonMerchantId = $('#payment_' + self.getCountry() + '_' + self.selector
+                         + '_credentials_merchant_id').val();
+-                    self.$amazonSpBack = $('#amazon_simplepath_back');
+-                    self.$container = $('#amazon_simplepath');
++                    self.$amazonSpBack = $(self.apSimplePathBackSelector);
++                    self.$container = $(self.apSimplePathSelector);
+ 
++                    if (this.isMultiCurrencyRegion) {
++                        $('#row_payment_' + self.getCountry() + '_amazon_payment_advanced_sales_options_multicurrency').show();
++                        $('#row_payment_other_amazon_payment_advanced_sales_options_multicurrency').show();
++                    }
++                    else {
++                        $('#row_payment_' + self.getCountry() + '_amazon_payment_advanced_sales_options_multicurrency').hide();
++                        $('#row_payment_other_amazon_payment_advanced_sales_options_multicurrency').hide();
++                    }
++                    
+                     if (self.$amazonMerchantId) {
+                         self.hideAmazonConfig();
+                     }
+@@ -79,6 +91,7 @@ define(
+                  */
+                 initEventHandlers: function () {
+                     var self = this;
++
+                     self.$amazonSpBack.click(function () {
+                         self.showAmazonConfig();
+                         return false;
+@@ -93,20 +106,20 @@ define(
+                         self.setupWindowLaunch();
+                     });
+ 
+-                    self.$amazonCredentialJson.on('input', function (e) {
++                    self.$amazonCredentialJson.on('input', function () {
+                         self.updateCredentials(self);
+                     });
+                 },
+ 
+                 /**
+-                 * Detects when a properly formatted JSON block is pasted into the Credentials JSON field and auto populates
+-                 * specified fields.
++                 * Detects when a properly formatted JSON block is pasted into the Credentials JSON field
++                 * and auto populates specified fields.
+                  *
+                  * @param self
+                  */
+                 updateCredentials: function (self) {
+-                    var elJson = self.$amazonCredentialJson.val();
+-                    var obj = null;
++                    var elJson = self.$amazonCredentialJson.val(), obj = null, success = true, item = null;
++
+                     try {
+                         obj = $.parseJSON($.trim(elJson));
+                     }
+@@ -119,15 +132,19 @@ define(
+                     }
+ 
+                     if (obj && typeof obj === 'object') {
+-                        var success = true;
++
+                         for (var prop in obj) {
+-                            var item = $('#payment_' + self.getCountry() + '_amazon_payment_credentials_' + $.trim(prop));
+-                            if (item && item.length) {
+-                                $('#payment_' + self.getCountry() + '_amazon_payment_credentials_'
+-                                    + $.trim(prop)).val($.trim(obj[prop]));
+-                            }
+-                            else {
+-                                success = false;
++                            if (obj.hasOwnProperty(prop)) {
++                                item = $('#payment_' + self.getCountry() + '_amazon_payment_credentials_'
++                                    + $.trim(prop));
++
++                                if (item && item.length) {
++                                    $('#payment_' + self.getCountry() + '_amazon_payment_credentials_'
++                                        + $.trim(prop)).val($.trim(obj[prop]));
++                                }
++                                else {
++                                    success = false;
++                                }
+                             }
+                         }
+ 
+@@ -141,7 +158,8 @@ define(
+                         else {
+                             self.$amazonCredentialJson.val('').attr(
+                                 'placeholder',
+-                                $t('One or more of your credential fields did not parse correctly. Please review your entry and try again.')
++                                $t('One or more of your credential fields did not parse correctly. ' +
++                                    'Please review your entry and try again.')
+                             ).focus();
+                         }
+                     }
+@@ -151,12 +169,19 @@ define(
+                  * Sets up Amazon merchant key popup and polls for data update upon user completion.
+                  */
+                 setupWindowLaunch: function () {
+-                    var self = this;
+-                    var heights = [660, 720, 810, 900];
+-                    var popupWidth = this.getCountry() !== 'us' ? 768 : 1050;
+-                    var popupHeight = heights[0];
++                    var self = this,
++                        heights = [660, 720, 810, 900],
++                        popupWidth = this.getCountry() !== 'us' ? 768 : 1050, popupHeight = heights[0],
++                        region = self.region,
++                        elCheckDefault = $('#payment_' + self.getCountry()
++                            + '_amazon_payment_credentials_payment_region_inherit:checked'),
++                        elRegion = $('payment_' + self.getCountry() + '_amazon_payment_credentials_payment_region'),
++                        elJson = self.$amazonCredentialJson.val();
++
+                     for (var i in heights) {
+-                        popupHeight = (window.innerHeight >= heights[i]) ? heights[i] : popupHeight;
++                        if (heights.hasOwnProperty(i)) {
++                            popupHeight = window.innerHeight >= heights[i] ? heights[i] : popupHeight;
++                        }
+                     }
+ 
+                     self.launchPopup(self.amazonUrl, popupWidth, popupHeight);
+@@ -171,6 +196,7 @@ define(
+                     $('#save-json').click(function (e) {
+                         e.stop();
+                         var json = $('#json-import').value;
++
+                         if (!json || !json.isJSON()) {
+                             return;
+                         }
+@@ -179,16 +205,14 @@ define(
+                     });
+ 
+                     // Autoset payment region (for EU/UK)
+-                    var region = self.region;
+-                    if (self.region.indexOf('eu') != -1) {
++                    if (self.region.indexOf('eu') !== -1) {
+                         region = 'de';
+                     }
+-                    var elCheckDefault = $('#payment_' + self.getCountry()
+-                        + '_amazon_payment_credentials_payment_region_inherit:checked');
++
+                     if (elCheckDefault && elCheckDefault.length) {
+                         elCheckDefault[0].click();
+                     }
+-                    var elRegion = $('payment_' + self.getCountry() + '_amazon_payment_credentials_payment_region');
++
+                     if (elRegion) {
+                         elRegion.value = region;
+                     }
+@@ -231,6 +255,7 @@ define(
+                  * Sets up dynamic form for capturing popup/form input for simple path setup.
+                  */
+                 generateSimplePathForm: function () {
++
+                     this.$form = new Element('form', {
+                         method: 'post',
+                         action: this.amazonUrl,
+@@ -243,26 +268,24 @@ define(
+ 
+                     // Convert formParams JSON to hidden inputs
+                     for (var key in this.formParams) {
+-                        if (typeof this.formParams[key] === 'object' || typeof this.formParams[key] === 'array') {
++                        if ( $.isPlainObject(this.formParams[key]) || $.isArray(this.formParams[key])) {
+                             for (var i in this.formParams[key]) {
+                                 if (typeof this.formParams[key][i] !== 'function') {
+-                                    var element = new Element('input', {
++                                    $(new Element('input', {
+                                         type: 'hidden',
+                                         name: key,
+                                         value: this.formParams[key][i],
+                                         novalidate: 'novalidate'
+-                                    });
+-                                    $(element).appendTo($("#simplepath_form"));
++                                    })).appendTo($("#simplepath_form"));
+                                 }
+                             }
+                         } else {
+-                            var element = new Element('input', {
++                            $(new Element('input', {
+                                 type: 'hidden',
+                                 name: key,
+                                 novalidate: 'novalidate',
+                                 value: this.formParams[key]
+-                            });
+-                            $(element).appendTo($("#simplepath_form"));
++                            })).appendTo($("#simplepath_form"));
+                         }
+                     }
+ 
+@@ -307,11 +330,10 @@ define(
+                  * @param requestedHeight
+                  */
+                 launchPopup: function (url, requestedWidth, requestedHeight) {
+-                    var self = this;
+                     var leftOffset = this.getLeftOffset(requestedWidth),
+                         topOffset = this.getTopOffset(requestedHeight),
+-                        newWindow = window.open(url, 'simplepath', 'scrollbars=yes, width=' + requestedWidth + ', height=' +
+-                            requestedHeight + ', top=' + topOffset + ', left=' + leftOffset);
++                        newWindow = window.open(url, 'simplepath', 'scrollbars=yes, width=' + requestedWidth
++                            + ', height=' + requestedHeight + ', top=' + topOffset + ', left=' + leftOffset);
+ 
+                     if (window.focus) {
+                         newWindow.focus();
+@@ -333,7 +355,8 @@ define(
+                  */
+                 getLeftOffset: function (requestedWidth) {
+                     var dualScreenLeft = window.screenLeft !== undefined ? window.screenLeft : screen.left;
+-                    return ((this.windowWidth() / 2) - (requestedWidth / 2)) + dualScreenLeft;
++
++                    return (this.windowWidth() / 2) - (requestedWidth / 2) + dualScreenLeft;
+                 },
+ 
+                 /**
+@@ -343,7 +366,8 @@ define(
+                  */
+                 getTopOffset: function (requestedHeight) {
+                     var dualScreenTop = window.screenTop !== undefined ? window.screenTop : screen.top;
+-                    return ((this.windowHeight() / 2) - (requestedHeight / 2)) + dualScreenTop;
++
++                    return (this.windowHeight() / 2) - (requestedHeight / 2) + dualScreenTop;
+                 },
+ 
+                 /**
+@@ -351,13 +375,9 @@ define(
+                  * @returns {number}
+                  */
+                 windowWidth: function () {
+-                    if (window.innerWidth) {
+-                        return window.innerWidth;
+-                    } else if (document.documentElement.clientWidth) {
+-                        return document.documentElement.clientWidth;
+-                    } else {
+-                        return screen.width;
+-                    }
++                    return window.innerWidth
++                        || document.documentElement.clientWidth
++                        || screen.width;
+                 },
+ 
+                 /**
+@@ -365,13 +385,9 @@ define(
+                  * @returns {number}
+                  */
+                 windowHeight: function () {
+-                    if (window.innerHeight) {
+-                        return window.innerHeight;
+-                    } else if (document.documentElement.clientHeight) {
+-                        return document.documentElement.clientHeight;
+-                    } else {
+-                        return screen.height;
+-                    }
++                    return window.innerHeight
++                        || document.documentElement.clientHeight
++                        || screen.height;
+                 }
+             }
+         );
+

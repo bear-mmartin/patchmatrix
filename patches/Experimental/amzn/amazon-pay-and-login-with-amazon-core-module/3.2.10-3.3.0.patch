@@ -1,0 +1,193 @@
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -30,16 +30,13 @@ class IpnUrl extends BaseField
+      */
+     protected function _renderValue(AbstractElement $element)
+     {
+-        $stores = $this->_storeManager->getStores();
++        $store = $this->_storeManager->getDefaultStoreView();
+         $valueReturn = '';
+ 
+-        if ($store = reset($stores))
+-        {
+-            $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
+-            if ($baseUrl) {
+-                $value       = $baseUrl . 'amazonpayments/payment/ipn/';
+-                $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+-            }
++        $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
++        if ($baseUrl) {
++            $value       = $baseUrl . 'amazonpayments/payment/ipn/';
++            $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+         }
+ 
+         return '<td class="value">' . $valueReturn . '</td>';
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -103,7 +103,8 @@ class Config extends Template
+             'oAuthHashRedirectUrl'     => $this->coreHelper->getOAuthRedirectUrl(),
+             'isQuoteDirty'             => $this->categoryExclusionHelper->isQuoteDirty(),
+             'region'                   => $this->coreHelper->getRegion(),
+-            'useMultiCurrency'         => $this->config->useMultiCurrency()
++            'useMultiCurrency'         => $this->config->useMultiCurrency(),
++            'scaRegions'               => $this->coreHelper->getScaRegions()
+         ];
+ 
+         if ($this->coreHelper->isSandboxEnabled()) {
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -44,6 +44,7 @@ class AmazonAddressFactory
+      *
+      * @param ObjectManagerInterface $objectManager
+      * @param AmazonNameFactory $amazonNameFactory
++     * @param null $escaper Deprecated, do not remove for backward compatibility
+      * @param array $addressDecoratorPool Per-country custom decorators of incoming address data.
+      *                                         The key as an "ISO 3166-1 alpha-2" country code and
+      *                                         the value as an FQCN of a child of AmazonAddress.
+@@ -51,6 +52,7 @@ class AmazonAddressFactory
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+         AmazonNameFactory $amazonNameFactory,
++        $escaper = null,
+         array $addressDecoratorPool = []
+     ) {
+         $this->objectManager = $objectManager;
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -24,8 +24,6 @@ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Module\ModuleListInterface;
+ use Magento\Framework\Module\StatusFactory;
+ use Amazon\Core\Model\AmazonConfig;
+-use Magento\Framework\App\Cache\TypeListInterface;
+-use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
+@@ -65,11 +63,6 @@ class Data extends AbstractHelper
+      */
+     private $config;
+ 
+-    /**
+-     * @var TypeListInterface
+-     */
+-    private $cacheTypeList;
+-
+     /**
+      * Data constructor.
+      *
+@@ -80,7 +73,6 @@ class Data extends AbstractHelper
+      * @param ClientIp $clientIpHelper
+      * @param StatusFactory $moduleStatusFactory
+      * @param AmazonConfig $config
+-     * @param TypeListInterface $cacheTypeList
+      */
+     public function __construct(
+         ModuleListInterface $moduleList,
+@@ -89,8 +81,7 @@ class Data extends AbstractHelper
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+         StatusFactory $moduleStatusFactory,
+-        AmazonConfig $config,
+-        TypeListInterface $cacheTypeList = null
++        AmazonConfig $config
+     ) {
+         parent::__construct($context);
+         $this->moduleList = $moduleList;
+@@ -99,7 +90,6 @@ class Data extends AbstractHelper
+         $this->clientIpHelper = $clientIpHelper;
+         $this->moduleStatusFactory = $moduleStatusFactory;
+         $this->config = $config;
+-        $this->cacheTypeList = $cacheTypeList ?: ObjectManager::getInstance()->get(TypeListInterface::class);
+     }
+ 
+     /*
+@@ -207,6 +197,20 @@ class Data extends AbstractHelper
+         return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
+     }
+ 
++    /**
++     * @return array
++     */
++    public function getScaRegions($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $regionList = $this->scopeConfig->getValue(
++            'payment/amazon_payment/sca_regions',
++            $scope,
++            $scopeCode
++        );
++        $regions = explode(',', $regionList);
++        return is_array($regions) ? $regions : [];
++    }
++
+     /*
+      * @return string
+      */
+@@ -789,7 +793,6 @@ class Data extends AbstractHelper
+         // Make sure all of them are disabled if any one of them is disabled.
+         if ($isDisabled > 0 && $isDisabled != 3) {
+             $this->moduleStatusFactory->create()->setIsEnabled(false, ['Amazon_Payment', 'Amazon_Login', 'Amazon_Core']);
+-            $this->cacheTypeList->cleanType('config');
+         }
+     }
+ }
+
+--- a/Model/AmazonConfig.php
++++ b/Model/AmazonConfig.php
+@@ -173,4 +173,4 @@ class AmazonConfig
+         );
+     }
+ 
+-}
+\ No newline at end of file
++}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,12 +2,12 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.2.10",
++  "version": "3.3.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
+     "magento/framework": "*",
+     "magento/module-sales": "*",
+     "magento/module-config": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.2.10">
++    <module name="Amazon_Core" setup_version="3.3.0">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/view/adminhtml/web/js/simplepath.js
++++ b/view/adminhtml/web/js/simplepath.js
+@@ -103,6 +103,13 @@ define(
+                     });
+ 
+                     $('#simplepath_form').on('submit', function () {
++                        // Remove the numeric indices added by Magento's form validation logic
++                        $('#simplepath_form :input').each(function() {
++                            if($(this).attr('orig-name')) {
++                                $(this).attr('name', $(this).attr('orig-name'));
++                                $(this).removeAttr('orig-name');
++                            }
++                        });
+                         self.setupWindowLaunch();
+                     });
+ 
+

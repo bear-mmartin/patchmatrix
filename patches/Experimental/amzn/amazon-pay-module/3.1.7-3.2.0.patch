@@ -1,0 +1,178 @@
+--- a/Block/CheckoutErrorMessage.php
++++ b/Block/CheckoutErrorMessage.php
+@@ -1,4 +1,19 @@
+ <?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
+ namespace Amazon\Payment\Block;
+ use Magento\Framework\View\Element\Template;
+ use \Magento\Checkout\Model\Session as CheckoutSession;
+@@ -18,10 +33,15 @@ class CheckoutErrorMessage extends Template
+     }
+ 
+     public function getError() {
+-        return $this->checkoutSession->getQuote()->getError();
++        $errorString = '';
++        foreach($this->checkoutSession->getQuote()->getErrors() as $error) {
++            $errorString .= $error->getText() . "\n";
++        }
++        return $errorString;
+     }
+ 
+     public function getCheckoutUrl() {
+         return $this->getUrl('checkout');
+     }
+-}
+\ No newline at end of file
++}
++
+
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -96,21 +96,21 @@ class CompleteCheckout extends Action
+                     $this->cartManagement->placeOrder($this->checkoutSession->getQuoteId());
+                     return $this->_redirect('checkout/onepage/success');
+                 } catch (AmazonWebapiException $e) {
+-                    $this->checkoutSession->getQuote()->setError($e->getMessage());
++                    $this->checkoutSession->getQuote()->addMessage($e->getMessage());
+                 }
+                 break;
+             case 'Failure':
+-                $this->checkoutSession->getQuote()->setError(
++                $this->checkoutSession->getQuote()->addMessage(__(
+                     'Amazon Pay was unable to authenticate the payment instrument.  '
+                     . 'Please try again, or use a different payment method.'
+-                );
++                ));
+                 break;
+             case 'Abandoned':
+             default:
+-                $this->checkoutSession->getQuote()->setError(
++                $this->checkoutSession->getQuote()->addMessage(__(
+                     'The SCA challenge was not completed successfully.  '
+                     . 'Please try again, or use a different payment method.'
+-                );
++                ));
+         }
+         return $this->pageFactory->create();
+     }
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -26,6 +26,7 @@ use Amazon\Core\Helper\Data;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterfaceFactory;
+ use Amazon\Payment\Api\Data\PendingCaptureInterfaceFactory;
+ use Magento\Framework\UrlInterface;
++use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * Class AmazonPaymentAdapter
+@@ -109,7 +110,7 @@ class AmazonPaymentAdapter
+         SubjectReader $subjectReader,
+         Data $coreHelper,
+         Logger $logger,
+-        UrlInterface $urlBuilder
++        UrlInterface $urlBuilder = null
+     ) {
+         $this->clientFactory = $clientFactory;
+         $this->amazonSetOrderDetailsResponseFactory = $amazonSetOrderDetailsResponseFactory;
+@@ -120,7 +121,7 @@ class AmazonPaymentAdapter
+         $this->coreHelper = $coreHelper;
+         $this->pendingCaptureFactory = $pendingCaptureFactory;
+         $this->pendingAuthorizationFactory = $pendingAuthorizationFactory;
+-        $this->urlBuilder = $urlBuilder;
++        $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->get(UrlInterface::class);
+     }
+ 
+     /**
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -1,4 +1,18 @@
+ <?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
+ 
+ namespace Amazon\Payment\Plugin;
+ 
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,25 +2,26 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.1.7",
++  "version": "3.2.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.1.7",
+-    "amzn/login-with-amazon-module": "^3.1.7",
+-    "magento/module-customer": "*",
+-    "magento/module-eav": "*",
+-    "magento/module-sales": "*",
+-    "magento/module-quote": "*",
+-    "magento/module-payment": "*",
+-    "magento/module-backend": "*",
+-    "magento/module-store": "*",
+-    "magento/module-checkout": "*",
+-    "magento/module-catalog": "*",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.0",
++    "amzn/login-with-amazon-module": "^3.2.0",
++    "magento/framework": "^102",
++    "magento/module-customer": "^102",
++    "magento/module-eav": "^102",
++    "magento/module-sales": "^102",
++    "magento/module-quote": "^101.1",
++    "magento/module-payment": "^100.3",
++    "magento/module-backend": "^101",
++    "magento/module-store": "^101",
++    "magento/module-checkout": "^100.3",
++    "magento/module-catalog": "^103",
+     "magento/module-paypal": "*",
+-    "magento/module-directory": "*"
++    "magento/module-directory": "^100.3"
+   },
+   "suggest": {
+     "magento/module-customer": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.1.7" >
++    <module name="Amazon_Payment" setup_version="3.2.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+

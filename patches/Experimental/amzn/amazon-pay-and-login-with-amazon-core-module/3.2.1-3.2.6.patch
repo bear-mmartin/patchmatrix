@@ -1,0 +1,36 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.2.1",
++  "version": "3.2.6",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.2.1">
++    <module name="Amazon_Core" setup_version="3.2.6">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/view/adminhtml/templates/system/config/simplepath_admin.phtml
++++ b/view/adminhtml/templates/system/config/simplepath_admin.phtml
+@@ -17,7 +17,7 @@
+ -->
+ <br/>
+ <div data-mage-init='{
+-        "Amazon_Core/js/simplepath": <?php echo /* @noEscape */ $block->getJsonConfig() ?> }'
++        "Amazon_Core/js/simplepath": <?php echo $block->escapeHtml($block->getJsonConfig()) ?> }'
+     id="amazon_simplepath">
+ 
+     <?php if (!$block->getCurrency()) : // SimplePath not supported ?>
+

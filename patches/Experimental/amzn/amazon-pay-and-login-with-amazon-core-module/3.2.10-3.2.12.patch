@@ -1,0 +1,95 @@
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -30,16 +30,13 @@ class IpnUrl extends BaseField
+      */
+     protected function _renderValue(AbstractElement $element)
+     {
+-        $stores = $this->_storeManager->getStores();
++        $store = $this->_storeManager->getDefaultStoreView();
+         $valueReturn = '';
+ 
+-        if ($store = reset($stores))
+-        {
+-            $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
+-            if ($baseUrl) {
+-                $value       = $baseUrl . 'amazonpayments/payment/ipn/';
+-                $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+-            }
++        $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
++        if ($baseUrl) {
++            $value       = $baseUrl . 'amazonpayments/payment/ipn/';
++            $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+         }
+ 
+         return '<td class="value">' . $valueReturn . '</td>';
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -44,6 +44,7 @@ class AmazonAddressFactory
+      *
+      * @param ObjectManagerInterface $objectManager
+      * @param AmazonNameFactory $amazonNameFactory
++     * @param null $escaper Deprecated, do not remove for backward compatibility
+      * @param array $addressDecoratorPool Per-country custom decorators of incoming address data.
+      *                                         The key as an "ISO 3166-1 alpha-2" country code and
+      *                                         the value as an FQCN of a child of AmazonAddress.
+@@ -51,6 +52,7 @@ class AmazonAddressFactory
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+         AmazonNameFactory $amazonNameFactory,
++        $escaper = null,
+         array $addressDecoratorPool = []
+     ) {
+         $this->objectManager = $objectManager;
+
+--- a/Model/AmazonConfig.php
++++ b/Model/AmazonConfig.php
+@@ -173,4 +173,4 @@ class AmazonConfig
+         );
+     }
+ 
+-}
+\ No newline at end of file
++}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.2.10",
++  "version": "3.2.12",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.2.10">
++    <module name="Amazon_Core" setup_version="3.2.12">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/view/adminhtml/web/js/simplepath.js
++++ b/view/adminhtml/web/js/simplepath.js
+@@ -103,6 +103,13 @@ define(
+                     });
+ 
+                     $('#simplepath_form').on('submit', function () {
++                        // Remove the numeric indices added by Magento's form validation logic
++                        $('#simplepath_form :input').each(function() {
++                            if($(this).attr('orig-name')) {
++                                $(this).attr('name', $(this).attr('orig-name'));
++                                $(this).removeAttr('orig-name');
++                            }
++                        });
+                         self.setupWindowLaunch();
+                     });
+ 
+

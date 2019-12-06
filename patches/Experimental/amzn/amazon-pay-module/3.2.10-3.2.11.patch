@@ -1,0 +1,344 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.2.10",
++  "version": "3.2.11",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.10",
+-    "amzn/login-with-amazon-module": "^3.2.10",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.11",
++    "amzn/login-with-amazon-module": "^3.2.11",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.2.10" >
++    <module name="Amazon_Payment" setup_version="3.2.11" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/amazon-button.js
++++ b/view/frontend/web/js/amazon-button.js
+@@ -18,11 +18,13 @@ define([
+     'Magento_Customer/js/section-config',
+     'Amazon_Payment/js/model/amazonPaymentConfig',
+     'amazonCsrf',
++    'Magento_Checkout/js/model/full-screen-loader',
+     'modernizr/modernizr',
+     'amazonCore',
+     'jquery/ui',
+-    'uiRegistry'
+-], function ($, customerData, sectionConfig, amazonPaymentConfig, amazonCsrf) {
++    'uiRegistry',
++    'mage/cookies'
++], function ($, customerData, sectionConfig, amazonPaymentConfig, amazonCsrf, fullScreenLoader) {
+     'use strict';
+     var _this;
+ 
+@@ -96,6 +98,7 @@ define([
+                 if (sections) {
+                     customerData.invalidate(sections);
+                 }
++                $.mage.cookies.set('amazon_Login_accessToken', event.access_token);
+                 window.location = _this.options.redirectUrl + '?access_token=' + event.access_token;
+                 // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
+             },
+@@ -150,6 +153,7 @@ define([
+                      * Authorization callback
+                      */
+                     authorization: function () {
++                        fullScreenLoader.startLoader();
+                         //eslint-disable-next-line no-undef
+                         amazon.Login.authorize(_this._getLoginOptions(), _this._popupCallback());
+                     }
+
+--- a/view/frontend/web/js/amazon-core.js
++++ b/view/frontend/web/js/amazon-core.js
+@@ -19,12 +19,12 @@ define([
+     'mage/url',
+     'amazonPaymentConfig',
+     'amazonWidgetsLoader',
+-    'jquery/jquery-storageapi'
++    'jquery/jquery-storageapi',
++    'mage/cookies'
+ ], function ($, ko, url, amazonPaymentConfig) {
+     'use strict';
+ 
+-    var clientId = amazonPaymentConfig.getValue('clientId'),
+-        amazonDefined = ko.observable(false),
++    var amazonDefined = ko.observable(false),
+         amazonLoginError = ko.observable(false),
+         accessToken = ko.observable(null),
+         // Match region config to amazon.Login.Region
+@@ -32,23 +32,22 @@ define([
+         sandboxMode,
+         region;
+ 
+-    if (typeof amazon === 'undefined') {
+-        /**
+-         * Amazon login ready callback
+-         */
+-        window.onAmazonLoginReady = function () {
+-            setClientId(clientId);  //eslint-disable-line no-use-before-define
+-            doLogoutOnFlagCookie(); //eslint-disable-line no-use-before-define
++    accessToken($.mage.cookies.get('amazon_Login_accessToken'));
+ 
+-            sandboxMode = amazonPaymentConfig.getValue('isSandboxEnabled', false);
+-            amazon.Login.setSandboxMode(sandboxMode); //eslint-disable-line no-undef
++    var initAmazonLogin = function () {
++        amazon.Login.setClientId(amazonPaymentConfig.getValue('clientId')); //eslint-disable-line no-undef
++        amazon.Login.setSandboxMode(amazonPaymentConfig.getValue('isSandboxEnabled', false)); //eslint-disable-line no-undef
++        amazon.Login.setRegion(regions[amazonPaymentConfig.getValue('region')]); //eslint-disable-line no-undef
++        amazon.Login.setUseCookie(true); //eslint-disable-line no-undef
+ 
+-            region = regions[amazonPaymentConfig.getValue('region')];
+-            amazon.Login.setRegion(region); //eslint-disable-line no-undef
+-        };
+-    } else {
+-        setClientId(clientId);  //eslint-disable-line no-use-before-define
+         doLogoutOnFlagCookie(); //eslint-disable-line no-use-before-define
++        amazonDefined(true);
++    };
++
++    if (typeof amazon === 'undefined') {
++        window.onAmazonLoginReady = initAmazonLogin;
++    } else {
++        initAmazonLogin();
+     }
+ 
+     // Widgets.js ready callback
+@@ -61,14 +60,13 @@ define([
+      * @param {String} cid
+      */
+     function setClientId(cid) {
+-        amazon.Login.setClientId(cid); //eslint-disable-line no-undef
+-        amazonDefined(true);
+     }
+ 
+     /**
+      * Log user out of amazon
+      */
+     function amazonLogout() {
++        $.mage.cookies.clear('amazon_Login_accessToken');
+         $.ajax({
+             url: url.build('amazon/logout'),
+             context: this
+@@ -108,39 +106,30 @@ define([
+         amazonLoginError(true);
+     }
+ 
+-    return {
+-        /**
+-         * Verify a user is logged into amazon
+-         */
+-        verifyAmazonLoggedIn: function () {
+-            var defer  = $.Deferred(),
+-                loginOptions = {
+-                    scope: amazonPaymentConfig.getValue('loginScope'),
+-                    popup: true,
+-                    interactive: 'never'
+-                };
+-
+-            // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+-            amazon.Login.authorize(loginOptions, function (response) { //eslint-disable-line no-undef
+-                if (response.error) {
+-                    defer.reject(response.error);
+-                } else {
+-                    accessToken(response.access_token);
+-                    defer.resolve(!response.error);
+-                }
+-            });
+-            // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
+-
+-            return defer.promise();
+-        },
++    function handleWidgetError(error) {
++        console.log('OffAmazonPayments.Widgets.AddressBook', error.getErrorCode(), error.getErrorMessage());
++        switch (error.getErrorCode()) {
++            case 'BuyerSessionExpired':
++                messageList.addErrorMessage({message: $.mage.__('Your Amazon session has expired.  Please sign in again by clicking the Amazon Pay Button.')});
++                amazonStorage.amazonlogOut();
++                break;
++            case 'ITP':
++                // ITP errors are how handled within the widget code
++                break;
++            default:
++                messageList.addErrorMessage({message: $.mage.__(error.getErrorMessage())});
++        }
++    }
+ 
++    return {
+         /**
+          * Log user out of Amazon
+          */
+         AmazonLogout: amazonLogout,
+         amazonDefined: amazonDefined,
+         accessToken: accessToken,
+-        amazonLoginError: amazonLoginError
++        amazonLoginError: amazonLoginError,
++        handleWidgetError: handleWidgetError
+     };
+ 
+ });
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -33,8 +33,6 @@ define(
+             orderReference,
+             addressConsentToken = amazonCore.accessToken,
+             //eslint-disable-next-line no-use-before-define
+-            isAmazonDefined = amazonCore.amazonDefined.subscribe(checkAmazonDefined),
+-            //eslint-disable-next-line no-use-before-define
+             amazonLoginError = amazonCore.amazonLoginError.subscribe(setAmazonLoggedOutIfLoginError),
+             amazonDeclineCode = ko.observable(false),
+             sandboxSimulationReference = ko.observable('default'),
+@@ -50,25 +48,12 @@ define(
+             }),
+             isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash');
+ 
+-        /**
+-         * Subscribes to amazonDefined observable which runs when amazon object becomes available
+-         * @param {String} amazonDefined
+-         */
+-        function checkAmazonDefined(amazonDefined) {
+-            if (amazonDefined && !isLoginRedirectPage) {
+-                verifyAmazonLoggedIn(); //eslint-disable-line no-use-before-define
+-                //remove subscription to amazonDefined once loaded
+-                isAmazonDefined.dispose();
+-            }
+-        }
+ 
+         /**
+          * Log out amazon user
+          */
+         function amazonLogOut() {
+-            if (amazonCore.amazonDefined()) {
+-                amazonCore.AmazonLogout();
+-            }
++            amazonCore.AmazonLogout();
+             this.isAmazonAccountLoggedIn(false);
+         }
+ 
+@@ -89,19 +74,14 @@ define(
+             }
+         });
+ 
+-        //run this on loading storage model. If not defined subscribe will trigger when true
+-        checkAmazonDefined(amazonCore.amazonDefined());
++        verifyAmazonLoggedIn();
+         setAmazonLoggedOutIfLoginError(amazonCore.amazonLoginError());
+ 
+         /**
+          * Verifies amazon user is logged in
+          */
+         function verifyAmazonLoggedIn() {
+-            amazonCore.verifyAmazonLoggedIn().then(function (response) {
+-                if (!amazonCore.amazonLoginError()) {
+-                    isAmazonAccountLoggedIn(response);
+-                }
+-            });
++            isAmazonAccountLoggedIn(!!amazonCore.accessToken());
+         }
+ 
+         return {
+@@ -115,6 +95,7 @@ define(
+             isQuoteDirty: isQuoteDirty,
+             isPwaVisible: isPwaVisible,
+             amazonlogOut: amazonLogOut,
++            amazonDefined: amazonCore.amazonDefined,
+ 
+             /**
+              * Set order reference
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -11,6 +11,7 @@ define(
+         'Magento_Checkout/js/model/shipping-rate-processor/new-address',
+         'Magento_Checkout/js/action/set-shipping-information',
+         'Amazon_Payment/js/model/storage',
++        'amazonCore',
+         'Magento_Checkout/js/model/shipping-service',
+         'Magento_Checkout/js/model/address-converter',
+         'mage/storage',
+@@ -31,6 +32,7 @@ define(
+         shippingProcessor,
+         setShippingInformationAction,
+         amazonStorage,
++        amazonCore,
+         shippingService,
+         addressConverter,
+         storage,
+@@ -71,7 +73,16 @@ define(
+              * Call when component template is rendered
+              */
+             initAddressWidget: function () {
+-                self.renderAddressWidget();
++                if(amazonStorage.amazonDefined()) {
++                    self.renderAddressWidget();
++                } else {
++                    var subscription = amazonStorage.amazonDefined.subscribe(function (defined) { //eslint-disable-line vars-on-top
++                        if (defined) {
++                            self.renderAddressWidget();
++                            subscription.dispose();
++                        }
++                    });
++                }
+             },
+ 
+             /**
+@@ -104,9 +115,7 @@ define(
+                     /**
+                      * Error callback
+                      */
+-                    onError: function (error) {
+-                        console.log('OffAmazonPayments.Widgets.AddressBook', error.getErrorCode(), error.getErrorMessage());
+-                    }
++                    onError: amazonCore.handleWidgetError
+                 }).bind(self.options.addressWidgetDOMId);
+             },
+ 
+
+--- a/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
++++ b/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
+@@ -7,6 +7,7 @@ define(
+         'Magento_Customer/js/customer-data',
+         'Magento_Checkout/js/model/quote',
+         'Amazon_Payment/js/model/storage',
++        'amazonCore',
+         'mage/storage',
+         'Magento_Checkout/js/model/full-screen-loader',
+         'Amazon_Payment/js/action/place-order',
+@@ -27,6 +28,7 @@ define(
+         customerData,
+         quote,
+         amazonStorage,
++        amazonCore,
+         storage,
+         fullScreenLoader,
+         placeOrderAction,
+@@ -112,9 +114,7 @@ define(
+                     /**
+                      * Error callback
+                      */
+-                    onError: function (error) {
+-                        errorProcessor.process(error);
+-                    }
++                    onError: amazonCore.handleWidgetError
+                 });
+                 if (this.useMultiCurrency) {
+                     widget.setPresentmentCurrency(this.presentmentCurrency);
+

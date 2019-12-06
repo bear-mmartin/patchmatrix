@@ -1,0 +1,81 @@
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -24,7 +24,6 @@ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Module\ModuleListInterface;
+ use Magento\Framework\Module\StatusFactory;
+ use Amazon\Core\Model\AmazonConfig;
+-use Magento\Framework\App\Cache\TypeListInterface;
+ use Magento\Framework\App\ObjectManager;
+ 
+ /**
+@@ -65,11 +64,6 @@ class Data extends AbstractHelper
+      */
+     private $config;
+ 
+-    /**
+-     * @var TypeListInterface
+-     */
+-    private $cacheTypeList;
+-
+     /**
+      * Data constructor.
+      *
+@@ -80,7 +74,6 @@ class Data extends AbstractHelper
+      * @param ClientIp $clientIpHelper
+      * @param StatusFactory $moduleStatusFactory
+      * @param AmazonConfig $config
+-     * @param TypeListInterface $cacheTypeList
+      */
+     public function __construct(
+         ModuleListInterface $moduleList,
+@@ -89,8 +82,7 @@ class Data extends AbstractHelper
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+         StatusFactory $moduleStatusFactory,
+-        AmazonConfig $config,
+-        TypeListInterface $cacheTypeList = null
++        AmazonConfig $config
+     ) {
+         parent::__construct($context);
+         $this->moduleList = $moduleList;
+@@ -99,7 +91,6 @@ class Data extends AbstractHelper
+         $this->clientIpHelper = $clientIpHelper;
+         $this->moduleStatusFactory = $moduleStatusFactory;
+         $this->config = $config;
+-        $this->cacheTypeList = $cacheTypeList ?: ObjectManager::getInstance()->get(TypeListInterface::class);
+     }
+ 
+     /*
+@@ -789,7 +780,6 @@ class Data extends AbstractHelper
+         // Make sure all of them are disabled if any one of them is disabled.
+         if ($isDisabled > 0 && $isDisabled != 3) {
+             $this->moduleStatusFactory->create()->setIsEnabled(false, ['Amazon_Payment', 'Amazon_Login', 'Amazon_Core']);
+-            $this->cacheTypeList->cleanType('config');
+         }
+     }
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.2.12",
++  "version": "3.2.13",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.2.12">
++    <module name="Amazon_Core" setup_version="3.2.13">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+

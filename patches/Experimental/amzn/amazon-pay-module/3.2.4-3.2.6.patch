@@ -1,0 +1,64 @@
+--- a/Plugin/ShippingInformationManagement.php
++++ b/Plugin/ShippingInformationManagement.php
+@@ -80,7 +80,9 @@ class ShippingInformationManagement
+             return $return;
+         }
+ 
+-        $amazonOrderReferenceId = $quote->getExtensionAttributes()->getAmazonOrderReferenceId();
++        $amazonOrderReferenceId = $quote->getExtensionAttributes()
++            ->getAmazonOrderReferenceId()
++            ->getAmazonOrderReferenceId();
+ 
+         if ($amazonOrderReferenceId) {
+             $this->orderInformationManagement->saveOrderInformation(
+@@ -92,6 +94,16 @@ class ShippingInformationManagement
+             );
+         }
+ 
++        /*
++         * Magento\Quote\Model\Quote::setShippingAddress merges into the existing shipping address,
++         *  rather than replacing it.  Because not all addresses have a region_id, make sure that
++         *  the region_id is explicitly emptied, to prevent the old one being used.
++         */
++        $shippingAddress = $shippingInformation->getShippingAddress();
++        if(!$shippingAddress->hasData('region_id')) {
++            $shippingAddress->setRegionId("");
++        }
++
+         return $return;
+     }
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.2.4",
++  "version": "3.2.6",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.4",
+-    "amzn/login-with-amazon-module": "^3.2.4",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.6",
++    "amzn/login-with-amazon-module": "^3.2.6",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.2.4" >
++    <module name="Amazon_Payment" setup_version="3.2.6" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+

@@ -1,0 +1,1560 @@
+--- a/Block/Widget/ResetPassword.php
++++ b/Block/Widget/ResetPassword.php
+@@ -14,6 +14,9 @@ use Magento\Framework\UrlFactory;
+ use Magento\Customer\Model\Session;
+ use Amazon\Login\Api\CustomerLinkRepositoryInterface;
+ 
++/**
++ * @api
++ */
+ class ResetPassword extends Template
+ {
+ 
+
+--- a/Domain/AmazonAuthorizationStatus.php
++++ b/Domain/AmazonAuthorizationStatus.php
+@@ -29,7 +29,4 @@ class AmazonAuthorizationStatus extends AbstractAmazonStatus
+     const REASON_MAX_CAPTURES_PROCESSED = 'MaxCapturesProcessed';
+     const REASON_SELLER_CLOSED = 'SellerClosed';
+     const REASON_EXPIRED_UNUSED = 'ExpiredUnused';
+-
+-    const CODE_HARD_DECLINE = 4273;
+-    const CODE_SOFT_DECLINE = 7638;
+ }
+
+--- a/Helper/Address.php
++++ b/Helper/Address.php
+@@ -21,7 +21,6 @@ use Magento\Customer\Api\Data\AddressInterface;
+ use Magento\Customer\Api\Data\AddressInterfaceFactory;
+ use Magento\Customer\Api\Data\RegionInterfaceFactory;
+ use Magento\Directory\Model\RegionFactory;
+-use Magento\Framework\App\Config\ScopeConfigInterface;
+ 
+ class Address
+ {
+@@ -40,21 +39,14 @@ class Address
+      */
+     private $regionDataFactory;
+ 
+-    /**
+-     * @var ScopeConfigInterface
+-     */
+-    private $scopeConfig;
+-
+     public function __construct(
+         AddressInterfaceFactory $addressFactory,
+         RegionFactory $regionFactory,
+-        RegionInterfaceFactory $regionDataFactory,
+-        ScopeConfigInterface $config
++        RegionInterfaceFactory $regionDataFactory
+     ) {
+         $this->addressFactory    = $addressFactory;
+         $this->regionFactory     = $regionFactory;
+         $this->regionDataFactory = $regionDataFactory;
+-        $this->scopeConfig = $config;
+     }
+ 
+     /**
+@@ -66,35 +58,15 @@ class Address
+      */
+     public function convertToMagentoEntity(AmazonAddressInterface $amazonAddress)
+     {
+-        $addressLinesAllowed = (int)$this->scopeConfig->getValue(
+-            'customer/address/street_lines',
+-            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+-        );
+-
+         $address = $this->addressFactory->create();
+         $address->setFirstname($amazonAddress->getFirstName());
+         $address->setLastname($amazonAddress->getLastName());
+         $address->setCity($amazonAddress->getCity());
++        $address->setStreet(array_values($amazonAddress->getLines()));
+         $address->setPostcode($amazonAddress->getPostCode());
+         $address->setTelephone($amazonAddress->getTelephone());
+         $address->setCountryId($this->getCountryId($amazonAddress));
+ 
+-        /*
+-         * The number of lines in a street address is configurable via 'customer/address/street_lines'.
+-         * To avoid discarding information, we'll concatenate additional lines so that they fit within the configured
+-         *  address length.
+-         */
+-        $lines = [];
+-        for ($i = 1; $i <= 4; $i++) {
+-            $line = (string) $amazonAddress->getLine($i);
+-            if ($i <= $addressLinesAllowed) {
+-                $lines[] = $line;
+-            } else {
+-                $lines[count($lines)-1] = trim($lines[count($lines)-1] . ' ' . $line);
+-            }
+-        }
+-        $address->setStreet(array_values($lines));
+-
+         $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
+         $address->setCompany($company);
+ 
+
+--- a/Ipn/IpnHandlerFactory.php
++++ b/Ipn/IpnHandlerFactory.php
+@@ -16,7 +16,6 @@
+ namespace Amazon\Payment\Ipn;
+ 
+ use Amazon\Core\Helper\Data;
+-use Amazon\Core\Model\EnvironmentChecker;
+ use Magento\Framework\ObjectManagerInterface;
+ use AmazonPay\IpnHandlerInterface;
+ use Psr\Log\LoggerAwareInterface;
+@@ -34,11 +33,6 @@ class IpnHandlerFactory implements IpnHandlerFactoryInterface
+      */
+     private $instanceName;
+ 
+-    /**
+-     * @var EnvironmentChecker
+-     */
+-    private $environmentChecker;
+-
+     /**
+      * @var LoggerInterface
+      */
+@@ -51,14 +45,12 @@ class IpnHandlerFactory implements IpnHandlerFactoryInterface
+ 
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+-        EnvironmentChecker $environmentChecker,
+         LoggerInterface $logger,
+         Data $coreHelper,
+         $instanceName = '\\AmazonPay\\IpnHandlerInterface'
+     ) {
+         $this->objectManager      = $objectManager;
+         $this->instanceName       = $instanceName;
+-        $this->environmentChecker = $environmentChecker;
+         $this->logger             = $logger;
+         $this->coreHelper         = $coreHelper;
+     }
+@@ -68,13 +60,6 @@ class IpnHandlerFactory implements IpnHandlerFactoryInterface
+      */
+     public function create($headers, $body)
+     {
+-        if ($this->environmentChecker->isTestMode()) {
+-            return $this->objectManager->create(
+-                MockIpnHandler::class,
+-                ['requestHeaders' => $headers, 'requestBody' => $body]
+-            );
+-        }
+-
+         $handler = $this->objectManager->create(
+             $this->instanceName,
+             ['requestHeaders' => $headers, 'requestBody' => $body]
+
+--- a/Ipn/MockIpnHandler.php
++++ /dev/null
+@@ -1,58 +0,0 @@
+-<?php
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+-namespace Amazon\Payment\Ipn;
+-
+-use AmazonPay\IpnHandler as AmazonIpnHandler;
+-
+-/**
+- * Class MockIpnHandler
+- *
+- * Mock IPN Handler for use with Behat Tests, skips signature verification
+- */
+-class MockIpnHandler extends AmazonIpnHandler
+-{
+-    /**
+-     * @var \ReflectionClass
+-     */
+-    private $parent;
+-
+-    /**
+-     * MockIpnHandler constructor.
+-     *
+-     * @param array      $requestHeaders
+-     * @param string     $requestBody
+-     * @param null|array $ipnConfig
+-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+-     */
+-    public function __construct($requestHeaders, $requestBody, $ipnConfig = null)
+-    {
+-        $reflection   = new \ReflectionClass($this);
+-        $this->parent = $reflection->getParentClass();
+-
+-        $bodyProperty = $this->parent->getProperty('body');
+-        $bodyProperty->setAccessible(true);
+-        $bodyProperty->setValue($this, $requestBody);
+-
+-        $this->getMessage();
+-    }
+-
+-    private function getMessage()
+-    {
+-        $method = $this->parent->getMethod('getMessage');
+-        $method->setAccessible(true);
+-        $method->invoke($this);
+-    }
+-}
+
+--- a/LICENSE
++++ /dev/null
+@@ -1,202 +0,0 @@
+-                                 Apache License
+-                           Version 2.0, January 2004
+-                        http://www.apache.org/licenses/
+-
+-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+-
+-   1. Definitions.
+-
+-      "License" shall mean the terms and conditions for use, reproduction,
+-      and distribution as defined by Sections 1 through 9 of this document.
+-
+-      "Licensor" shall mean the copyright owner or entity authorized by
+-      the copyright owner that is granting the License.
+-
+-      "Legal Entity" shall mean the union of the acting entity and all
+-      other entities that control, are controlled by, or are under common
+-      control with that entity. For the purposes of this definition,
+-      "control" means (i) the power, direct or indirect, to cause the
+-      direction or management of such entity, whether by contract or
+-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+-      outstanding shares, or (iii) beneficial ownership of such entity.
+-
+-      "You" (or "Your") shall mean an individual or Legal Entity
+-      exercising permissions granted by this License.
+-
+-      "Source" form shall mean the preferred form for making modifications,
+-      including but not limited to software source code, documentation
+-      source, and configuration files.
+-
+-      "Object" form shall mean any form resulting from mechanical
+-      transformation or translation of a Source form, including but
+-      not limited to compiled object code, generated documentation,
+-      and conversions to other media types.
+-
+-      "Work" shall mean the work of authorship, whether in Source or
+-      Object form, made available under the License, as indicated by a
+-      copyright notice that is included in or attached to the work
+-      (an example is provided in the Appendix below).
+-
+-      "Derivative Works" shall mean any work, whether in Source or Object
+-      form, that is based on (or derived from) the Work and for which the
+-      editorial revisions, annotations, elaborations, or other modifications
+-      represent, as a whole, an original work of authorship. For the purposes
+-      of this License, Derivative Works shall not include works that remain
+-      separable from, or merely link (or bind by name) to the interfaces of,
+-      the Work and Derivative Works thereof.
+-
+-      "Contribution" shall mean any work of authorship, including
+-      the original version of the Work and any modifications or additions
+-      to that Work or Derivative Works thereof, that is intentionally
+-      submitted to Licensor for inclusion in the Work by the copyright owner
+-      or by an individual or Legal Entity authorized to submit on behalf of
+-      the copyright owner. For the purposes of this definition, "submitted"
+-      means any form of electronic, verbal, or written communication sent
+-      to the Licensor or its representatives, including but not limited to
+-      communication on electronic mailing lists, source code control systems,
+-      and issue tracking systems that are managed by, or on behalf of, the
+-      Licensor for the purpose of discussing and improving the Work, but
+-      excluding communication that is conspicuously marked or otherwise
+-      designated in writing by the copyright owner as "Not a Contribution."
+-
+-      "Contributor" shall mean Licensor and any individual or Legal Entity
+-      on behalf of whom a Contribution has been received by Licensor and
+-      subsequently incorporated within the Work.
+-
+-   2. Grant of Copyright License. Subject to the terms and conditions of
+-      this License, each Contributor hereby grants to You a perpetual,
+-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+-      copyright license to reproduce, prepare Derivative Works of,
+-      publicly display, publicly perform, sublicense, and distribute the
+-      Work and such Derivative Works in Source or Object form.
+-
+-   3. Grant of Patent License. Subject to the terms and conditions of
+-      this License, each Contributor hereby grants to You a perpetual,
+-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+-      (except as stated in this section) patent license to make, have made,
+-      use, offer to sell, sell, import, and otherwise transfer the Work,
+-      where such license applies only to those patent claims licensable
+-      by such Contributor that are necessarily infringed by their
+-      Contribution(s) alone or by combination of their Contribution(s)
+-      with the Work to which such Contribution(s) was submitted. If You
+-      institute patent litigation against any entity (including a
+-      cross-claim or counterclaim in a lawsuit) alleging that the Work
+-      or a Contribution incorporated within the Work constitutes direct
+-      or contributory patent infringement, then any patent licenses
+-      granted to You under this License for that Work shall terminate
+-      as of the date such litigation is filed.
+-
+-   4. Redistribution. You may reproduce and distribute copies of the
+-      Work or Derivative Works thereof in any medium, with or without
+-      modifications, and in Source or Object form, provided that You
+-      meet the following conditions:
+-
+-      (a) You must give any other recipients of the Work or
+-          Derivative Works a copy of this License; and
+-
+-      (b) You must cause any modified files to carry prominent notices
+-          stating that You changed the files; and
+-
+-      (c) You must retain, in the Source form of any Derivative Works
+-          that You distribute, all copyright, patent, trademark, and
+-          attribution notices from the Source form of the Work,
+-          excluding those notices that do not pertain to any part of
+-          the Derivative Works; and
+-
+-      (d) If the Work includes a "NOTICE" text file as part of its
+-          distribution, then any Derivative Works that You distribute must
+-          include a readable copy of the attribution notices contained
+-          within such NOTICE file, excluding those notices that do not
+-          pertain to any part of the Derivative Works, in at least one
+-          of the following places: within a NOTICE text file distributed
+-          as part of the Derivative Works; within the Source form or
+-          documentation, if provided along with the Derivative Works; or,
+-          within a display generated by the Derivative Works, if and
+-          wherever such third-party notices normally appear. The contents
+-          of the NOTICE file are for informational purposes only and
+-          do not modify the License. You may add Your own attribution
+-          notices within Derivative Works that You distribute, alongside
+-          or as an addendum to the NOTICE text from the Work, provided
+-          that such additional attribution notices cannot be construed
+-          as modifying the License.
+-
+-      You may add Your own copyright statement to Your modifications and
+-      may provide additional or different license terms and conditions
+-      for use, reproduction, or distribution of Your modifications, or
+-      for any such Derivative Works as a whole, provided Your use,
+-      reproduction, and distribution of the Work otherwise complies with
+-      the conditions stated in this License.
+-
+-   5. Submission of Contributions. Unless You explicitly state otherwise,
+-      any Contribution intentionally submitted for inclusion in the Work
+-      by You to the Licensor shall be under the terms and conditions of
+-      this License, without any additional terms or conditions.
+-      Notwithstanding the above, nothing herein shall supersede or modify
+-      the terms of any separate license agreement you may have executed
+-      with Licensor regarding such Contributions.
+-
+-   6. Trademarks. This License does not grant permission to use the trade
+-      names, trademarks, service marks, or product names of the Licensor,
+-      except as required for reasonable and customary use in describing the
+-      origin of the Work and reproducing the content of the NOTICE file.
+-
+-   7. Disclaimer of Warranty. Unless required by applicable law or
+-      agreed to in writing, Licensor provides the Work (and each
+-      Contributor provides its Contributions) on an "AS IS" BASIS,
+-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+-      implied, including, without limitation, any warranties or conditions
+-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+-      PARTICULAR PURPOSE. You are solely responsible for determining the
+-      appropriateness of using or redistributing the Work and assume any
+-      risks associated with Your exercise of permissions under this License.
+-
+-   8. Limitation of Liability. In no event and under no legal theory,
+-      whether in tort (including negligence), contract, or otherwise,
+-      unless required by applicable law (such as deliberate and grossly
+-      negligent acts) or agreed to in writing, shall any Contributor be
+-      liable to You for damages, including any direct, indirect, special,
+-      incidental, or consequential damages of any character arising as a
+-      result of this License or out of the use or inability to use the
+-      Work (including but not limited to damages for loss of goodwill,
+-      work stoppage, computer failure or malfunction, or any and all
+-      other commercial damages or losses), even if such Contributor
+-      has been advised of the possibility of such damages.
+-
+-   9. Accepting Warranty or Additional Liability. While redistributing
+-      the Work or Derivative Works thereof, You may choose to offer,
+-      and charge a fee for, acceptance of support, warranty, indemnity,
+-      or other liability obligations and/or rights consistent with this
+-      License. However, in accepting such obligations, You may act only
+-      on Your own behalf and on Your sole responsibility, not on behalf
+-      of any other Contributor, and only if You agree to indemnify,
+-      defend, and hold each Contributor harmless for any liability
+-      incurred by, or claims asserted against, such Contributor by reason
+-      of your accepting any such warranty or additional liability.
+-
+-   END OF TERMS AND CONDITIONS
+-
+-   APPENDIX: How to apply the Apache License to your work.
+-
+-      To apply the Apache License to your work, attach the following
+-      boilerplate notice, with the fields enclosed by brackets "{}"
+-      replaced with your own identifying information. (Don't include
+-      the brackets!)  The text should be enclosed in the appropriate
+-      comment syntax for the file format. We also recommend that a
+-      file or class name and description of purpose be included on the
+-      same "printed page" as the copyright notice for easier
+-      identification within third-party archives.
+-
+-   Copyright {yyyy} {name of copyright owner}
+-
+-   Licensed under the Apache License, Version 2.0 (the "License");
+-   you may not use this file except in compliance with the License.
+-   You may obtain a copy of the License at
+-
+-       http://www.apache.org/licenses/LICENSE-2.0
+-
+-   Unless required by applicable law or agreed to in writing, software
+-   distributed under the License is distributed on an "AS IS" BASIS,
+-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-   See the License for the specific language governing permissions and
+-   limitations under the License.
+-
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -221,7 +221,7 @@ class AmazonPaymentAdapter
+ 
+         /** if first synchronous attempt failed, on second attempt try an asynchronous attempt. */
+         if ($authMode != 'synchronous' && $attempts) {
+-            $authorizeData['transaction_timeout'] = 5;
++            $authorizeData['transaction_timeout'] = 1440;
+         }
+ 
+         $response['status'] = false;
+@@ -256,6 +256,13 @@ class AmazonPaymentAdapter
+                         $response['response_code'] = 'TransactionTimedOut';
+                     } elseif (!in_array($authorizeResponse->getStatus()->getState(), self::SUCCESS_CODES)) {
+                         $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
++                        if ($authMode == 'synchronous' && $authorizeResponse->getStatus()->getReasonCode() == 'TransactionTimedOut') {
++                            $cancelData = [
++                                'store_id' => $storeId,
++                                'amazon_order_reference_id' => $data['amazon_order_reference_id']
++                            ];
++                            $this->clientFactory->create($storeId)->cancelOrderReference($cancelData);
++                        }
+                     } else {
+                         $response['status'] = true;
+ 
+
+--- a/Model/Method/AmazonLoginMethod.php
++++ b/Model/Method/AmazonLoginMethod.php
+@@ -51,18 +51,4 @@ class AmazonLoginMethod extends \Magento\Payment\Model\Method\AbstractMethod
+      */
+     protected $_isOffline = true;
+ 
+-    /**
+-     * Is active
+-     *
+-     * @param int|null $storeId
+-     * @return bool
+-     */
+-    public function isActive($storeId = null)
+-    {
+-        return (bool)(int)$this->_scopeConfig->getValue(
+-            'payment/amazon_pay/active',
+-            \Magento\Store\Model\ScopeInterface::SCOPE_STORE,
+-            $storeId
+-        ) && (bool)(int)$this->getConfigData('active', $storeId);
+-    }
+ }
+
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -259,9 +259,7 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+     public function removeOrderReference()
+     {
+         $quote = $this->session->getQuote();
+-
+-        $quote->getExtensionAttributes()->setAmazonOrderReferenceId(null);
+-
++        
+         if ($quote->getId()) {
+             $quoteLink = $this->quoteLinkFactory->create()->load($quote->getId(), 'quote_id');
+ 
+
+--- a/Model/QuoteLinkManagement.php
++++ b/Model/QuoteLinkManagement.php
+@@ -55,7 +55,7 @@ class QuoteLinkManagement implements QuoteLinkManagementInterface
+         $amazonQuote->load($cart->getId(), 'quote_id');
+ 
+         if ($amazonQuote->getId()) {
+-            $cartExtension->setAmazonOrderReferenceId($amazonQuote->getAmazonOrderReferenceId());
++            $cartExtension->setAmazonOrderReferenceId($amazonQuote);
+         }
+ 
+         $cart->setExtensionAttributes($cartExtension);
+
+--- a/Observer/LoadOrder.php
++++ b/Observer/LoadOrder.php
+@@ -66,7 +66,7 @@ class LoadOrder implements ObserverInterface
+             $amazonOrder->load($order->getId(), 'order_id');
+ 
+             if ($amazonOrder->getId()) {
+-                $orderExtension->setAmazonOrderReferenceId($amazonOrder->getAmazonOrderReferenceId());
++                $orderExtension->setAmazonOrderReferenceId($amazonOrder);
+             }
+         }
+ 
+
+--- a/Setup/UpgradeSchema.php
++++ b/Setup/UpgradeSchema.php
+@@ -44,84 +44,7 @@ class UpgradeSchema implements UpgradeSchemaInterface
+      */
+     public function upgrade(SchemaSetupInterface $setup, ModuleContextInterface $context)
+     {
+-        if (version_compare($context->getVersion(), '1.1.0', '<')) {
+-            $linkTables = [
+-                'quote_id' => QuoteLink::TABLE_NAME,
+-                'order_id' => OrderLink::TABLE_NAME
+-            ];
+-
+-            foreach ($linkTables as $fieldName => $tableName) {
+-                $table = $setup->getConnection()->newTable($setup->getTable($tableName));
+-
+-                $table
+-                    ->addColumn(
+-                        'entity_id',
+-                        Table::TYPE_INTEGER,
+-                        null,
+-                        [
+-                            'identity' => true,
+-                            'unsigned' => true,
+-                            'primary'  => true,
+-                            'nullable' => false
+-                        ]
+-                    )
+-                    ->addColumn(
+-                        $fieldName,
+-                        Table::TYPE_INTEGER,
+-                        null,
+-                        [
+-                            'unsigned' => true,
+-                            'nullable' => false
+-                        ]
+-                    )
+-                    ->addColumn(
+-                        'amazon_order_reference_id',
+-                        Table::TYPE_TEXT,
+-                        255,
+-                        [
+-                            'nullable' => false
+-                        ]
+-                    )
+-                    ->addIndex(
+-                        $setup->getIdxName(
+-                            $tableName,
+-                            [$fieldName],
+-                            AdapterInterface::INDEX_TYPE_UNIQUE
+-                        ),
+-                        [$fieldName],
+-                        ['type' => AdapterInterface::INDEX_TYPE_UNIQUE]
+-                    );
+-
+-                $setup->getConnection()->createTable($table);
+-            }
+-        }
+-
+-        if (version_compare($context->getVersion(), '1.2.0', '<')) {
+-            $setup->getConnection()->addColumn(
+-                $setup->getTable(QuoteLink::TABLE_NAME),
+-                'sandbox_simulation_reference',
+-                [
+-                    'type'     => Table::TYPE_TEXT,
+-                    'length'   => 255,
+-                    'nullable' => true,
+-                    'comment'  => 'Sandbox simulation reference'
+-                ]
+-            );
+-        }
+ 
+-        if (version_compare($context->getVersion(), '1.3.0', '<')) {
+-            $setup->getConnection()->addColumn(
+-                $setup->getTable(QuoteLink::TABLE_NAME),
+-                'confirmed',
+-                [
+-                    'unsigned' => true,
+-                    'nullable' => false,
+-                    'default'  => 0,
+-                    'type'     => Table::TYPE_SMALLINT,
+-                    'comment'  => 'Quote confirmed with Amazon'
+-                ]
+-            );
+-        }
+ 
+         if (version_compare($context->getVersion(), '1.4.0', '<')) {
+             $table = $setup->getConnection()->newTable($setup->getTable(PendingCapture::TABLE_NAME));
+@@ -167,25 +90,6 @@ class UpgradeSchema implements UpgradeSchemaInterface
+             $setup->getConnection()->createTable($table);
+         }
+ 
+-        if (version_compare($context->getVersion(), '1.6.0', '<')) {
+-            $setup->getConnection()->addForeignKey(
+-                $setup->getFkName(QuoteLink::TABLE_NAME, 'quote_id', $setup->getTable('quote'), 'entity_id'),
+-                $setup->getTable(QuoteLink::TABLE_NAME),
+-                'quote_id',
+-                $setup->getTable('quote'),
+-                'entity_id',
+-                AdapterInterface::FK_ACTION_CASCADE
+-            );
+-
+-            $setup->getConnection()->addForeignKey(
+-                $setup->getFkName(OrderLink::TABLE_NAME, 'order_id', $setup->getTable('sales_order'), 'entity_id'),
+-                $setup->getTable(OrderLink::TABLE_NAME),
+-                'order_id',
+-                $setup->getTable('sales_order'),
+-                'entity_id',
+-                AdapterInterface::FK_ACTION_CASCADE
+-            );
+-        }
+ 
+         if (version_compare($context->getVersion(), '1.7.0', '<')) {
+             $this->addColumnsToPendingCaptureQueue($setup);
+
+--- a/Test/Mftf/composer.json
++++ b/Test/Mftf/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "2.1.2",
++  "version": "2.2.2",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.1.2",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.2",
+     "magento/module-customer": "^101.0",
+     "magento/module-store": "^100.1",
+     "magento/module-eav": "101.0.*",
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,15 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "2.1.4",
++  "version": "3.0.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.1.4",
+-    "amzn/login-with-amazon-module": "^2.1.4",
++    "php": "~7.1.3||~7.2.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.0.0",
++    "amzn/login-with-amazon-module": "^3.0.0",
++    "magento/module-customer": "*",
+     "magento/module-eav": "*",
+     "magento/module-sales": "*",
+     "magento/module-quote": "*",
+
+--- a/etc/amazon_error_mapping.xml
++++ b/etc/amazon_error_mapping.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <mapping xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Payment:etc/error_mapping.xsd">
+     <message_list>
+         <message code="AmazonRejected" translate="true">Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.</message>
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+     <default>
+         <payment>
+@@ -35,7 +51,7 @@
+                 <button_color>Gold</button_color>
+                 <button_size>medium</button_size>
+                 <logging>1</logging>
+-                <platform_id>AUGT0HMCLQVX1</platform_id>
++                <platform_id>A2ZAYEJU54T1BM</platform_id>
+                 <hard_decline_code>4273</hard_decline_code>
+                 <soft_decline_code>7638</soft_decline_code>
+             </amazon_payment>
+
+--- a/etc/crontab.xml
++++ b/etc/crontab.xml
+@@ -1,8 +1,18 @@
+ <?xml version="1.0"?>
+ <!--
+ /**
+- * Copyright © 2016 Magento. All rights reserved.
+- * See COPYING.txt for license details.
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -1,7 +1,21 @@
+ <?xml version="1.0"?>
+-<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+-    <!-- Begin gateway config -->
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
++<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+     <!-- Payment Method Facade configuration -->
+     <virtualType name="AmazonFacade" type="Magento\Payment\Model\Method\Adapter">
+         <arguments>
+@@ -14,7 +28,6 @@
+         </arguments>
+     </virtualType>
+ 
+-
+     <!-- Amazon validators infrastructure -->
+     <virtualType name="AmazonCountryValidator" type="Magento\Payment\Gateway\Validator\CountryValidator">
+         <arguments>
+@@ -34,29 +47,22 @@
+             </argument>
+         </arguments>
+     </virtualType>
+-    <!-- Amazon validators infrastructure -->
+-
+ 
+     <!-- Amazon error code mapper -->
+-
+-    <virtualType name="Amazon\Payment\Gateway\ErrorMapper\VirtualConfigReader"
+-                 type="Magento\Payment\Gateway\ErrorMapper\VirtualConfigReader">
++    <virtualType name="Amazon\Payment\Gateway\ErrorMapper\VirtualConfigReader" type="Magento\Payment\Gateway\ErrorMapper\VirtualConfigReader">
+         <arguments>
+             <argument name="fileName" xsi:type="string">amazon_error_mapping.xml</argument>
+         </arguments>
+     </virtualType>
+-    <virtualType name="Amazon\Payment\Gateway\ErrorMapper\VirtualMappingData"
+-                 type="Magento\Payment\Gateway\ErrorMapper\MappingData">
++    <virtualType name="Amazon\Payment\Gateway\ErrorMapper\VirtualMappingData" type="Magento\Payment\Gateway\ErrorMapper\MappingData">
+         <arguments>
+             <argument name="reader" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualConfigReader</argument>
+             <argument name="cacheId" xsi:type="string">amazon_error_mapper</argument>
+         </arguments>
+     </virtualType>
+-    <virtualType name="Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper"
+-                 type="Magento\Payment\Gateway\ErrorMapper\ErrorMessageMapper">
++    <virtualType name="Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper" type="Magento\Payment\Gateway\ErrorMapper\ErrorMessageMapper">
+         <arguments>
+-            <argument name="messageMapping"
+-                xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualMappingData</argument>
++            <argument name="messageMapping" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualMappingData</argument>
+         </arguments>
+     </virtualType>
+ 
+@@ -120,14 +126,12 @@
+     <!-- Authorize command -->
+     <virtualType name="AmazonAuthorizeCommand" type="Amazon\Payment\Gateway\Command\AmazonAuthCommand">
+         <arguments>
+-            <argument name="requestBuilder"
+-                      xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder</argument>
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\CompleteAuthHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+             <argument name="validator" xsi:type="object">AmazonAuthorizationValidators</argument>
+             <argument name="client" xsi:type="object">Amazon\Payment\Gateway\Http\Client\AuthorizeClient</argument>
+-            <argument name="errorMessageMapper"
+-                      xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
++            <argument name="errorMessageMapper" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
+         </arguments>
+     </virtualType>
+ 
+@@ -140,28 +144,24 @@
+     <!-- Authorize and Capture command -->
+     <virtualType name="AmazonSaleCommand" type="Amazon\Payment\Gateway\Command\AmazonAuthCommand">
+         <arguments>
+-            <argument name="requestBuilder"
+-                      xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder</argument>
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\AuthorizationRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\CompleteSaleHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+             <argument name="validator" xsi:type="object">AmazonAuthorizationValidators</argument>
+             <argument name="client" xsi:type="object">Amazon\Payment\Gateway\Http\Client\CaptureClient</argument>
+-            <argument name="errorMessageMapper"
+-                      xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
++            <argument name="errorMessageMapper" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
+         </arguments>
+     </virtualType>
+ 
+     <!-- Capture settlement command -->
+     <virtualType name="AmazonSettlementCommand" type="Amazon\Payment\Gateway\Command\AmazonAuthCommand">
+         <arguments>
+-            <argument name="requestBuilder"
+-                      xsi:type="object">Amazon\Payment\Gateway\Request\SettlementRequestBuilder</argument>
++            <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\SettlementRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\SettlementHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+             <argument name="validator" xsi:type="object">AmazonAuthorizationValidators</argument>
+             <argument name="client" xsi:type="object">Amazon\Payment\Gateway\Http\Client\SettlementClient</argument>
+-            <argument name="errorMessageMapper"
+-                      xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
++            <argument name="errorMessageMapper" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
+         </arguments>
+     </virtualType>
+ 
+@@ -180,11 +180,9 @@
+             <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\RefundRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\RefundHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+-            <argument name="validator"
+-                      xsi:type="object">Amazon\Payment\Gateway\Validator\AuthorizationValidator</argument>
++            <argument name="validator" xsi:type="object">Amazon\Payment\Gateway\Validator\AuthorizationValidator</argument>
+             <argument name="client" xsi:type="object">Amazon\Payment\Gateway\Http\Client\RefundClient</argument>
+-            <argument name="errorMessageMapper"
+-                      xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
++            <argument name="errorMessageMapper" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
+         </arguments>
+     </virtualType>
+ 
+@@ -194,11 +192,9 @@
+             <argument name="requestBuilder" xsi:type="object">Amazon\Payment\Gateway\Request\VoidRequestBuilder</argument>
+             <argument name="handler" xsi:type="object">Amazon\Payment\Gateway\Response\VoidHandler</argument>
+             <argument name="transferFactory" xsi:type="object">Amazon\Payment\Gateway\Http\TransferFactory</argument>
+-            <argument name="validator"
+-                      xsi:type="object">Amazon\Payment\Gateway\Validator\AuthorizationValidator</argument>
++            <argument name="validator" xsi:type="object">Amazon\Payment\Gateway\Validator\AuthorizationValidator</argument>
+             <argument name="client" xsi:type="object">Amazon\Payment\Gateway\Http\Client\VoidClient</argument>
+-            <argument name="errorMessageMapper"
+-                      xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
++            <argument name="errorMessageMapper" xsi:type="object">Amazon\Payment\Gateway\ErrorMapper\VirtualErrorMessageMapper</argument>
+         </arguments>
+     </virtualType>
+ 
+@@ -232,35 +228,28 @@
+ 
+     <!-- end gateway config -->
+ 
+-    <preference for="Amazon\Payment\Api\OrderInformationManagementInterface"
+-                type="Amazon\Payment\Model\OrderInformationManagement"/>
++    <preference for="Amazon\Payment\Api\OrderInformationManagementInterface" type="Amazon\Payment\Model\OrderInformationManagement"/>
+     <preference for="Amazon\Payment\Api\AddressManagementInterface" type="Amazon\Payment\Model\AddressManagement"/>
+     <preference for="Amazon\Payment\Api\QuoteLinkManagementInterface" type="Amazon\Payment\Model\QuoteLinkManagement"/>
+     <preference for="Amazon\Payment\Api\Data\QuoteLinkInterface" type="Amazon\Payment\Model\QuoteLink"/>
+     <preference for="Amazon\Payment\Api\Data\OrderLinkInterface" type="Amazon\Payment\Model\OrderLink"/>
+     <preference for="Amazon\Payment\Api\Data\PendingCaptureInterface" type="Amazon\Payment\Model\PendingCapture"/>
+-    <preference for="Amazon\Payment\Api\Data\PendingAuthorizationInterface"
+-                type="Amazon\Payment\Model\PendingAuthorization"/>
++    <preference for="Amazon\Payment\Api\Data\PendingAuthorizationInterface" type="Amazon\Payment\Model\PendingAuthorization"/>
+     <preference for="Amazon\Payment\Api\Data\PendingRefundInterface" type="Amazon\Payment\Model\PendingRefund"/>
+     <preference for="Amazon\Payment\Ipn\IpnHandlerFactoryInterface" type="Amazon\Payment\Ipn\IpnHandlerFactory"/>
+     <preference for="AmazonPay\IpnHandlerInterface" type="Amazon\Payment\Ipn\IpnHandler"/>
+-    <preference for="Amazon\Payment\Api\Ipn\CompositeProcessorInterface"
+-                type="Amazon\Payment\Model\Ipn\CompositeProcessor"/>
++    <preference for="Amazon\Payment\Api\Ipn\CompositeProcessorInterface" type="Amazon\Payment\Model\Ipn\CompositeProcessor"/>
+     <type name="Magento\Quote\Api\CartRepositoryInterface">
+         <plugin name="amazon_payment_quote_repository" type="Amazon\Payment\Plugin\QuoteRepository" sortOrder="1"/>
+     </type>
+     <type name="Magento\Checkout\Api\ShippingInformationManagementInterface">
+-        <plugin name="amazon_payment_shipping_information_management"
+-                type="Amazon\Payment\Plugin\ShippingInformationManagement" sortOrder="1"/>
++        <plugin name="amazon_payment_shipping_information_management" type="Amazon\Payment\Plugin\ShippingInformationManagement" sortOrder="1"/>
+     </type>
+     <type name="Magento\Quote\Api\Data\PaymentInterface">
+         <plugin name="amazon_payment_additional_information" type="Amazon\Payment\Plugin\AdditionalInformation"/>
+     </type>
+     <type name="Amazon\Payment\Model\Method\AmazonLoginMethod">
+-        <plugin name="disable_amazon_payment_method"
+-                type="Amazon\Payment\Plugin\DisableAmazonPaymentMethod"
+-                sortOrder="10"
+-                disabled="false"/>
++        <plugin name="disable_amazon_payment_method" type="Amazon\Payment\Plugin\DisableAmazonPaymentMethod" sortOrder="10" disabled="false"/>
+     </type>
+ 
+     <type name="Amazon\Payment\Cron\ProcessAmazonRefunds">
+@@ -275,16 +264,14 @@
+     </type>
+     <type name="Amazon\Payment\Model\QueuedRefundUpdater">
+         <arguments>
+-            <argument name="adminNotifier"
+-                  xsi:type="object">Magento\Framework\Notification\NotifierInterface\Proxy</argument>
++            <argument name="adminNotifier" xsi:type="object">Magento\Framework\Notification\NotifierInterface\Proxy</argument>
+         </arguments>
+     </type>
+     <type name="Amazon\Payment\Api\Ipn\CompositeProcessorInterface">
+         <arguments>
+             <argument name="processors" xsi:type="array">
+                 <item name="captureprocessor" xsi:type="object">Amazon\Payment\Model\Ipn\CaptureProcessor\Proxy</item>
+-                <item name="authorizationprocessor"
+-                      xsi:type="object">Amazon\Payment\Model\Ipn\AuthorizationProcessor\Proxy</item>
++                <item name="authorizationprocessor" xsi:type="object">Amazon\Payment\Model\Ipn\AuthorizationProcessor\Proxy</item>
+                 <item name="orderprocessor" xsi:type="object">Amazon\Payment\Model\Ipn\OrderProcessor\Proxy</item>
+                 <item name="refundprocessor" xsi:type="object">Amazon\Payment\Model\Ipn\RefundProcessor\Proxy</item>
+             </argument>
+@@ -304,8 +291,7 @@
+         </arguments>
+     </type>
+     <type name="Magento\Framework\Webapi\ErrorProcessor">
+-        <plugin name="amazon_payment_webapi_error_processor" type="Amazon\Payment\Plugin\WebapiErrorProcessor"
+-                sortOrder="1"/>
++        <plugin name="amazon_payment_webapi_error_processor" type="Amazon\Payment\Plugin\WebapiErrorProcessor" sortOrder="1"/>
+     </type>
+ 
+     <type name="Amazon\Payment\Gateway\Config\Config">
+
+--- a/etc/email_templates.xml
++++ b/etc/email_templates.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Email:etc/email_templates.xsd">
+     <template id="amazon_payments_auth_soft_decline" label="Soft-declined Authorization" file="soft-declined-auth.html" type="html" module="Amazon_Payment" area="frontend"/>
+     <template id="amazon_payments_auth_hard_decline" label="Hard-declined Authorization" file="hard-declined-auth.html" type="html" module="Amazon_Payment" area="frontend"/>
+
+--- a/etc/events.xml
++++ b/etc/events.xml
+@@ -1,6 +1,21 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+-
+     <event name="sales_order_load_after">
+         <observer name="amazon_payment_load_order" instance="Amazon\Payment\Observer\LoadOrder" />
+     </event>
+
+--- a/etc/extension_attributes.xml
++++ b/etc/extension_attributes.xml
+@@ -1,17 +1,37 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Api/etc/extension_attributes.xsd">
+     <extension_attributes for="Magento\Quote\Api\Data\CartInterface">
+-        <attribute code="amazon_order_reference_id" type="string">
++        <attribute code="amazon_order_reference_id" type="Amazon\Payment\Api\Data\QuoteLinkInterface">
+             <join reference_table="amazon_quote" reference_field="quote_id" join_on_field="entity_id">
+                 <field>amazon_order_reference_id</field>
++                <field>quote_id</field>
++                <field>sandbox_simulation_reference</field>
++                <field>confirmed</field>
+             </join>
+         </attribute>
+     </extension_attributes>
+     <extension_attributes for="Magento\Sales\Api\Data\OrderInterface">
+-        <attribute code="amazon_order_reference_id" type="string">
++        <attribute code="amazon_order_reference_id" type="Amazon\Payment\Api\Data\OrderLinkInterface">
+             <join reference_table="amazon_sales_order" reference_field="order_id" join_on_field="entity_id">
+                 <field>amazon_order_reference_id</field>
++                <field>order_id</field>
+             </join>
+         </attribute>
+     </extension_attributes>
+-</config>
+\ No newline at end of file
++</config>
+
+--- a/etc/frontend/di.xml
++++ b/etc/frontend/di.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+     <type name="Amazon\Payment\Block\Minicart\Button">
+         <arguments>
+@@ -12,4 +28,4 @@
+     <type name="Magento\Checkout\Block\Checkout\LayoutProcessor">
+         <plugin name="amazon_payment_checkout_processor" type="Amazon\Payment\Plugin\CheckoutProcessor" />
+     </type>
+-</config>
+\ No newline at end of file
++</config>
+
+--- a/etc/frontend/events.xml
++++ b/etc/frontend/events.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+     <event name="shortcut_buttons_container">
+         <observer name="amazon_buttons" instance="Amazon\Payment\Observer\AddAmazonButton"/>
+
+--- a/etc/frontend/routes.xml
++++ b/etc/frontend/routes.xml
+@@ -1,8 +1,24 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
+     <router id="standard">
+         <route id="amazon_payments" frontName="amazonpayments">
+             <module name="Amazon_Payment" />
+         </route>
+     </router>
+-</config>
+\ No newline at end of file
++</config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,22 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="2.1.4" >
++    <module name="Amazon_Payment" setup_version="3.0.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/etc/payment.xml
++++ b/etc/payment.xml
+@@ -1,4 +1,20 @@
+ <?xml version="1.0"?>
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
+ <payment xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Payment:etc/payment.xsd">
+     <methods>
+         <method name="amazon_payment">
+
+--- a/etc/webapi.xml
++++ b/etc/webapi.xml
+@@ -1,6 +1,21 @@
+ <?xml version="1.0"?>
+-<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
++<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+     <route url="/V1/amazon-shipping-address/:amazonOrderReferenceId" method="PUT">
+         <service class="Amazon\Payment\Api\AddressManagementInterface" method="getShippingAddress"/>
+         <resources>
+
+--- a/view/frontend/layout/customer_account_edit.xml
++++ b/view/frontend/layout/customer_account_edit.xml
+@@ -8,18 +8,8 @@
+ <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+     <update handle="customer_account"/>
+     <body>
+-        <referenceBlock name="head.components">
+-            <block class="Magento\Framework\View\Element\Js\Components" name="customer_account_edit_head_components" template="Magento_Customer::js/components.phtml"/>
+-        </referenceBlock>
+-        <referenceBlock name="page.main.title">
+-            <action method="setPageTitle">
+-                <argument translate="true" name="title" xsi:type="string">Edit Account Information</argument>
+-            </action>
+-        </referenceBlock>
+-        <referenceContainer name="content">
+-            <block class="Magento\Customer\Block\Form\Edit" name="customer_edit" template="Amazon_Payment::form/edit.phtml" cacheable="false">
+-                <container name="form.additional.info" as="form_additional_info"/>
+-            </block>
++        <referenceContainer name="form.additional.info">
++            <block class="Amazon\Payment\Block\Widget\ResetPassword" name="amazon.pay.password.reset" before="-" template="Amazon_Payment::widget/resetpassword.phtml" cacheable="false" />
+         </referenceContainer>
+     </body>
+ </page>
+
+--- a/view/frontend/templates/form/edit.phtml
++++ /dev/null
+@@ -1,140 +0,0 @@
+-<?php
+-/**
+- * Copyright © Magento, Inc. All rights reserved.
+- * See COPYING.txt for license details.
+- */
+-
+-// @codingStandardsIgnoreFile
+-
+-/** @var \Magento\Customer\Block\Form\Edit $block */
+-?>
+-<form class="form form-edit-account" action="<?= $block->escapeUrl($block->getUrl('customer/account/editPost')) ?>" method="post" id="form-validate" enctype="multipart/form-data" data-hasrequired="<?= $block->escapeHtmlAttr(__('* Required Fields')) ?>" autocomplete="off">
+-    <fieldset class="fieldset info">
+-        <?= $block->getBlockHtml('formkey') ?>
+-        <legend class="legend"><span><?= $block->escapeHtml(__('Account Information')) ?></span></legend><br>
+-        <?php $amazonReset = $block->getLayout()->createBlock('Amazon\Payment\Block\Widget\ResetPassword'); ?>
+-        <?php if ($amazonReset->displayAmazonInfo()): ?>
+-            <?= $amazonReset->toHtml(); ?>
+-        <?php endif; ?>
+-        <?= $block->getLayout()->createBlock('Magento\Customer\Block\Widget\Name')->setObject($block->getCustomer())->toHtml() ?>
+-
+-        <?php $_dob = $block->getLayout()->createBlock('Magento\Customer\Block\Widget\Dob') ?>
+-        <?php $_taxvat = $block->getLayout()->createBlock('Magento\Customer\Block\Widget\Taxvat') ?>
+-        <?php $_gender = $block->getLayout()->createBlock('Magento\Customer\Block\Widget\Gender') ?>
+-        <?php if ($_dob->isEnabled()): ?>
+-            <?= $_dob->setDate($block->getCustomer()->getDob())->toHtml() ?>
+-        <?php endif ?>
+-        <?php if ($_taxvat->isEnabled()): ?>
+-            <?= $_taxvat->setTaxvat($block->getCustomer()->getTaxvat())->toHtml() ?>
+-        <?php endif ?>
+-        <?php if ($_gender->isEnabled()): ?>
+-            <?= $_gender->setGender($block->getCustomer()->getGender())->toHtml() ?>
+-        <?php endif ?>
+-        <div class="field choice">
+-            <input type="checkbox" name="change_email" id="change-email" data-role="change-email" value="1" title="<?= $block->escapeHtmlAttr(__('Change Email')) ?>" class="checkbox" />
+-            <label class="label" for="change-email"><span><?= $block->escapeHtml(__('Change Email')) ?></span></label>
+-        </div>
+-        <div class="field choice">
+-            <input type="checkbox" name="change_password" id="change-password" data-role="change-password" value="1" title="<?= $block->escapeHtmlAttr(__('Change Password')) ?>"<?php if ($block->getChangePassword()): ?> checked="checked"<?php endif; ?> class="checkbox" />
+-            <label class="label" for="change-password"><span><?= $block->escapeHtml(__('Change Password')) ?></span></label>
+-        </div>
+-    </fieldset>
+-
+-    <fieldset class="fieldset password" data-container="change-email-password">
+-        <legend class="legend"><span data-title="change-email-password"><?= $block->escapeHtml(__('Change Email and Password')) ?></span></legend><br>
+-        <div class="field email required" data-container="change-email">
+-            <label class="label" for="email"><span><?= $block->escapeHtml(__('Email')) ?></span></label>
+-            <div class="control">
+-                <input type="email" name="email" id="email" autocomplete="email" data-input="change-email" value="<?= $block->escapeHtmlAttr($block->getCustomer()->getEmail()) ?>" title="<?= $block->escapeHtmlAttr(__('Email')) ?>" class="input-text" data-validate="{required:true, 'validate-email':true}" />
+-            </div>
+-        </div>
+-        <div class="field password current required">
+-            <label class="label" for="current-password"><span><?= $block->escapeHtml(__('Current Password')) ?></span></label>
+-            <div class="control">
+-                <input type="password" class="input-text" name="current_password" id="current-password" data-input="current-password" autocomplete="off" />
+-            </div>
+-        </div>
+-        <div class="field new password required" data-container="new-password">
+-            <label class="label" for="password"><span><?= $block->escapeHtml(__('New Password')) ?></span></label>
+-            <div class="control">
+-                <input type="password" class="input-text" name="password" id="password"
+-                    data-password-min-length="<?= $block->escapeHtml($block->getMinimumPasswordLength()) ?>"
+-                    data-password-min-character-sets="<?= $block->escapeHtml($block->getRequiredCharacterClassesNumber()) ?>"
+-                    data-input="new-password"
+-                    data-validate="{required:true, 'validate-customer-password':true}"
+-                    autocomplete="off" />
+-                <div id="password-strength-meter-container" data-role="password-strength-meter" aria-live="polite">
+-                    <div id="password-strength-meter" class="password-strength-meter">
+-                        <?= $block->escapeHtml(__('Password Strength')) ?>:
+-                        <span id="password-strength-meter-label" data-role="password-strength-meter-label">
+-                            <?= $block->escapeHtml(__('No Password')) ?>
+-                        </span>
+-                    </div>
+-                </div>
+-            </div>
+-        </div>
+-        <div class="field confirm password required" data-container="confirm-password">
+-            <label class="label" for="password-confirmation"><span><?= $block->escapeHtml(__('Confirm New Password')) ?></span></label>
+-            <div class="control">
+-                <input type="password" class="input-text" name="password_confirmation" id="password-confirmation"
+-                    data-input="confirm-password"
+-                    autocomplete="off" />
+-            </div>
+-        </div>
+-    </fieldset>
+-    <?= $block->getChildHtml('form_additional_info') ?>
+-    <div class="actions-toolbar">
+-        <div class="primary">
+-            <button type="submit" class="action save primary" title="<?= $block->escapeHtmlAttr(__('Save')) ?>"><span><?= $block->escapeHtml(__('Save')) ?></span></button>
+-        </div>
+-        <div class="secondary">
+-            <a class="action back" href="<?= $block->escapeUrl($block->getBackUrl()) ?>"><span><?= $block->escapeHtml(__('Go back')) ?></span></a>
+-        </div>
+-    </div>
+-</form>
+-<script>
+-    require([
+-        "jquery",
+-        "mage/mage"
+-    ], function($){
+-        var dataForm = $('#form-validate');
+-        var ignore = <?= /* @noEscape */ $_dob->isEnabled() ? '\'input[id$="full"]\'' : 'null' ?>;
+-        
+-        dataForm.mage('validation', {
+-        <?php if ($_dob->isEnabled()): ?>
+-            errorPlacement: function(error, element) {
+-                if (element.prop('id').search('full') !== -1) {
+-                    var dobElement = $(element).parents('.customer-dob'),
+-                        errorClass = error.prop('class');
+-                    error.insertAfter(element.parent());
+-                    dobElement.find('.validate-custom').addClass(errorClass)
+-                        .after('<div class="' + errorClass + '"></div>');
+-                }
+-                else {
+-                    error.insertAfter(element);
+-                }
+-            },
+-            ignore: ':hidden:not(' + ignore + ')'
+-        <?php else: ?>
+-            ignore: ignore ? ':hidden:not(' + ignore + ')' : ':hidden'
+-        <?php endif ?>
+-        });
+-
+-    });
+-</script>
+-<script type="text/x-magento-init">
+-    {
+-        "[data-role=change-email], [data-role=change-password]": {
+-            "changeEmailPassword": {
+-                "titleChangeEmail": "<?= $block->escapeJs($block->escapeHtml(__('Change Email'))) ?>",
+-                "titleChangePassword": "<?= $block->escapeJs($block->escapeHtml(__('Change Password'))) ?>",
+-                "titleChangeEmailAndPassword": "<?= $block->escapeJs($block->escapeHtml(__('Change Email and Password'))) ?>"
+-            }
+-        },
+-        "[data-container=new-password]": {
+-            "passwordStrengthIndicator": {
+-                "formSelector": "form.form-edit-account"
+-            }
+-        }
+-    }
+-</script>
+
+--- a/view/frontend/templates/widget/resetpassword.phtml
++++ b/view/frontend/templates/widget/resetpassword.phtml
+@@ -10,5 +10,5 @@
+ ?>
+ <div class="field password-info">
+     <p><?= $block->escapeHtml(__('If you created this account using Amazon Pay, you might not know your site password.')) ?>
+-        <a href="<?php echo $block->getLink(); ?>"><?= $block->escapeHtml(__('Request a password to change your account password.')); ?></a></p>
+-</div>
+\ No newline at end of file
++        <a href="<?= $block->escapeHtml($block->getLink()); ?>"><?= $block->escapeHtml(__('Request a password to change your account password.')); ?></a></p>
++</div>
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -28,8 +28,7 @@ define(
+         'use strict';
+ 
+         return function (paymentData, redirectOnSuccess) {
+-            var serviceUrl,
+-                payload;
++            var serviceUrl, payload;
+ 
+             redirectOnSuccess = redirectOnSuccess !== false;
+ 
+@@ -69,11 +68,12 @@ define(
+                     errorProcessor.process(response);
+                     amazonStorage.amazonDeclineCode(response.responseJSON.code);
+                     fullScreenLoader.stopLoader(true);
+-                    if (response.responseJSON.code == 4273) {
++                    if (response.responseJSON.code === 4273) {
+                         var intervalId = setInterval(function () {
+                             clearInterval(intervalId);
+                             window.location.replace(url.build('checkout/cart/'));
+                         }, 5000);
++
+                     }
+                 }
+             );
+
+--- a/view/frontend/web/js/amazon-button.js
++++ b/view/frontend/web/js/amazon-button.js
+@@ -21,11 +21,11 @@ define([
+     'modernizr/modernizr',
+     'amazonCore',
+     'jquery/ui',
+-    'uiRegistry',
++    'uiRegistry'
+ ], function ($, customerData, sectionConfig, amazonPaymentConfig, amazonCsrf) {
+     'use strict';
+-    var _this,
+-        $button;
++    var _this, $button;
++
+     if (amazonPaymentConfig.isDefined()) {
+         $.widget('amazon.AmazonButton', {
+             options: {
+@@ -97,7 +97,8 @@ define([
+              * @return {String}
+              */
+             _popupCallback: function () {
+-                return _this.usePopUp() ? _this.secureHttpsCallback : amazonPaymentConfig.getValue('oAuthHashRedirectUrl');
++                return _this.usePopUp() ? _this.secureHttpsCallback :
++                    amazonPaymentConfig.getValue('oAuthHashRedirectUrl');
+             },
+ 
+             /**
+
+--- a/view/frontend/web/js/amazon-widgets-loader.js
++++ b/view/frontend/web/js/amazon-widgets-loader.js
+@@ -16,12 +16,12 @@
+ var registry = require('uiRegistry');
+ 
+ if (registry.get('amazonPayment') !== undefined) {
+-
+     var amazonPayment = registry.get('amazonPayment');
+ 
+     define([amazonPayment.widgetUrl], function () {
+         'use strict';
+ 
+         //after amazon widgets file as loaded
++
+     });
+-}
+\ No newline at end of file
++}
+
+--- a/view/frontend/web/js/view/payment/amazonlogin.js
++++ b/view/frontend/web/js/view/payment/amazonlogin.js
+@@ -1,7 +1,7 @@
+ define(
+     [
+         'uiComponent',
+-        'Magento_Checkout/js/model/payment/renderer-list',
++        'Magento_Checkout/js/model/payment/renderer-list'
+     ],
+     function (
+         Component,
+@@ -14,10 +14,9 @@ define(
+                 component: 'Amazon_Payment/js/view/payment/method-renderer/amazonlogin'
+             }
+         );
+-        /**
+-    * 
+-    * Add view logic here if needed 
+-    */
++
++    // Add view logic here if needed
++
+         return Component.extend({});
+     }
+ );
+
+--- a/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
++++ b/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
+@@ -154,16 +154,17 @@ define(
+                     JSON.stringify(payload)
+                 ).done(
+                     function (data) {
+-                        var amazonAddress = data.shift(),
+-                            addressData;
++                        var amazonAddress = data.shift(), addressData;
+ 
+                         addressData = addressConverter.formAddressDataToQuoteAddress(amazonAddress);
+                         addressData.telephone = !addressData.telephone ? '0000000000' : addressData.telephone;
+ 
+                         selectBillingAddress(addressData);
+                         amazonStorage.isPlaceOrderDisabled(false);
++
+                         if(window.checkoutConfig.amazonLogin.amazon_customer_email) {
+                             var customerField = $('#customer-email').val();
++
+                             if (!customerField) {
+                                 $('#customer-email').val(window.checkoutConfig.amazonLogin.amazon_customer_email);
+                             }
+
+--- a/view/frontend/web/js/view/payment/method-renderer/amazonlogin.js
++++ b/view/frontend/web/js/view/payment/method-renderer/amazonlogin.js
+@@ -7,16 +7,17 @@ define(
+         'mage/storage',
+         'amazonPaymentConfig',
+         'uiRegistry',
+-        'Amazon_Login/js/view/login-button',
++        'Amazon_Login/js/view/login-button'
+     ],
+-    function ($,
++    function (
++        $,
+         Component,
+         ko,
+         amazonStorage,
+         storage,
+         amazonPaymentConfig,
+         registry,
+-        loginButton,
++        loginButton
+     ) {
+         'use strict';
+ 
+@@ -27,17 +28,15 @@ define(
+                 defaults: {
+                     template: 'Amazon_Payment/payment/amazonlogin'
+                 },
+-
+                 getCode: function () {
+                     return 'amazonlogin';
+                 },
+                 isActive: function () {
+                     return true;
+                 },
+-
+                 isPwaVisible: function () {
+                     return amazonStorage.isPwaVisible && amazonStorage.isAmazonEnabled;
+-                },
++                }
+             }
+         );
+     }
+

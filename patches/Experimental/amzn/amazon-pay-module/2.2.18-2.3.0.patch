@@ -1,0 +1,245 @@
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -15,10 +15,13 @@
+  */
+ namespace Amazon\Payment\Controller\Payment;
+ 
++use Amazon\Core\Exception\AmazonServiceUnavailableException;
+ use Amazon\Core\Exception\AmazonWebapiException;
+ use Amazon\Core\Logger\ExceptionLogger;
++use Amazon\Payment\Api\OrderInformationManagementInterface;
+ use Magento\Framework\App\Action\Action;
+ use Magento\Framework\App\Action\Context;
++use Magento\Framework\Exception\NotFoundException;
+ use Magento\Quote\Api\CartManagementInterface;
+ use Magento\Quote\Api\GuestCartManagementInterface;
+ use Magento\Checkout\Model\Session as CheckoutSession;
+@@ -55,6 +58,11 @@ class CompleteCheckout extends Action
+      */
+     private $exceptionLogger;
+ 
++    /**
++     * @var OrderInformationManagementInterface
++     */
++    private $orderInformationManagement;
++
+     /**
+      * CompleteCheckout constructor.
+      *
+@@ -66,6 +74,7 @@ class CompleteCheckout extends Action
+      * @param PageFactory $pageFactory
+      * @param MessageManager $messageManager
+      * @param ExceptionLogger $exceptionLogger
++     * @param OrderInformationManagementInterface $orderInformationManagement
+      */
+     public function __construct(
+         Context $context,
+@@ -75,7 +84,8 @@ class CompleteCheckout extends Action
+         Session $session,
+         PageFactory $pageFactory,
+         MessageManager $messageManager,
+-        ExceptionLogger $exceptionLogger = null
++        ExceptionLogger $exceptionLogger = null,
++        OrderInformationManagementInterface $orderInformationManagement = null
+     ) {
+         parent::__construct($context);
+         $this->cartManagement = $cartManagement;
+@@ -84,6 +94,8 @@ class CompleteCheckout extends Action
+         $this->pageFactory = $pageFactory;
+         $this->messageManager = $messageManager;
+         $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
++        $this->orderInformationManagement = $orderInformationManagement ?: ObjectManager::getInstance()
++            ->get(OrderInformationManagementInterface::class);
+     }
+ 
+     /*
+@@ -119,6 +131,23 @@ class CompleteCheckout extends Action
+                         . 'Please try again, or use a different payment method.'
+                     ));
+             }
++
++            $quote = $this->checkoutSession->getQuote();
++            if(!$quote) {
++                throw new NotFoundException(__('Failed to retrieve quote from checkoutSession'));
++            }
++            $orderReferenceId = $quote
++                ->getExtensionAttributes()
++                ->getAmazonOrderReferenceId();
++            if($orderReferenceId) {
++                // Cancel the order to prevent confusion when the merchant views Transactions in Seller Central
++                try {
++                    $this->orderInformationManagement->cancelOrderReference($orderReferenceId, $quote->getStoreId());
++                } catch(AmazonServiceUnavailableException $e) {
++                    $this->exceptionLogger->logException($e);
++                }
++            }
++
+             return $this->_redirect('checkout/cart');
+         } catch(\Exception $e) {
+             $this->exceptionLogger->logException($e);
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -271,7 +271,7 @@ class AmazonPaymentAdapter
+ 
+         /** if first synchronous attempt failed, on second attempt try an asynchronous attempt. */
+         if ($authMode != 'synchronous' && $attempts) {
+-            $authorizeData['transaction_timeout'] = 5;
++            $authorizeData['transaction_timeout'] = 1440;
+         }
+ 
+         $response['status'] = false;
+
+--- a/Test/Mftf/composer.json
++++ /dev/null
+@@ -1,28 +0,0 @@
+-{
+-  "name": "amzn/login-with-amazon-module",
+-  "description": "Login with Amazon module",
+-  "type": "magento2-module",
+-  "version": "2.1.2",
+-  "license": [
+-    "Apache-2.0"
+-  ],
+-  "require": {
+-    "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.1.2",
+-    "magento/module-customer": "^101.0",
+-    "magento/module-store": "^100.1",
+-    "magento/module-eav": "101.0.*",
+-    "magento/module-checkout": "100.2.*",
+-    "magento/module-checkout-agreements": "100.2.*"
+-
+-  },
+-  "suggest": {
+-    "magento/module-sales": "101.0.*"
+-  },
+-  "autoload": {
+-    "files": ["registration.php"],
+-    "psr-4": {
+-      "Amazon\\Login\\": ""
+-    }
+-  }
+-}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "2.2.18",
++  "version": "2.3.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.18",
+-    "amzn/login-with-amazon-module": "^2.2.18",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.3.0",
++    "amzn/login-with-amazon-module": "^2.3.0",
+     "magento/module-eav": "*",
+     "magento/module-sales": "*",
+     "magento/module-quote": "*",
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -38,6 +38,7 @@
+                 <platform_id>AUGT0HMCLQVX1</platform_id>
+                 <hard_decline_code>4273</hard_decline_code>
+                 <soft_decline_code>7638</soft_decline_code>
++                <sca_regions>de,uk</sca_regions>
+             </amazon_payment>
+         </payment>
+     </default>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="2.2.18" >
++    <module name="Amazon_Payment" setup_version="2.3.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/templates/minicart-button.phtml
++++ b/view/frontend/templates/minicart-button.phtml
+@@ -17,17 +17,9 @@
+ /**
+  * @var \Amazon\Payment\Block\Minicart\Button $block
+  */
+-$config = [
+-    'Amazon_Payment/js/amazon-button' => [
+-        'buttonType' => 'PwA'
+-    ]
+-];
+-
+-$tooltipConfig = [
+-    'dropdown' => [
+-        'activeClass' => '_active'
+-    ]
+-];
++$config = ['buttonType' => 'PwA'];
++$tooltipConfig = ['activeClass' => '_active'];
++$jsonHelper = $this->helper(Magento\Framework\Json\Helper\Data::class);
+ ?>
+ 
+ <div id="minicart-amazon-pay-button" class="amazon-minicart-container">
+@@ -35,14 +27,14 @@ $tooltipConfig = [
+         <div class="amazon-button-container__cell">
+             <div id="PayWithAmazon-<?= /* @noEscape */ $block->getParentBlock()->getJsId() ?>"
+                  class="login-with-amazon"
+-                 data-mage-init='<?= /* @noEscape */ json_encode($config); ?>'>
++                 data-mage-init='{"Amazon_Payment/js/amazon-button":<?= /* @noEscape */ $jsonHelper->jsonEncode($config) ?>}'>
+             </div>
+         </div>
+ 
+         <div class="amazon-button-container__cell">
+             <div class="field-tooltip toggle">
+                 <span class="field-tooltip-action action-help"
+-                      data-mage-init='<?= /* @noEscape */ json_encode($tooltipConfig); ?>'
++                      data-mage-init='{"dropdown":<?= /* @noEscape */ $jsonHelper->jsonEncode($tooltipConfig) ?>}'
+                       data-toggle="dropdown"
+                       aria-haspopup="true"
+                       aria-expanded="false">
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -55,7 +55,7 @@ define(
+             }
+ 
+             fullScreenLoader.startLoader();
+-            if(['de', 'uk'].indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
++            if(amazonPaymentConfig.getValue('scaRegions').indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
+                 console.log('SCA enabled for region: ' + amazonPaymentConfig.getValue('region'));
+                 return OffAmazonPayments.initConfirmationFlow(amazonPaymentConfig.getValue('merchantId'), amazonStorage.getOrderReference(), function(confirmationFlow) {
+                     return storage.post(
+
+--- a/view/frontend/web/js/amazon-button.js
++++ b/view/frontend/web/js/amazon-button.js
+@@ -151,7 +151,6 @@ define([
+                      * Authorization callback
+                      */
+                     authorization: function () {
+-                        fullScreenLoader.startLoader();
+                         //eslint-disable-next-line no-undef
+                         amazon.Login.authorize(_this._getLoginOptions(), _this._popupCallback());
+                     }
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -53,9 +53,7 @@ define(
+          * Log out amazon user
+          */
+         function amazonLogOut() {
+-            if (amazonCore.amazonDefined()) {
+-                amazon.Login.logout(); // eslint-disable-line no-undef
+-            }
++            amazonCore.AmazonLogout();
+             this.isAmazonAccountLoggedIn(false);
+         }
+ 
+
