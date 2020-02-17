@@ -1,0 +1,1829 @@
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -30,21 +30,13 @@ class IpnUrl extends BaseField
+      */
+     protected function _renderValue(AbstractElement $element)
+     {
+-        $stores = $this->_storeManager->getStores();
++        $store = $this->_storeManager->getDefaultStoreView();
+         $valueReturn = '';
+-        $urlArray = [];
+ 
+-        foreach ($stores as $store) {
+-            $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
+-            if ($baseUrl) {
+-                $value      = $baseUrl . 'amazonpayments/payment/ipn/';
+-                $urlArray[] = "<div>".$this->escapeHtml($value)."</div>";
+-            }
+-        }
+-
+-        $urlArray = array_unique($urlArray);
+-        foreach ($urlArray as $uniqueUrl) {
+-            $valueReturn .= "<div>".$uniqueUrl."</div>";
++        $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
++        if ($baseUrl) {
++            $value       = $baseUrl . 'amazonpayments/payment/ipn/';
++            $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+         }
+ 
+         return '<td class="value">' . $valueReturn . '</td>';
+
+--- a/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
++++ b/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
+@@ -22,8 +22,7 @@ use Magento\Backend\Model\UrlInterface;
+ use Magento\Framework\App\Filesystem\DirectoryList;
+ 
+ /**
+- * Class DeveloperLogs
+- * @package Block\Adminhtml\System\Config\Form
++ * Displays links to available custom logs
+  */
+ class DeveloperLogs extends \Magento\Config\Block\System\Config\Form\Field
+ {
+@@ -56,8 +55,7 @@ class DeveloperLogs extends \Magento\Config\Block\System\Config\Form\Field
+         DirectoryList $directoryList,
+         UrlInterface $urlBuilder,
+         $data = []
+-    )
+-    {
++    ) {
+         $this->directoryList = $directoryList;
+         $this->urlBuilder = $urlBuilder;
+         parent::__construct($context, $data);
+
+--- a/Block/Adminhtml/System/Config/SimplePathAdmin.php
++++ b/Block/Adminhtml/System/Config/SimplePathAdmin.php
+@@ -42,7 +42,7 @@ class SimplePathAdmin extends \Magento\Framework\View\Element\Template
+     /**
+      * Return SimplePath settings
+      */
+-    public function getAmazonSpJson()
++    public function getJsonConfig()
+     {
+         return json_encode($this->simplePath->getJsonAmazonSpConfig());
+     }
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -22,7 +22,8 @@ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+ 
+ /**
+- * @api
++ * Config
++ * Provides a block that displays links to available custom error logs in Amazon Pay admin/config section.
+  */
+ class Config extends Template
+ {
+@@ -81,7 +82,8 @@ class Config extends Template
+             'isEuPaymentRegion'        => $this->coreHelper->isEuPaymentRegion(),
+             'oAuthHashRedirectUrl'     => $this->coreHelper->getOAuthRedirectUrl(),
+             'isQuoteDirty'             => $this->categoryExclusionHelper->isQuoteDirty(),
+-            'region'                   => $this->coreHelper->getRegion()
++            'region'                   => $this->coreHelper->getRegion(),
++            'scaRegions'               => $this->coreHelper->getScaRegions()
+         ];
+ 
+         if ($this->coreHelper->isSandboxEnabled()) {
+@@ -104,7 +106,7 @@ class Config extends Template
+      */
+     public function isExtensionEnabled()
+     {
+-	    return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
++        return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
+     }
+ 
+     /**
+
+--- a/Controller/Adminhtml/Download/ClientLog.php
++++ b/Controller/Adminhtml/Download/ClientLog.php
+@@ -23,7 +23,7 @@ use Magento\Framework\Exception\NotFoundException;
+ 
+ /**
+  * Class ClientLog
+- * @package Amazon\Core\Controller\Adminhtml\Download
++ * Enables custom client log file to be accessed via an admin link
+  */
+ class ClientLog extends System
+ {
+@@ -40,8 +40,7 @@ class ClientLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+@@ -66,7 +65,7 @@ class ClientLog extends System
+                 ]
+             );
+         } catch (\Exception $e) {
+-            throw new NotFoundException(__($e->getMessage()));
++            throw new NotFoundException($e->getMessage());
+         }
+     }
+ 
+
+--- a/Controller/Adminhtml/Download/IpnLog.php
++++ b/Controller/Adminhtml/Download/IpnLog.php
+@@ -23,7 +23,7 @@ use Magento\Framework\Exception\NotFoundException;
+ 
+ /**
+  * Class IpnLog
+- * @package Amazon\Core\Controller\Adminhtml\Download
++ * Enables custom IPN log file to be accessed via an admin link
+  */
+ class IpnLog extends System
+ {
+@@ -40,8 +40,7 @@ class IpnLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+@@ -66,7 +65,7 @@ class IpnLog extends System
+                 ]
+             );
+         } catch (\Exception $e) {
+-            throw new NotFoundException(__($e->getMessage()));
++            throw new NotFoundException($e->getMessage());
+         }
+     }
+ 
+
+--- a/Controller/Adminhtml/Simplepath/Poll.php
++++ b/Controller/Adminhtml/Simplepath/Poll.php
+@@ -17,19 +17,44 @@ namespace Amazon\Core\Controller\Adminhtml\Simplepath;
+ 
+ use Magento\Backend\App\Action\Context;
+ use Magento\Backend\Controller\Adminhtml\System;
++use Magento\Framework\App\ObjectManager;
++use Amazon\Core\Logger\ExceptionLogger;
+ 
+ class Poll extends System
+ {
++
++    /**
++     * @var \Amazon\Core\Model\Config\SimplePath
++     */
++    private $simplePath;
++
++    /**
++     * @var \Magento\Framework\App\Config\ScopeConfigInterface
++     */
++    private $scopeConfig;
++
++    /**
++     * @var \Magento\Framework\Controller\Result\JsonFactory
++     */
++    private $jsonResultFactory;
++
++    /**
++     * @var \Amazon\Core\Logger\ExceptionLogger
++     */
++    private $exceptionLogger;
++
+     public function __construct(
+         Context $context,
+         \Amazon\Core\Model\Config\SimplePath $simplePath,
+         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+-        \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory
++        \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
++        \Amazon\Core\Logger\ExceptionLogger $exceptionLogger = null
+     ) {
+         parent::__construct($context);
+         $this->simplePath = $simplePath;
+         $this->scopeConfig = $scopeConfig;
+         $this->jsonResultFactory = $jsonResultFactory;
++        $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
+     }
+ 
+     /**
+@@ -37,19 +62,24 @@ class Poll extends System
+      */
+     public function execute()
+     {
+-        // Keypair is destroyed when credentials are saved
+-        $shouldRefresh = !($this->scopeConfig->getValue(
+-            \Amazon\Core\Model\Config\SimplePath::CONFIG_XML_PATH_PUBLIC_KEY,
+-            'default',
+-            0
+-        ));
+-
+-        if ($shouldRefresh) {
+-            $this->simplePath->autoEnable();
+-        }
++        try {
++            // Keypair is destroyed when credentials are saved
++            $shouldRefresh = !($this->scopeConfig->getValue(
++                \Amazon\Core\Model\Config\SimplePath::CONFIG_XML_PATH_PUBLIC_KEY,
++                'default',
++                0
++            ));
+ 
+-        $result = $this->jsonResultFactory->create();
+-        $result->setData((int)$shouldRefresh);
+-        return $result;
++            if ($shouldRefresh) {
++                $this->simplePath->autoEnable();
++            }
++
++            $result = $this->jsonResultFactory->create();
++            $result->setData((int)$shouldRefresh);
++            return $result;
++        } catch (\Exception $e) {
++            $this->exceptionLogger->logException($e);
++            throw $e;
++        }
+     }
+ }
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -16,9 +16,12 @@
+ 
+ namespace Amazon\Core\Controller\Simplepath;
+ 
++use Amazon\Core\Logger\ExceptionLogger;
++use Magento\Framework\App\ObjectManager;
++
+ /**
+  * Class Listener
+- * @package Amazon\Core\Controller\Simplepath
++ * Retrieves entered keys from Amazon Pay popup
+  */
+ class Listener extends \Magento\Framework\App\Action\Action
+ {
+@@ -29,22 +32,28 @@ class Listener extends \Magento\Framework\App\Action\Action
+     // @var \Amazon\Core\Model\Config\SimplePath
+     private $simplepath;
+ 
++    // @var \Amazon\Core\Logger\ExceptionLogger
++    private $exceptionLogger;
++
+     /**
+      * Listener constructor.
+      * @param \Magento\Framework\App\Action\Context $context
+      * @param \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory
+      * @param \Amazon\Core\Model\Config\SimplePath $simplepath
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     * @param \Amazon\Core\Logger\ExceptionLogger $exceptionLogger
+      */
+     public function __construct(
+         \Magento\Framework\App\Action\Context $context,
+         \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
+         \Amazon\Core\Model\Config\SimplePath $simplepath,
+-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
++        ExceptionLogger $exceptionLogger = null
+     ) {
+-        $this->simplepath        = $simplepath;
++        $this->simplepath = $simplepath;
+         $this->jsonResultFactory = $jsonResultFactory;
+-        $this->scopeConfig       = $scopeConfig;
++        $this->scopeConfig = $scopeConfig;
++        $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
+         parent::__construct($context);
+     }
+ 
+@@ -53,41 +62,48 @@ class Listener extends \Magento\Framework\App\Action\Action
+      */
+     public function execute()
+     {
+-        $url = parse_url($this->simplepath->getEndpointRegister());
+-        $host = trim(preg_replace("/\r|\n/", "", $url['host']));
+-        $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' .$host );
+-        $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+-        $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++        try {
++            $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
++            if (in_array($host, $this->simplepath->getListenerOrigins())) {
++                $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++            }
++            $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
++            $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++            $this->getResponse()->setHeader('Vary', 'Origin');
+ 
+-        $payload = $this->_request->getParam('payload');
++            $payload = $this->_request->getParam('payload');
+ 
+-        $result = $this->jsonResultFactory->create();
++            $result = $this->jsonResultFactory->create();
+ 
+-        $return = ['result' => 'error', 'message' => 'Empty payload'];
++            $return = ['result' => 'error', 'message' => 'Empty payload'];
+ 
+-        try {
+-            if (strpos($payload, 'encryptedKey') === false) {
+-                $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
+-            } else if ($payload) {
+-                $json = $this->simplepath->decryptPayload($payload, false);
++            try {
++                if (strpos($payload, 'encryptedKey') === false) {
++                    $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
++                } elseif ($payload) {
++                    $json = $this->simplepath->decryptPayload($payload, false);
+ 
+-                if ($json) {
+-                    $return = ['result' => 'success'];
++                    if ($json) {
++                        $return = ['result' => 'success'];
++                    }
++                } else {
++                    $return = ['result' => 'error', 'message' => 'payload parameter not found.'];
+                 }
+-            } else {
+-                $return = ['result' => 'error', 'message' => 'payload parameter not found.'];
++            } catch (\Exception $e) {
++                $return = ['result' => 'error', 'message' => $e->getMessage()];
+             }
+-        } catch (\Exception $e) {
+-            $return = ['result' => 'error', 'message' => $e->getMessage()];
+-        }
+ 
+-        if ($this->_request->isPost() && (empty($return['result']) || $return['result'] == 'error')) {
+-            $result->setHttpResponseCode(\Magento\Framework\Webapi\Exception::HTTP_BAD_REQUEST);
+-        }
++            if ($this->_request->isPost() && (empty($return['result']) || $return['result'] == 'error')) {
++                $result->setHttpResponseCode(\Magento\Framework\Webapi\Exception::HTTP_BAD_REQUEST);
++            }
+ 
+-        $result->setData($return);
++            $result->setData($return);
+ 
+-        return $result;
++            return $result;
++        } catch (\Exception $e) {
++            $this->exceptionLogger->logException($e);
++            throw $e;
++        }
+     }
+ 
+     /**
+
+--- a/Domain/AmazonAddressDecoratorDe.php
++++ b/Domain/AmazonAddressDecoratorDe.php
+@@ -178,6 +178,6 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+      */
+     public function getLine($lineNumber)
+     {
+-        $this->amazonAddress->getLine($lineNumber);
++        return $this->amazonAddress->getLine($lineNumber);
+     }
+ }
+
+--- a/Domain/AmazonAddressDecoratorJp.php
++++ b/Domain/AmazonAddressDecoratorJp.php
+@@ -37,20 +37,13 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getLines()
+     {
+-        $line1 = (string) $this->amazonAddress->getLine(1);
+-        $line2 = (string) $this->amazonAddress->getLine(2);
+-        $line3 = (string) $this->amazonAddress->getLine(3);
+-        $city = (string) $this->amazonAddress->getCity();
++        $city = $this->amazonAddress->getCity();
+ 
+-        $lines = [];
+-        if (empty($city)) {
+-            $lines[] = trim($line1 . ' ' . $line2);
+-        } else {
+-            $lines[] = $line2;
+-        }
+-        $lines[] = $line3;
+-
+-        return $lines;
++        /*
++         * AmazonAddressDecoratorJp->getCity() returns address line 1 when city is empty.
++         * Omit line 1 from the street address in this case.
++         */
++        return array_slice($this->amazonAddress->getLines(), empty($city) ? 1 : 0);
+     }
+ 
+     /**
+@@ -122,6 +115,10 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getLine($lineNumber)
+     {
+-        $this->amazonAddress->getLine($lineNumber);
++        $lines = $this->getLines();
++        if (isset($lines[$lineNumber-1])) {
++            return $lines[$lineNumber-1];
++        }
++        return null;
+     }
+ }
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -23,10 +23,6 @@ use Magento\Framework\Escaper;
+ 
+ class AmazonAddressFactory
+ {
+-    /**
+-     * @var Escaper
+-     */
+-    private $escaper;
+ 
+     /**
+      * @var ObjectManagerInterface
+@@ -48,7 +44,7 @@ class AmazonAddressFactory
+      *
+      * @param ObjectManagerInterface $objectManager
+      * @param AmazonNameFactory $amazonNameFactory
+-     * @param Escaper $escaper
++     * @param null $escaper Deprecated, do not remove for backward compatibility
+      * @param array $addressDecoratorPool Per-country custom decorators of incoming address data.
+      *                                         The key as an "ISO 3166-1 alpha-2" country code and
+      *                                         the value as an FQCN of a child of AmazonAddress.
+@@ -56,12 +52,11 @@ class AmazonAddressFactory
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+         AmazonNameFactory $amazonNameFactory,
+-        Escaper $escaper,
++        $escaper = null,
+         array $addressDecoratorPool = []
+     ) {
+         $this->objectManager = $objectManager;
+         $this->amazonNameFactory = $amazonNameFactory;
+-        $this->escaper = $escaper;
+         $this->addressDecoratorPool = $addressDecoratorPool;
+     }
+ 
+@@ -76,21 +71,24 @@ class AmazonAddressFactory
+         $address = $responseData['address'];
+         $amazonName = $this->amazonNameFactory->create(
+             [
+-                'name' => $this->escaper->escapeHtml($address['Name']),
+-                'country' => $this->escaper->escapeHtml($address['CountryCode'])]
++                'name' => $address['Name'],
++                'country' => $address['CountryCode']]
+         );
+ 
+         $data = [
+-            AmazonAddressInterface::CITY => isset($address['City']) ? $this->escaper->escapeHtml($address['City']) : '',
+-            AmazonAddressInterface::POSTAL_CODE => isset($address['PostalCode']) ? $this->escaper->escapeHtml($address['PostalCode']) : '',
+-            AmazonAddressInterface::COUNTRY_CODE => $this->escaper->escapeHtml($address['CountryCode']),
+-            AmazonAddressInterface::TELEPHONE => isset($address['Phone']) ? $this->escaper->escapeHtml($address['Phone']) : '',
+-            AmazonAddressInterface::STATE_OR_REGION => isset($address['StateOrRegion']) ? $this->escaper->escapeHtml($address['StateOrRegion']) : '',
+-            AmazonAddressInterface::FIRST_NAME => $this->escaper->escapeHtml($amazonName->getFirstName()),
+-            AmazonAddressInterface::LAST_NAME => $this->escaper->escapeHtml($amazonName->getLastName()),
++            AmazonAddressInterface::POSTAL_CODE => isset($address['PostalCode']) ? $address['PostalCode'] : '',
++            AmazonAddressInterface::COUNTRY_CODE => $address['CountryCode'],
++            AmazonAddressInterface::TELEPHONE => isset($address['Phone']) ? $address['Phone'] : '',
++            AmazonAddressInterface::STATE_OR_REGION => isset($address['StateOrRegion']) ? $address['StateOrRegion'] : '',
++            AmazonAddressInterface::FIRST_NAME => $amazonName->getFirstName(),
++            AmazonAddressInterface::LAST_NAME => $amazonName->getLastName(),
+             AmazonAddressInterface::LINES => $this->getLines($address)
+         ];
+ 
++        if (isset($address['City'])) {
++            $data[AmazonAddressInterface::CITY] = $address['City'];
++        }
++
+         $amazonAddress = $this->objectManager->create(AmazonAddress::class, ['data' => $data]);
+ 
+         $countryCode = strtoupper($address['CountryCode']);
+@@ -128,7 +126,7 @@ class AmazonAddressFactory
+         $lines = [];
+         for ($i = 1; $i <= 3; $i++) {
+             if (isset($responseData['AddressLine' . $i]) && $responseData['AddressLine' . $i]) {
+-                $lines[$i] = $this->escaper->escapeHtml($responseData['AddressLine' . $i]);
++                $lines[$i] = $responseData['AddressLine' . $i];
+             }
+         }
+ 
+
+--- a/Exception/AmazonServiceUnavailableException.php
++++ b/Exception/AmazonServiceUnavailableException.php
+@@ -15,9 +15,9 @@
+  */
+ namespace Amazon\Core\Exception;
+ 
+-use Magento\Framework\Exception\RemoteServiceUnavailableException;
++use Magento\Framework\Exception\LocalizedException;
+ 
+-class AmazonServiceUnavailableException extends RemoteServiceUnavailableException
++class AmazonServiceUnavailableException extends LocalizedException
+ {
+     const ERROR_MESSAGE = 'Amazon could not process your request.';
+ 
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -74,8 +74,7 @@ class Data extends AbstractHelper
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+         StatusFactory $moduleStatusFactory
+-    )
+-    {
++    ) {
+         parent::__construct($context);
+         $this->moduleList = $moduleList;
+         $this->encryptor = $encryptor;
+@@ -187,6 +186,20 @@ class Data extends AbstractHelper
+         return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
+     }
+ 
++    /**
++     * @return array
++     */
++    public function getScaRegions($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $regionList = $this->scopeConfig->getValue(
++            'payment/amazon_payment/sca_regions',
++            $scope,
++            $scopeCode
++        );
++        $regions = explode(',', $regionList);
++        return is_array($regions) ? $regions : [];
++    }
++
+     /*
+      * @return string
+      */
+@@ -316,6 +329,16 @@ class Data extends AbstractHelper
+         );
+     }
+ 
++    /*
++     * @return bool
++     *
++     * @deprecated - invert isLwaEnabled() at the point of use, or use Amazon\Login\Domain\LayoutConfig
++     */
++    public function isLwaDisabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return !$this->isLwaEnabled();
++    }
++
+     /*
+      * @return bool
+      */
+
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,202 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "{}"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright {yyyy} {name of copyright owner}
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++
+
+--- /dev/null
++++ b/Logger/ExceptionLogger.php
+@@ -0,0 +1,33 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Core\Logger;
++
++use Psr\Log\LoggerInterface;
++
++class ExceptionLogger
++{
++    private $logger;
++
++    public function __construct(LoggerInterface $logger)
++    {
++        $this->logger = $logger;
++    }
++    public function logException(\Exception $e)
++    {
++        $message = (string) $e;
++        $this->logger->addError($message);
++    }
++}
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -166,6 +166,19 @@ class SimplePath
+         return $this->getEndpointDomain() . 'register/getpublickey';
+     }
+ 
++    /**
++     * Return listener origins
++     */
++    public function getListenerOrigins()
++    {
++        return [
++            'payments.amazon.com',
++            'payments-eu.amazon.com',
++            'sellercentral.amazon.com',
++            'sellercentral-europe.amazon.com'
++        ];
++    }
++
+     /**
+      * Generate and save RSA keys
+      */
+@@ -274,7 +287,8 @@ class SimplePath
+             // Retrieve Amazon public key to verify signature
+             try {
+                 $client = new \Zend_Http_Client(
+-                    $this->getEndpointPubkey(), [
++                    $this->getEndpointPubkey(),
++                    [
+                         'maxredirects' => 2,
+                         'timeout'      => 30,
+                     ]
+@@ -346,7 +360,8 @@ class SimplePath
+             $this->messageManager->addError(
+                 __(
+                     "If you're experiencing consistent errors with transferring keys, " .
+-                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.", $link
++                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.",
++                    $link
+                 )
+             );
+         }
+
+--- a/Observer/PaymentConfigSaveAfter.php
++++ b/Observer/PaymentConfigSaveAfter.php
+@@ -60,11 +60,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+      */
+     private $request;
+ 
+-    /**
+-     * @var WriterInterface
+-     */
+-    private $configWriter;
+-
+     /**
+      * PaymentConfigSaveAfter constructor.
+      *
+@@ -74,7 +69,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+      * @param Data $amazonCoreHelper
+      * @param ReinitableConfigInterface $config
+      * @param RequestInterface $request
+-     * @param WriterInterface $configWriter
+      */
+     public function __construct(
+         ApiCredentialsValidatorFactory $apiCredentialsValidatorFactory,
+@@ -82,8 +76,7 @@ class PaymentConfigSaveAfter implements ObserverInterface
+         Json $jsonCredentials,
+         Data $amazonCoreHelper,
+         ReinitableConfigInterface $config,
+-        RequestInterface $request,
+-        WriterInterface $configWriter
++        RequestInterface $request
+     ) {
+         $this->apiCredentialsValidatorFactory = $apiCredentialsValidatorFactory;
+         $this->messageManager                 = $messageManager;
+@@ -91,7 +84,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+         $this->jsonCredentials                = $jsonCredentials;
+         $this->appConfig                      = $config;
+         $this->request                        = $request;
+-        $this->configWriter                   = $configWriter;
+     }
+ 
+     /**
+@@ -99,9 +91,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+      */
+     public function execute(Observer $observer)
+     {
+-        // Make sure address captures 3 lines to be compatible with AP
+-        $this->configWriter->save('customer/address/street_lines', 3);
+-
+         if (!$this->request->getParam('amazon_test_creds')) {
+             return;
+         }
+
+--- a/Setup/UpgradeData.php
++++ b/Setup/UpgradeData.php
+@@ -21,7 +21,7 @@ use Magento\Framework\Setup\UpgradeDataInterface;
+ 
+ /**
+  * Class UpgradeData
+- * @package Amazon\Core\Setup
++ * Ensures default authorization mode is set if upgrading from earlier versions
+  */
+ class UpgradeData implements UpgradeDataInterface
+ {
+@@ -33,7 +33,7 @@ class UpgradeData implements UpgradeDataInterface
+     public function upgrade(ModuleDataSetupInterface $setup, ModuleContextInterface $context)
+     {
+         // Used update query because all scopes needed to have this value updated and this is a fast, simple approach
+-        if (version_compare($context->getVersion(), '2.1.0', '<')) {
++        if (version_compare($context->getVersion(), '2.1.1', '<')) {
+             $select = $setup->getConnection()->select()->from(
+                 $setup->getTable('core_config_data'),
+                 ['config_id', 'value']
+
+--- a/Setup/UpgradeSchema.php
++++ b/Setup/UpgradeSchema.php
+@@ -27,7 +27,7 @@ class UpgradeSchema implements UpgradeSchemaInterface
+         $setup->startSetup();
+ 
+         if (version_compare($context->getVersion(), '1.0.0', '<=')) {
+-            $setup->getConnection()->addColumn(
++            $setup->getConnection('quote')->addColumn(
+                 $setup->getTable('quote_item'),
+                 'is_excluded_product',
+                 [
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,23 +2,23 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "2.1.0",
++  "version": "2.3.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.0.13|~7.1.0",
+-    "magento/framework": "101.0.*",
+-    "magento/module-config": "101.0.*",
+-    "magento/module-store": "^100.1",
+-    "magento/module-developer": "100.2.*",
+-    "magento/module-quote": "101.0.*",
+-    "magento/module-catalog": "102.0.*",
+-    "magento/module-customer": "^101.0",
+-    "magento/module-checkout": "100.2.*",
+-    "magento/module-backend": "100.2.*",
+-    "magento/module-payment": "100.2.*",
+-    "magento/module-paypal": "100.2.*",
++    "php": "~7.0.13|~7.1.0|~7.2.0",
++    "magento/framework": "*",
++    "magento/module-config": "*",
++    "magento/module-store": "*",
++    "magento/module-developer": "*",
++    "magento/module-quote": "*",
++    "magento/module-catalog": "*",
++    "magento/module-customer": "*",
++    "magento/module-checkout": "*",
++    "magento/module-backend": "*",
++    "magento/module-payment": "*",
++    "magento/module-paypal": "*",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "autoload": {
+
+--- a/etc/adminhtml/system.xml
++++ b/etc/adminhtml/system.xml
+@@ -3,7 +3,9 @@
+     <system>
+         <section id="payment">
+             <group id="amazon_payment" translate="label" type="text" sortOrder="8" showInDefault="1" showInWebsite="1" showInStore="1">
+-                <label>Amazon Pay</label>
++                <label><![CDATA[<div class="amazon-payment-logo"></div><div class="amazon-payment-byline">The convenient, trusted way to pay.<br/>Let your customers check out in just a few clicks or taps using the shipping and payment info already stored in their Amazon account.</div>]]></label>
++                <fieldset_css>complex amazon-payment-section</fieldset_css>
++                <frontend_model>Magento\Paypal\Block\Adminhtml\System\Config\Fieldset\Payment</frontend_model>
+                 <field id="simplepath" type="text" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                     <frontend_model>Amazon\Core\Block\Adminhtml\System\Config\Form\SimplepathConfig</frontend_model>
+                 </field>
+@@ -161,4 +163,4 @@
+             </group>
+         </section>
+     </system>
+-</config>
++</config>
+\ No newline at end of file
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -33,5 +33,10 @@
+                 <jp>https://static-fe.payments-amazon.com/OffAmazonPayments/jp/sandbox/lpa/js/Widgets.js?nomin</jp>
+             </sandbox>
+         </widget>
++        <customer>
++            <address>
++                <street_lines>3</street_lines>
++            </address>
++        </customer>
+     </default>
+ </config>
+
+--- /dev/null
++++ b/etc/db_schema_whitelist.json
+@@ -0,0 +1,32 @@
++{
++    "amazon_quote": {
++        "column": {
++            "entity_id": true,
++            "quote_id": true,
++            "amazon_order_reference_id": true,
++            "sandbox_simulation_reference": true,
++            "confirmed": true
++        },
++        "index": {
++            "AMAZON_QUOTE_QUOTE_ID": true
++        },
++        "constraint": {
++            "PRIMARY": true,
++            "AMAZON_QUOTE_QUOTE_ID_QUOTE_ENTITY_ID": true
++        }
++    },
++    "amazon_sales_order": {
++        "column": {
++            "entity_id": true,
++            "order_id": true,
++            "amazon_order_reference_id": true
++        },
++        "index": {
++            "AMAZON_SALES_ORDER_ORDER_ID": true
++        },
++        "constraint": {
++            "PRIMARY": true,
++            "AMAZON_SALES_ORDER_ORDER_ID_SALES_ORDER_ENTITY_ID": true
++        }
++    }
++}
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="2.1.0">
++    <module name="Amazon_Core" setup_version="2.3.1">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/view/adminhtml/templates/system/config/simplepath_admin.phtml
++++ b/view/adminhtml/templates/system/config/simplepath_admin.phtml
+@@ -1,15 +1,34 @@
+-<br/>
+ <div id="amazon_simplepath">
++<!--
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
++<br/>
++<div data-mage-init='{
++        "Amazon_Core/js/simplepath": <?php echo $block->escapeHtml($block->getJsonConfig()) ?> }'
++    id="amazon_simplepath">
+ 
+     <?php if (!$block->getCurrency()) : // SimplePath not supported ?>
+         <div id="simplepath_unsported">
+             <?= $block->escapeHtml(__('An unsupported currency is currently selected. ' .
+                 'Please review our configuration guide.')); ?>
+             <span class="note">
+-            <a href="https://amzn.github.io/amazon-payments-magento-2-plugin/configuration.html" target="_blank">
++                <a href="https://amzn.github.io/amazon-payments-magento-2-plugin/configuration.html" target="_blank">
+                 (<?= $block->escapeHtml(__('More Information')); ?>)
+-            </a>
+-        </span>
++                </a>
++            </span>
+         </div>
+ 
+     <?php else : ?>
+@@ -22,23 +41,23 @@
+                 )
+             ); ?>
+             <span class="note">
+-            <a href="https://amzn.github.io/amazon-payments-magento-2-plugin/overview.html" target="_blank">
+-                (<?= $block->escapeHtml(__('More Information')); ?>)
+-            </a>
+-        </span>
++                <a href="https://amzn.github.io/amazon-payments-magento-2-plugin/overview.html" target="_blank">
++                    (<?= $block->escapeHtml(__('More Information')); ?>)
++                </a>
++            </span>
+         </div>
+ 
+         <span class="apsp-getstarted">
+-        <button><span><?= $block->escapeHtml(__('Get started with account registration')); ?></span></button>
+-            <input id="spId" name="spId" type="hidden"/>
+-    </span>
++          <button>
++              <span><?= $block->escapeHtml(__('Get started with account registration')); ?></span>
++          </button>
++        </span>
+         <span class="apsp-or">
+         &nbsp; <?= $block->escapeHtml(__('or')); ?> &nbsp;
+-        <a href="#" id="simplepath-skip">
+-            <?= $block->escapeHtml(__("I've already setup Pay with Amazon, I want to edit my settings")); ?>
+-        </a>
+-    </span>
+-
++          <a href="#" id="simplepath-skip">
++            <?= $block->escapeHtml(__("I've already setup Amazon Pay, I want to edit my settings")); ?>
++          </a>
++        </span>
+         <p id="amazon_https_required">
+             <?= $block->escapeHtml(__("In order to enable automatic account configuration using Amazon's secure key " .
+                 'exchange, please turn on secure admin pages in General > Web > Use secure URLs in Admin.')); ?>
+@@ -60,290 +79,9 @@
+                 <?= $block->escapeHtml(__('Save Credentials')); ?>
+             </button>
+         </div>
+-
+     <?php endif; ?>
+-
+ </div>
+ 
+ <div id="amazon_simplepath_back">
+     <a href="#">&laquo; <?= $block->escapeHtml(__('Back to register or connect an account')); ?></a>
+ </div>
+-
+-<script>
+-
+-    var AmazonSp = <?= /* @noEscape */ $block->getAmazonSpJson(); ?>;
+-
+-    require(['uiRegistry', "prototype", "domReady!"], function (registry) {
+-
+-        // Country code for ID selectors
+-        var co = AmazonSp.co.toLowerCase();
+-        var form;
+-
+-        // Poll every ms for keys
+-        var amazonPollInterval = 1500;
+-        var amazonPollTimer = null;
+-
+-        var amazonSimplepath = $('amazon_simplepath');
+-        var amazonFields = $$('#payment_' + co + '_amazon_payment .form-list');
+-        var amazonSpBack = $('amazon_simplepath_back');
+-        var amazonCredentialJson = jQuery('#row_payment_' + co + '_amazon_payment_credentials_credentials_json');
+-
+-        jQuery('button#save').click(function () {
+-            if (jQuery('#simplepath_form').length > 0) {
+-                jQuery('#simplepath_form').empty();
+-            }
+-            if (amazonPollTimer) {
+-                clearTimeout(amazonPollTimer);
+-            }
+-        });
+-
+-        // Not enabled
+-        if ($('simplepath_hint') == null) {
+-            return;
+-        }
+-
+-        // Show/hide fields
+-        if ($('payment_' + co + '_amazon_payment_credentials_merchant_id') != null) {
+-            if ($('payment_' + co + '_amazon_payment_credentials_merchant_id').value) {
+-                amazonSpBack.setStyle({'display': 'block'});
+-                amazonSimplepath.hide();
+-
+-                if (window.location.hash == '#payment_amazon_payments-head') {
+-                    showAmazonConfig();
+-                }
+-            }
+-        }
+-
+-        if (!form) {
+-            // Generate form to post to Amazon
+-            form = new Element('form', {
+-                method: 'post',
+-                action: AmazonSp.amazonUrl,
+-                id: 'simplepath_form',
+-                target: 'simplepath'
+-            });
+-            amazonSimplepath.wrap(form);
+-
+-            // Convert formParams JSON to hidden inputs
+-            var formInput;
+-            for (var key in AmazonSp.formParams) {
+-                if (typeof AmazonSp.formParams[key] == 'object' || typeof AmazonSp.formParams[key] == 'array') {
+-                    for (var i in AmazonSp.formParams[key]) {
+-                        if (typeof AmazonSp.formParams[key][i] != 'function') {
+-                            form.insert(new Element('input', {
+-                                type: 'hidden',
+-                                name: key,
+-                                value: AmazonSp.formParams[key][i]
+-                            }));
+-                        }
+-                    }
+-                } else {
+-                    form.insert(new Element('input', {type: 'hidden', name: key, value: AmazonSp.formParams[key]}));
+-                }
+-            }
+-
+-            // Get Started clicked
+-            $('simplepath_form').observe('submit', function (e) {
+-                var heights = [660, 720, 810, 900];
+-                var popupHeight = heights[0];
+-                for (var i in heights) {
+-                    popupHeight = (window.innerHeight >= heights[i]) ? heights[i] : popupHeight;
+-                }
+-
+-                var popupWidth = this.action.indexOf('payments-eu') == -1 ? 768 : 1050;
+-
+-                var launchPopup = registry.get('launchPopup');
+-                launchPopup('', popupWidth, popupHeight);
+-
+-                // Show fields and import
+-                amazonFields.each(Element.show);
+-
+-                if (!amazonPollTimer) {
+-                    amazonPollTimer = setTimeout(pollForKeys, amazonPollInterval);
+-                }
+-
+-                // Add "Save Credentials"
+-                var elJson = $('payment_' + co + '_amazon_payment_credentials_credentials_json');
+-                if (elJson && $('sp-td-json-value') == null) {
+-                    // Must create dynamic table to prevent conflict with config tables
+-                    var tableJson = new Element('table').update('<tr><td class="label creds"> \
+-                    <?= $block->escapeHtml(__('Credentials JSON')); ?></td><td class="value" id="sp-td-json-value"></td></tr>');
+-                    amazonSimplepath.insert({bottom: tableJson});
+-                    $('sp-td-json-value').insert($('json-import-wrapper').show());
+-
+-                    // Enable Crednetials JSON config field
+-                    var elIdCredCheck = '#payment_' + co + '_amazon_payment_credentials_credentials_json_inherit:checked';
+-                    var elJsonCheckDefault = $$(elIdCredCheck);
+-                    if (elJsonCheckDefault && elJsonCheckDefault.length) {
+-                        elJsonCheckDefault[0].click();
+-                    }
+-
+-                    // Save JSON
+-                    $('save-json').observe('click', function (e) {
+-                        e.stop();
+-                        var json = $('json-import').value;
+-                        if (!json || !json.isJSON()) {
+-                            alert('<?= $block->escapeHtml(__('Valid JSON credentials are required.')); ?>');
+-                            return;
+-                        }
+-                        elJson.value = json;
+-                        $('save').click();
+-                    });
+-                }
+-
+-                // Autoset payment region (for EU/UK)
+-                var region = AmazonSp.region.toLowerCase();
+-                if (region.indexOf('eu') != -1) {
+-                    region = 'de';
+-                }
+-                var elCheckDefault = $$('#payment_' + co + '_amazon_payment_credentials_payment_region_inherit:checked');
+-                if (elCheckDefault && elCheckDefault.length) {
+-                    elCheckDefault[0].click();
+-                }
+-                var elRegion = $('payment_' + co + '_amazon_payment_credentials_payment_region');
+-                if (elRegion) {
+-                    elRegion.value = region;
+-                }
+-            });
+-        }
+-
+-        // User is skipping simplepath
+-        amazonSimplepath.select('#simplepath-skip')[0].observe('click', function (e) {
+-            e.stop();
+-            showAmazonConfig();
+-            amazonSpBack.setStyle({'display': 'block'});
+-        });
+-
+-        // User clicked 'Back'
+-        $('amazon_simplepath_back').select('a')[0].observe('click', function (e) {
+-            e.stop();
+-            amazonSpBack.hide();
+-            amazonSimplepath.show();
+-        });
+-
+-        function showAmazonConfig() {
+-            amazonFields.each(Element.show);
+-            amazonSimplepath.hide();
+-            amazonSpBack.show();
+-            if (!$('payment_' + co + '_amazon_payment_credentials-head').hasClassName('open')) {
+-                $('payment_' + co + '_amazon_payment_credentials-head').click();
+-            }
+-        }
+-
+-        // Perform Ajax request looking for new keys
+-        function pollForKeys() {
+-            new Ajax.Request(AmazonSp.pollUrl, {
+-                method: 'get',
+-                onSuccess: function (transport) {
+-                    if (transport.responseText == '1') {
+-                        $('amazon_reload').show();
+-                        document.location.replace(document.location + '#payment_amazon_payments-head');
+-                        location.reload();
+-                    } else {
+-                        amazonPollTimer = setTimeout(pollForKeys, amazonPollInterval);
+-                    }
+-                },
+-                onFailure: function () {
+-                },
+-                // Disable "Please Wait" modal
+-                onCreate: function (request) {
+-                    Ajax.Responders.unregister(varienLoaderHandler.handler);
+-                },
+-            });
+-        }
+-
+-        if (amazonCredentialJson.length > 0) {
+-            var jsonField = jQuery('#payment_' + co + '_amazon_payment_credentials_credentials_json');
+-            jsonField.on('input', function (e) {
+-                var elJson = jsonField.val();
+-                var obj = null;
+-                try {
+-                    obj = jQuery.parseJSON(jQuery.trim(elJson));
+-                }
+-                catch (err) {
+-                    obj = null;
+-                    jsonField.val('').attr('placeholder', '<?= $block->escapeHtml(__('Invalid JSON credentials entered, please try again.')); ?>').focus();
+-                }
+-                if (obj && typeof obj === 'object') {
+-                    var success = true;
+-                    for (var prop in obj) {
+-                        var item = jQuery('#payment_' + co + '_amazon_payment_credentials_' + jQuery.trim(prop));
+-                        if (item && item.length) {
+-                            jQuery('#payment_' + co + '_amazon_payment_credentials_' + jQuery.trim(prop)).val(jQuery.trim(obj[prop]));
+-                        }
+-                        else {
+-                            success = false;
+-                        }
+-                    }
+-                    if (success) {
+-                        jsonField.val('').attr('placeholder', '<?= $block->escapeHtml(__('Credential fields successfully updated and being saved.')); ?>').focus();
+-                        $('save').click();
+-                    }
+-                    else {
+-                        jsonField.val('').attr('placeholder', '<?= $block->escapeHtml(__('One or more of your credential fields did not parse correctly. Please review your entry and try again.')); ?>').focus();
+-                    }
+-                    showAmazonConfig();
+-                }
+-            });
+-        }
+-    });
+-
+-    // Add Mage validator to fix "Save Config" button from not submitting
+-    require(["jquery", "jquery/validate"], function ($) {
+-        if ($('#simplepath_form').length > 0) {
+-            $('#simplepath_form').validate();
+-        }
+-    });
+-
+-</script>
+-
+-<script>
+-    // Amazon Pop-up
+-    require(['uiRegistry'], function (registry) {
+-        'use strict';
+-
+-        function launchPopup(url, requestedWidth, requestedHeight) {
+-            var leftOffset = getLeftOffset(requestedWidth),
+-                topOffset = getTopOffset(requestedHeight),
+-                newWindow = window.open(url, 'simplepath', 'scrollbars=yes, width=' + requestedWidth + ', height=' +
+-                    requestedHeight + ', top=' + topOffset + ', left=' + leftOffset);
+-
+-            if (window.focus) {
+-                newWindow.focus();
+-            }
+-        }
+-
+-        function getLeftOffset(requestedWidth) {
+-            var dualScreenLeft = window.screenLeft !== undefined ? window.screenLeft : screen.left;
+-            return ((windowWidth() / 2) - (requestedWidth / 2)) + dualScreenLeft;
+-        }
+-
+-        function getTopOffset(requestedHeight) {
+-            var dualScreenTop = window.screenTop !== undefined ? window.screenTop : screen.top;
+-            return ((windowHeight() / 2) - (requestedHeight / 2)) + dualScreenTop;
+-        }
+-
+-        function windowWidth() {
+-            if (window.innerWidth) {
+-                return window.innerWidth;
+-            } else if (document.documentElement.clientWidth) {
+-                return document.documentElement.clientWidth;
+-            } else {
+-                return screen.width;
+-            }
+-        }
+-
+-        function windowHeight() {
+-            if (window.innerHeight) {
+-                return window.innerHeight;
+-            } else if (document.documentElement.clientHeight) {
+-                return document.documentElement.clientHeight;
+-            } else {
+-                return screen.height;
+-            }
+-        }
+-        // window.launchPopup = launchPopup;
+-        registry.set('launchPopup', launchPopup);
+-
+-    });
+-</script>
+
+--- /dev/null
++++ b/view/adminhtml/web/js/simplepath.js
+@@ -0,0 +1,379 @@
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++/*browser:true*/
++/*global define*/
++define(
++    [
++        'jquery',
++        'uiComponent',
++        'mage/translate',
++        'jquery/ui',
++        'jquery/validate'
++    ],
++    function ($, Class, $t) {
++        'use strict';
++        var pollTimer, windowOpen = false;
++
++        return Class.extend({
++
++                defaults: {
++                    $amazonFields: null,
++                    $amazonCredentialJson: null,
++                    $amazonSpBack: null,
++                    $amazonMerchantId: null,
++                    selector: 'amazon_payment',
++                    $container: null,
++                    pollInterval: 1500,
++                    $form: null,
++                },
++
++                /**
++                 * Set list of observable attributes
++                 * @returns {exports.initObservable}
++                 */
++                initObservable: function () {
++                    var self = this;
++                    self.$amazonSimplepath = $('#amazon_simplepath');
++                    self.$amazonFields = $('#payment_' + self.getCountry() + '_' + self.selector + ' .form-list');
++                    self.$amazonCredentialsHeader = $('#payment_' + self.getCountry() + '_' + self.selector
++                        + '_credentials-head');
++                    self.$amazonCredentialJson = $('#payment_' + self.getCountry() + '_' + self.selector
++                        + '_credentials_credentials_json');
++                    self.$amazonMerchantId = $('#payment_' + self.getCountry() + '_' + self.selector
++                        + '_credentials_merchant_id').val();
++                    self.$amazonSpBack = $('#amazon_simplepath_back');
++                    self.$container = $('#amazon_simplepath');
++
++                    if (self.$amazonMerchantId) {
++                        self.hideAmazonConfig();
++                    }
++                    else {
++                        self.showAmazonConfig();
++                    }
++
++                    if (!self.$form) {
++                        self.generateSimplePathForm();
++                    }
++
++                    self._super();
++
++                    self.initEventHandlers();
++
++                    return self;
++                },
++
++                /**
++                 * Init event handlers
++                 */
++                initEventHandlers: function () {
++                    var self = this;
++                    self.$amazonSpBack.click(function () {
++                        self.showAmazonConfig();
++                        return false;
++                    });
++
++                    $('#simplepath-skip').click(function () {
++                        self.hideAmazonConfig();
++                        return false;
++                    });
++
++                    $('#simplepath_form').on('submit', function () {
++                        self.setupWindowLaunch();
++                    });
++
++                    self.$amazonCredentialJson.on('input', function (e) {
++                        self.updateCredentials(self);
++                    });
++                },
++
++                /**
++                 * Detects when a properly formatted JSON block is pasted into the Credentials JSON field and auto populates
++                 * specified fields.
++                 *
++                 * @param self
++                 */
++                updateCredentials: function (self) {
++                    var elJson = self.$amazonCredentialJson.val();
++                    var obj = null;
++                    try {
++                        obj = $.parseJSON($.trim(elJson));
++                    }
++                    catch (err) {
++                        obj = null;
++                        self.$amazonCredentialJson.val('').attr(
++                            'placeholder',
++                            $t('Invalid JSON credentials entered, please try again.')
++                        ).focus();
++                    }
++
++                    if (obj && typeof obj === 'object') {
++                        var success = true;
++                        for (var prop in obj) {
++                            var item = $('#payment_' + self.getCountry() + '_amazon_payment_credentials_' + $.trim(prop));
++                            if (item && item.length) {
++                                $('#payment_' + self.getCountry() + '_amazon_payment_credentials_'
++                                    + $.trim(prop)).val($.trim(obj[prop]));
++                            }
++                            else {
++                                success = false;
++                            }
++                        }
++
++                        if (success) {
++                            self.$amazonCredentialJson.val('').attr(
++                                'placeholder',
++                                $t('Credential fields successfully updated and being saved.')
++                            ).focus();
++                            $('#save').click();
++                        }
++                        else {
++                            self.$amazonCredentialJson.val('').attr(
++                                'placeholder',
++                                $t('One or more of your credential fields did not parse correctly. Please review your entry and try again.')
++                            ).focus();
++                        }
++                    }
++                },
++
++                /**
++                 * Sets up Amazon merchant key popup and polls for data update upon user completion.
++                 */
++                setupWindowLaunch: function () {
++                    var self = this;
++                    var heights = [660, 720, 810, 900];
++                    var popupWidth = this.getCountry() !== 'us' ? 768 : 1050;
++                    var popupHeight = heights[0];
++                    for (var i in heights) {
++                        popupHeight = (window.innerHeight >= heights[i]) ? heights[i] : popupHeight;
++                    }
++
++                    self.launchPopup(self.amazonUrl, popupWidth, popupHeight);
++
++                    // flags that popup is open and poll timer can proceed
++                    windowOpen = true;
++
++                    // begin polling for feedback
++                    pollTimer = setTimeout(self.pollForKeys(self), self.pollInterval);
++
++                    // Save JSON
++                    $('#save-json').click(function (e) {
++                        e.stop();
++                        var json = $('#json-import').value;
++                        if (!json || !json.isJSON()) {
++                            return;
++                        }
++                        elJson.value = json;
++                        $('#save').click();
++                    });
++
++                    // Autoset payment region (for EU/UK)
++                    var region = self.region;
++                    if (self.region.indexOf('eu') != -1) {
++                        region = 'de';
++                    }
++                    var elCheckDefault = $('#payment_' + self.getCountry()
++                        + '_amazon_payment_credentials_payment_region_inherit:checked');
++                    if (elCheckDefault && elCheckDefault.length) {
++                        elCheckDefault[0].click();
++                    }
++                    var elRegion = $('payment_' + self.getCountry() + '_amazon_payment_credentials_payment_region');
++                    if (elRegion) {
++                        elRegion.value = region;
++                    }
++                },
++
++                /**
++                 * Perform Ajax request looking for new keys.
++                 */
++                pollForKeys: function (self) {
++                    clearTimeout(pollTimer);
++                    if (windowOpen) {
++                        $.ajax({
++                            url: self.pollUrl,
++                            data: {},
++                            type: 'GET',
++                            cache: true,
++                            dataType: 'json',
++                            context: this,
++
++                            /**
++                             * Response handler
++                             * @param {Object} response
++                             */
++                            success: function (response) {
++                                // poll controller returns a 0 if invalid and a 1 if valid
++                                if (response) {
++                                    $('#amazon_reload').show();
++                                    document.location.replace(document.location + '#payment_amazon_payments-head');
++                                    location.reload();
++                                }
++                                else {
++                                    pollTimer = setTimeout(self.pollForKeys(self), self.pollInterval);
++                                }
++                            }
++                        });
++                    }
++                },
++
++                /**
++                 * Sets up dynamic form for capturing popup/form input for simple path setup.
++                 */
++                generateSimplePathForm: function () {
++                    this.$form = new Element('form', {
++                        method: 'post',
++                        action: this.amazonUrl,
++                        id: 'simplepath_form',
++                        target: 'simplepath',
++                        novalidate: 'novalidate',
++                    });
++
++                    this.$container.wrap(this.$form);
++
++                    // Convert formParams JSON to hidden inputs
++                    for (var key in this.formParams) {
++                        if (typeof this.formParams[key] === 'object' || typeof this.formParams[key] === 'array') {
++                            for (var i in this.formParams[key]) {
++                                if (typeof this.formParams[key][i] !== 'function') {
++                                    var element = new Element('input', {
++                                        type: 'hidden',
++                                        name: key,
++                                        value: this.formParams[key][i],
++                                        novalidate: 'novalidate'
++                                    });
++                                    $(element).appendTo($("#simplepath_form"));
++                                }
++                            }
++                        } else {
++                            var element = new Element('input', {
++                                type: 'hidden',
++                                name: key,
++                                novalidate: 'novalidate',
++                                value: this.formParams[key]
++                            });
++                            $(element).appendTo($("#simplepath_form"));
++                        }
++                    }
++
++                    // unable to use this.form, had to resort to direct call
++                    $('#simplepath_form').validate({});
++                },
++
++                /**
++                 * display amazon simple path config section
++                 */
++                showAmazonConfig: function () {
++                    this.$amazonSimplepath.show();
++                    this.$amazonSpBack.hide();
++                    if (this.$amazonCredentialsHeader.hasClass('open')) {
++                        this.$amazonCredentialsHeader.click();
++                    }
++                },
++
++                /**
++                 * hide amazon simple path config.
++                 */
++                hideAmazonConfig: function () {
++                    this.$amazonSimplepath.hide();
++                    this.$amazonSpBack.show();
++                    if (!this.$amazonCredentialsHeader.hasClass('open')) {
++                        this.$amazonCredentialsHeader.click();
++                    }
++                },
++
++                /**
++                 * Get payment code
++                 * @returns {String}
++                 */
++                getCountry: function () {
++                    return this.co.toLowerCase();
++                },
++
++                /**
++                 * Generate popup window for simple path process
++                 * @param url
++                 * @param requestedWidth
++                 * @param requestedHeight
++                 */
++                launchPopup: function (url, requestedWidth, requestedHeight) {
++                    var self = this;
++                    var leftOffset = this.getLeftOffset(requestedWidth),
++                        topOffset = this.getTopOffset(requestedHeight),
++                        newWindow = window.open(url, 'simplepath', 'scrollbars=yes, width=' + requestedWidth + ', height=' +
++                            requestedHeight + ', top=' + topOffset + ', left=' + leftOffset);
++
++                    if (window.focus) {
++                        newWindow.focus();
++                    }
++
++                    // Set interval to check when this popup window is closed so timeout can be suspended.
++                    var winTimer = window.setInterval(function () {
++                        if (newWindow.closed !== false) {
++                            window.clearInterval(winTimer);
++                            windowOpen = false;
++                        }
++                    });
++                },
++
++                /**
++                 * Determine left offset for popup window
++                 * @param requestedWidth
++                 * @returns {number}
++                 */
++                getLeftOffset: function (requestedWidth) {
++                    var dualScreenLeft = window.screenLeft !== undefined ? window.screenLeft : screen.left;
++                    return ((this.windowWidth() / 2) - (requestedWidth / 2)) + dualScreenLeft;
++                },
++
++                /**
++                 * Determine top offset for popup window
++                 * @param requestedHeight
++                 * @returns {number}
++                 */
++                getTopOffset: function (requestedHeight) {
++                    var dualScreenTop = window.screenTop !== undefined ? window.screenTop : screen.top;
++                    return ((this.windowHeight() / 2) - (requestedHeight / 2)) + dualScreenTop;
++                },
++
++                /**
++                 * Determine width of popup window
++                 * @returns {number}
++                 */
++                windowWidth: function () {
++                    if (window.innerWidth) {
++                        return window.innerWidth;
++                    } else if (document.documentElement.clientWidth) {
++                        return document.documentElement.clientWidth;
++                    } else {
++                        return screen.width;
++                    }
++                },
++
++                /**
++                 * Determine window height of popup
++                 * @returns {number}
++                 */
++                windowHeight: function () {
++                    if (window.innerHeight) {
++                        return window.innerHeight;
++                    } else if (document.documentElement.clientHeight) {
++                        return document.documentElement.clientHeight;
++                    } else {
++                        return screen.height;
++                    }
++                }
++            }
++        );
++    }
++);
+
+--- a/view/adminhtml/web/styles.css
++++ b/view/adminhtml/web/styles.css
+@@ -3,4 +3,11 @@
+ #amazon_https_required, #amazon_reload { color:red; display:none; }
+ #json-import-wrapper { display:none; }
+ #amazon_simplepath_back { display:none; margin-bottom:1em; margin-top:-0.5em; }
+-#amazon_simplepath td.creds { width:10%; }
+\ No newline at end of file
++#amazon_simplepath td.creds { width:10%; }
++.complex.amazon-payment-section .amazon-payment-logo { display:inline-block; vertical-align: middle; margin: 0 20px 0 0px; width: 180px; height:60px; background-repeat: no-repeat, no-repeat, no-repeat; background-image: url('data:image/jpeg;base64,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bAAAAAAATmd0dmJvb2wAAAAAAEVtbERib29sAAAAAABJbnRyYm9vbAAAAAAAQmNrZ09iamMAAAABAAAAAAAAUkdCQwAAAAMAAAAAUmQgIGRvdWJAb+AAAAAAAAAAAABHcm4gZG91YkBv4AAAAAAAAAAAAEJsICBkb3ViQG/gAAAAAAAAAAAAQnJkVFVudEYjUmx0AAAAAAAAAAAAAAAAQmxkIFVudEYjUmx0AAAAAAAAAAAAAAAAUnNsdFVudEYjUHhsQFIAAAAAAAAAAAAKdmVjdG9yRGF0YWJvb2wBAAAAAFBnUHNlbnVtAAAAAFBnUHMAAAAAUGdQQwAAAABMZWZ0VW50RiNSbHQAAAAAAAAAAAAAAABUb3AgVW50RiNSbHQAAAAAAAAAAAAAAABTY2wgVW50RiNQcmNAWQAAAAAAAAAAABBjcm9wV2hlblByaW50aW5nYm9vbAAAAAAOY3JvcFJlY3RCb3R0b21sb25nAAAAAAAAAAxjcm9wUmVjdExlZnRsb25nAAAAAAAAAA1jcm9wUmVjdFJpZ2h0bG9uZwAAAAAAAAALY3JvcFJlY3RUb3Bsb25nAAAAAAA4QklNA+0AAAAAABAASAAAAAEAAQBIAAAAAQABOEJJTQQmAAAAAAAOAAAAAAAAAAAAAD+AAAA4QklNBA0AAAAAAAQAAABaOEJJTQQZAAAAAAAEAAAAHjhCSU0D8wAAAAAACQAAAAAAAAAAAQA4QklNJxAAAAAAAAoAAQAAAAAAAAABOEJJTQP1AAAAAABIAC9mZgABAGxmZgAGAAAAAAABAC9mZgABAKGZmgAGAAAAAAABADIAAAABAFoAAAAGAAAAAAABADUAAAABAC0AAAAGAAAAAAABOEJJTQP4AAAAAABwAAD/////////////////////////////A+gAAAAA/////////////////////////////wPoAAAAAP////////////////////////////8D6AAAAAD/////////////////////////////A+gAADhCSU0EAAAAAAAAAgABOEJJTQQCAAAAAAAEAAAAADhCSU0EMAAAAAAAAgEBOEJJTQQtAAAAAAAGAAEAAAACOEJJTQQIAAAAAAAQAAAAAQAAAkAAAAJAAAAAADhCSU0EHgAAAAAABAAAAAA4QklNBBoAAAAA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dG9zaG9wIENDIDIwMTUuNSAoV2luZG93cykiIHhtcDpDcmVhdGVEYXRlPSIyMDE4LTA4LTIzVDIzOjM1OjMxLTA3OjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE4LTA4LTIzVDIzOjM1OjMxLTA3OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAxOC0wOC0yM1QyMzozNTozMS0wNzowMCIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpkY2ZmMGFlYy0zZTI1LTQ1NDctYmMyNi1mMDljNGQxMmVhNmMiIHhtcE1NOkRvY3VtZW50SUQ9ImFkb2JlOmRvY2lkOnBob3Rvc2hvcDplNWRkYzRkMC1hNzY3LTExZTgtODAyYS1iMTUzYWVhOTFiMWEiIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDo5N2YwNmQ2Zi1lYjgxLTBmNDMtOTIyMS1kMjlmYzc1YjU1NWMiIGRjOmZvcm1hdD0iaW1hZ2UvanBlZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249ImNyZWF0ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6OTdmMDZkNmYtZWI4MS0wZjQzLTkyMjEtZDI5ZmM3NWI1NTVjIiBzdEV2dDp3aGVuPSIyMDE4LTA4LTIzVDIzOjM1OjMxLTA3OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxNS41IChXaW5kb3dzKSIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6ZGNmZjBhZWMtM2UyNS00NTQ3LWJjMjYtZjA5YzRkMTJlYTZjIiBzdEV2dDp3aGVuPSIyMDE4LTA4LTIzVDIzOjM1OjMxLTA3OjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxNS41IChXaW5kb3dzKSIgc3RFdnQ6Y2hhbmdlZD0iLyIvPiA8L3JkZjpTZXE+IDwveG1wTU06SGlzdG9yeT4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPD94cGFja2V0IGVuZD0idyI/Pv/uAA5BZG9iZQBkQAAAAAH/2wCEAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQECAgICAgICAgICAgMDAwMDAwMDAwMBAQEBAQEBAQEBAQICAQICAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA//AABEIADwAtAMBEQACEQEDEQH/3QAEABf/xAGiAAAABgIDAQAAAAAAAAAAAAAHCAYFBAkDCgIBAAsBAAAGAwEBAQAAAAAAAAAAAAYFBAMHAggBCQAKCxAAAgEDBAEDAwIDAwMCBgl1AQIDBBEFEgYhBxMiAAgxFEEyIxUJUUIWYSQzF1JxgRhikSVDobHwJjRyChnB0TUn4VM2gvGSokRUc0VGN0djKFVWVxqywtLi8mSDdJOEZaOzw9PjKThm83UqOTpISUpYWVpnaGlqdnd4eXqFhoeIiYqUlZaXmJmapKWmp6ipqrS1tre4ubrExcbHyMnK1NXW19jZ2uTl5ufo6er09fb3+Pn6EQACAQMCBAQDBQQEBAYGBW0BAgMRBCESBTEGACITQVEHMmEUcQhCgSORFVKhYhYzCbEkwdFDcvAX4YI0JZJTGGNE8aKyJjUZVDZFZCcKc4OTRnTC0uLyVWV1VjeEhaOzw9Pj8ykalKS0xNTk9JWltcXV5fUoR1dmOHaGlqa2xtbm9md3h5ent8fX5/dIWGh4iJiouMjY6Pg5SVlpeYmZqbnJ2en5KjpKWmp6ipqqusra6vr/2gAMAwEAAhEDEQA/AN/j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bk/70OjNbA+Gfx76+lgq6TY8G5spAQUym9qhtyyalsUkGMqlTb8U0bDUskdGkityDwLZRe3v3KPu6e3csF5acipum6x8J9zc3pr5HwHAtFYHKutsrg0IaoFIR5t+8j7vc3pLb3HNDWNi/GKyUWwp5jxFJuCCMFWmKkcRx6ND4YxD9uqCOER+FUivCEj06AkZiKGIKvC6bafxb3lT4MQh+nVNMOnSAvbRaUoummmgwKUp5U6gzxHMnis1ZNVanNTWtTWtanjWtfPpq29t3B7TwmM23trF0WEwWGpY6LGYvHwrBSUdNHchIo1+rMzFnZiXkdizEsSSVcu8ubFyjsm28t8s7TBY7DZx6IYIUCRxrUkgKPNmJZmNWd2Z2JZiSv3jeN05g3O93rer+W53W5kLyyyHU7sfMk+goABQKoCqAAB08+zrot697917r3v3Xuve/de697917r3v3Xuve/de697917r3v3Xuve/de697917r3v3Xuve/de6//9bf49+691737r3Xvfuvde9+691737r3Xvfuvde9+691737r3Xvfuvde9+691737r3Xvfuvde9+691737r3Xvfuvde9+691737r3Xvfuvde9+691737r3Xvfuvde9+691737r3X/2Q=='); }
++.section-config.with-button.amazon-payment-section .config-heading strong { font-weight: normal; }
++.complex.amazon-payment-section .button-container { float:right; }
++.complex.amazon-payment-section .amazon-payment-byline { display: inline-block; vertical-align: middle; width: 50%; }
++.simplepath-wrapper-set.active .admin__collapsible-block { display:none; }
++.amazon-payment-section.section-config.active > .admin__collapsible-block + input + fieldset { margin-left: 40px; }
++
+

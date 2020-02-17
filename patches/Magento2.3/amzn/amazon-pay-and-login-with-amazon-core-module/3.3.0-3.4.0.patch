@@ -1,0 +1,169 @@
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -111,6 +111,10 @@ class Config extends Template
+             $config['sandboxSimulationOptions'] = $this->transformSandboxSimulationOptions();
+         }
+ 
++        if ($orderReferenceId = $this->getRequest()->getParam('orderReferenceId')) {
++            $config['orderReferenceId'] = preg_replace('/[^A-Z0-9-]/', '', $orderReferenceId);
++        }
++
+         return $config;
+     }
+ 
+
+--- a/Controller/Adminhtml/Simplepath/Poll.php
++++ b/Controller/Adminhtml/Simplepath/Poll.php
+@@ -77,7 +77,7 @@ class Poll extends System
+             $result = $this->jsonResultFactory->create();
+             $result->setData((int)$shouldRefresh);
+             return $result;
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -103,7 +103,7 @@ class Listener extends \Magento\Framework\App\Action\Action implements CsrfAware
+             $result->setData($return);
+ 
+             return $result;
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+@@ -149,8 +149,7 @@ class Listener extends \Magento\Framework\App\Action\Action implements CsrfAware
+      */
+     public function createCsrfValidationException(
+         RequestInterface $request
+-    ): ?InvalidRequestException
+-    {
++    ): ?InvalidRequestException {
+         return null;
+     }
+ 
+
+--- a/Logger/ExceptionLogger.php
++++ b/Logger/ExceptionLogger.php
+@@ -21,10 +21,12 @@ class ExceptionLogger
+ {
+     private $logger;
+ 
+-    public function __construct(LoggerInterface $logger) {
++    public function __construct(LoggerInterface $logger)
++    {
+         $this->logger = $logger;
+     }
+-    public function logException(\Exception $e) {
++    public function logException(\Exception $e)
++    {
+         $message = (string) $e;
+         $this->logger->addError($message);
+     }
+
+--- a/Model/AmazonConfig.php
++++ b/Model/AmazonConfig.php
+@@ -67,9 +67,9 @@ class AmazonConfig
+     public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+         return $this->scopeConfig->getValue(
+-          'payment/amazon_payment/payment_region',
+-          $scope,
+-          $scopeCode
++            'payment/amazon_payment/payment_region',
++            $scope,
++            $scopeCode
+         );
+     }
+ 
+@@ -83,9 +83,9 @@ class AmazonConfig
+     public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
+     {
+         $mcRegions = $this->scopeConfig->getValue(
+-          'multicurrency/regions',
+-          $scope,
+-          $store
++            'multicurrency/regions',
++            $scope,
++            $store
+         );
+ 
+         if ($mcRegions) {
+@@ -111,9 +111,9 @@ class AmazonConfig
+     public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
+     {
+         $enabled = $this->scopeConfig->getValue(
+-          'payment/amazon_payment/multicurrency',
+-          $scope,
+-          $scopeCode
++            'payment/amazon_payment/multicurrency',
++            $scope,
++            $scopeCode
+         );
+ 
+         if ($enabled) {
+@@ -134,9 +134,9 @@ class AmazonConfig
+         if ($this->multiCurrencyEnabled()) {
+             // get allowed presentment currencies from config.xml
+             $currencies = $this->scopeConfig->getValue(
+-              'multicurrency/currencies',
+-              ScopeInterface::SCOPE_STORE,
+-              $store
++                'multicurrency/currencies',
++                ScopeInterface::SCOPE_STORE,
++                $store
+             );
+ 
+             if ($currencies) {
+@@ -167,10 +167,20 @@ class AmazonConfig
+     public function getBaseCurrencyCode($store = null)
+     {
+         return $this->scopeConfig->getValue(
+-          'currency/options/base',
+-          ScopeInterface::SCOPE_STORE,
+-          $store
++            'currency/options/base',
++            ScopeInterface::SCOPE_STORE,
++            $store
+         );
+     }
+ 
++    /**
++     * Is AmazonWebapiException code a soft decline error?
++     *
++     * @param $errorCode
++     * @return bool
++     */
++    public function isSoftDecline($errorCode)
++    {
++        return $errorCode == $this->scopeConfig->getValue('payment/amazon_payment/soft_decline_code');
++    }
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.3.0",
++  "version": "3.4.0",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.3.0">
++    <module name="Amazon_Core" setup_version="3.4.0">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+

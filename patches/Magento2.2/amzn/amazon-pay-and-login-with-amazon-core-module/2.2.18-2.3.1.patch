@@ -1,0 +1,201 @@
+--- a/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
++++ b/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
+@@ -55,8 +55,7 @@ class DeveloperLogs extends \Magento\Config\Block\System\Config\Form\Field
+         DirectoryList $directoryList,
+         UrlInterface $urlBuilder,
+         $data = []
+-    )
+-    {
++    ) {
+         $this->directoryList = $directoryList;
+         $this->urlBuilder = $urlBuilder;
+         parent::__construct($context, $data);
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -82,7 +82,8 @@ class Config extends Template
+             'isEuPaymentRegion'        => $this->coreHelper->isEuPaymentRegion(),
+             'oAuthHashRedirectUrl'     => $this->coreHelper->getOAuthRedirectUrl(),
+             'isQuoteDirty'             => $this->categoryExclusionHelper->isQuoteDirty(),
+-            'region'                   => $this->coreHelper->getRegion()
++            'region'                   => $this->coreHelper->getRegion(),
++            'scaRegions'               => $this->coreHelper->getScaRegions()
+         ];
+ 
+         if ($this->coreHelper->isSandboxEnabled()) {
+@@ -105,7 +106,7 @@ class Config extends Template
+      */
+     public function isExtensionEnabled()
+     {
+-	    return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
++        return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
+     }
+ 
+     /**
+
+--- a/Controller/Adminhtml/Download/ClientLog.php
++++ b/Controller/Adminhtml/Download/ClientLog.php
+@@ -40,8 +40,7 @@ class ClientLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+
+--- a/Controller/Adminhtml/Download/IpnLog.php
++++ b/Controller/Adminhtml/Download/IpnLog.php
+@@ -40,8 +40,7 @@ class IpnLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+
+--- a/Controller/Adminhtml/Simplepath/Poll.php
++++ b/Controller/Adminhtml/Simplepath/Poll.php
+@@ -77,7 +77,7 @@ class Poll extends System
+             $result = $this->jsonResultFactory->create();
+             $result->setData((int)$shouldRefresh);
+             return $result;
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -64,7 +64,7 @@ class Listener extends \Magento\Framework\App\Action\Action
+     {
+         try {
+             $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
+-            if(in_array($host, $this->simplepath->getListenerOrigins())) {
++            if (in_array($host, $this->simplepath->getListenerOrigins())) {
+                 $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
+             }
+             $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+@@ -80,7 +80,7 @@ class Listener extends \Magento\Framework\App\Action\Action
+             try {
+                 if (strpos($payload, 'encryptedKey') === false) {
+                     $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
+-                } else if ($payload) {
++                } elseif ($payload) {
+                     $json = $this->simplepath->decryptPayload($payload, false);
+ 
+                     if ($json) {
+@@ -100,7 +100,7 @@ class Listener extends \Magento\Framework\App\Action\Action
+             $result->setData($return);
+ 
+             return $result;
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -74,8 +74,7 @@ class Data extends AbstractHelper
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+         StatusFactory $moduleStatusFactory
+-    )
+-    {
++    ) {
+         parent::__construct($context);
+         $this->moduleList = $moduleList;
+         $this->encryptor = $encryptor;
+@@ -187,6 +186,20 @@ class Data extends AbstractHelper
+         return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
+     }
+ 
++    /**
++     * @return array
++     */
++    public function getScaRegions($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $regionList = $this->scopeConfig->getValue(
++            'payment/amazon_payment/sca_regions',
++            $scope,
++            $scopeCode
++        );
++        $regions = explode(',', $regionList);
++        return is_array($regions) ? $regions : [];
++    }
++
+     /*
+      * @return string
+      */
+
+--- a/Logger/ExceptionLogger.php
++++ b/Logger/ExceptionLogger.php
+@@ -21,10 +21,12 @@ class ExceptionLogger
+ {
+     private $logger;
+ 
+-    public function __construct(LoggerInterface $logger) {
++    public function __construct(LoggerInterface $logger)
++    {
+         $this->logger = $logger;
+     }
+-    public function logException(\Exception $e) {
++    public function logException(\Exception $e)
++    {
+         $message = (string) $e;
+         $this->logger->addError($message);
+     }
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -287,7 +287,8 @@ class SimplePath
+             // Retrieve Amazon public key to verify signature
+             try {
+                 $client = new \Zend_Http_Client(
+-                    $this->getEndpointPubkey(), [
++                    $this->getEndpointPubkey(),
++                    [
+                         'maxredirects' => 2,
+                         'timeout'      => 30,
+                     ]
+@@ -359,7 +360,8 @@ class SimplePath
+             $this->messageManager->addError(
+                 __(
+                     "If you're experiencing consistent errors with transferring keys, " .
+-                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.", $link
++                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.",
++                    $link
+                 )
+             );
+         }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "2.2.18",
++  "version": "2.3.1",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="2.2.18">
++    <module name="Amazon_Core" setup_version="2.3.1">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+

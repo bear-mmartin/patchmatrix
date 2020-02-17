@@ -1,0 +1,833 @@
+--- a/Block/Minicart/Button.php
++++ b/Block/Minicart/Button.php
+@@ -15,7 +15,6 @@
+  */
+ namespace Amazon\Payment\Block\Minicart;
+ 
+-
+ use Magento\Checkout\Model\Session;
+ use Amazon\Payment\Helper\Data;
+ use Amazon\Core\Helper\Data as AmazonCoreHelper;
+
+--- a/Block/Widget/ResetPassword.php
++++ b/Block/Widget/ResetPassword.php
+@@ -45,7 +45,8 @@ class ResetPassword extends Template
+         return $this;
+     }
+ 
+-    public function displayAmazonInfo() {
++    public function displayAmazonInfo()
++    {
+         $id = $this->session->getCustomer()->getId();
+ 
+         $amazon = $this->customerLink->get($id);
+@@ -57,10 +58,10 @@ class ResetPassword extends Template
+         return false;
+     }
+ 
+-    public function getLink() {
++    public function getLink()
++    {
+         $url = $this->urlModel->getUrl('customer/account/forgotpassword');
+ 
+         return $url;
+     }
+-
+-}
+\ No newline at end of file
++}
+
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -15,10 +15,13 @@
+  */
+ namespace Amazon\Payment\Controller\Payment;
+ 
++use Amazon\Core\Exception\AmazonServiceUnavailableException;
+ use Amazon\Core\Exception\AmazonWebapiException;
+ use Amazon\Core\Logger\ExceptionLogger;
++use Amazon\Payment\Api\OrderInformationManagementInterface;
+ use Magento\Framework\App\Action\Action;
+ use Magento\Framework\App\Action\Context;
++use Magento\Framework\Exception\NotFoundException;
+ use Magento\Quote\Api\CartManagementInterface;
+ use Magento\Quote\Api\GuestCartManagementInterface;
+ use Magento\Checkout\Model\Session as CheckoutSession;
+@@ -55,6 +58,11 @@ class CompleteCheckout extends Action
+      */
+     private $exceptionLogger;
+ 
++    /**
++     * @var OrderInformationManagementInterface
++     */
++    private $orderInformationManagement;
++
+     /**
+      * CompleteCheckout constructor.
+      *
+@@ -66,6 +74,7 @@ class CompleteCheckout extends Action
+      * @param PageFactory $pageFactory
+      * @param MessageManager $messageManager
+      * @param ExceptionLogger $exceptionLogger
++     * @param OrderInformationManagementInterface $orderInformationManagement
+      */
+     public function __construct(
+         Context $context,
+@@ -75,7 +84,8 @@ class CompleteCheckout extends Action
+         Session $session,
+         PageFactory $pageFactory,
+         MessageManager $messageManager,
+-        ExceptionLogger $exceptionLogger = null
++        ExceptionLogger $exceptionLogger = null,
++        OrderInformationManagementInterface $orderInformationManagement = null
+     ) {
+         parent::__construct($context);
+         $this->cartManagement = $cartManagement;
+@@ -84,6 +94,8 @@ class CompleteCheckout extends Action
+         $this->pageFactory = $pageFactory;
+         $this->messageManager = $messageManager;
+         $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
++        $this->orderInformationManagement = $orderInformationManagement ?: ObjectManager::getInstance()
++            ->get(OrderInformationManagementInterface::class);
+     }
+ 
+     /*
+@@ -119,8 +131,25 @@ class CompleteCheckout extends Action
+                         . 'Please try again, or use a different payment method.'
+                     ));
+             }
++
++            $quote = $this->checkoutSession->getQuote();
++            if (!$quote) {
++                throw new NotFoundException(__('Failed to retrieve quote from checkoutSession'));
++            }
++            $orderReferenceId = $quote
++                ->getExtensionAttributes()
++                ->getAmazonOrderReferenceId();
++            if ($orderReferenceId) {
++                // Cancel the order to prevent confusion when the merchant views Transactions in Seller Central
++                try {
++                    $this->orderInformationManagement->cancelOrderReference($orderReferenceId, $quote->getStoreId());
++                } catch (AmazonServiceUnavailableException $e) {
++                    $this->exceptionLogger->logException($e);
++                }
++            }
++
+             return $this->_redirect('checkout/cart');
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Cron/GetAmazonAuthorizationUpdates.php
++++ b/Cron/GetAmazonAuthorizationUpdates.php
+@@ -120,7 +120,8 @@ class GetAmazonAuthorizationUpdates
+      * amazon_pending_authorization table have these IDs if they are not set by matching them to a transaction that
+      * has matching transaction or parent transaction IDs.
+      */
+-    private function updateIds() {
++    private function updateIds()
++    {
+         // only get items that have no order ID set since we don't want to have to keep repeating this
+         $collection = $this->collectionFactory
+             ->create()
+@@ -188,8 +189,7 @@ class GetAmazonAuthorizationUpdates
+         foreach ($pendingAuthorizationIds as $pendingAuthorizationId) {
+             try {
+                 $this->authorization->updateAuthorization($pendingAuthorizationId);
+-            }
+-            catch (\Exception $e) {
++            } catch (\Exception $e) {
+                 $this->logger->error($e);
+             }
+         }
+
+--- a/Cron/GetAmazonCaptureUpdates.php
++++ b/Cron/GetAmazonCaptureUpdates.php
+@@ -120,7 +120,8 @@ class GetAmazonCaptureUpdates
+      * amazon_pending_capture table have these IDs if they are not set by matching them to a transaction that
+      * has matching transaction or parent transaction IDs.
+      */
+-    private function updateIds() {
++    private function updateIds()
++    {
+         // only get items that have no order ID set since we don't want to have to keep repeating this
+         $collection = $this->collectionFactory
+             ->create()
+@@ -188,8 +189,7 @@ class GetAmazonCaptureUpdates
+         foreach ($pendingCaptureIds as $pendingCaptureId) {
+             try {
+                 $this->capture->updateCapture($pendingCaptureId);
+-            }
+-            catch (\Exception $e) {
++            } catch (\Exception $e) {
+                 $this->logger->error($e);
+             }
+         }
+
+--- a/Gateway/Command/AmazonAuthCommand.php
++++ b/Gateway/Command/AmazonAuthCommand.php
+@@ -154,7 +154,7 @@ class AmazonAuthCommand implements CommandInterface
+                     $response
+                 );
+             }
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Gateway/Command/CaptureStrategyCommand.php
++++ b/Gateway/Command/CaptureStrategyCommand.php
+@@ -109,7 +109,7 @@ class CaptureStrategyCommand implements CommandInterface
+                     $this->commandPool->get($command)->execute($commandSubject);
+                 }
+             }
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+@@ -131,8 +131,7 @@ class CaptureStrategyCommand implements CommandInterface
+             if ($this->coreHelper->getPaymentAction() == 'authorize_capture') {
+                 // charge on order
+                 return self::SALE;
+-            }
+-            else {
++            } else {
+                 // charge on invoice/shipment
+                 return self::AUTHORIZE_CAPTURE;
+             }
+
+--- a/Gateway/Helper/SubjectReader.php
++++ b/Gateway/Helper/SubjectReader.php
+@@ -126,8 +126,7 @@ class SubjectReader
+         if (!$quote_id) {
+             $quote = $this->getQuote();
+             $quoteLink->load($quote->getId(), 'quote_id');
+-        }
+-        else {
++        } else {
+             $quoteLink->load($quote_id, 'quote_id');
+         }
+         return $quoteLink;
+@@ -136,7 +135,7 @@ class SubjectReader
+     /**
+      * @return \Magento\Sales\Model\Order
+      */
+-    public function getOrder() 
++    public function getOrder()
+     {
+         return $this->checkoutSession->getLastRealOrder();
+     }
+
+--- a/Gateway/Http/Client/AuthorizeClient.php
++++ b/Gateway/Http/Client/AuthorizeClient.php
+@@ -16,7 +16,6 @@
+ 
+ namespace Amazon\Payment\Gateway\Http\Client;
+ 
+-
+ /**
+  * Class Client
+  * Amazon Pay authorization gateway client
+
+--- a/Gateway/Http/Client/CaptureClient.php
++++ b/Gateway/Http/Client/CaptureClient.php
+@@ -16,7 +16,6 @@
+ 
+ namespace Amazon\Payment\Gateway\Http\Client;
+ 
+-
+ /**
+  * Class Client
+  * Amazon Pay gateway capture client
+
+--- a/Gateway/Http/Client/VoidClient.php
++++ b/Gateway/Http/Client/VoidClient.php
+@@ -16,7 +16,6 @@
+ 
+ namespace Amazon\Payment\Gateway\Http\Client;
+ 
+-
+ /**
+  * Class VoidClient
+  * Amazon Pay client for gateway cancel and void
+@@ -49,5 +48,4 @@ class VoidClient extends AbstractClient
+ 
+         return $response;
+     }
+-
+ }
+
+--- a/Gateway/Http/TransferFactory.php
++++ b/Gateway/Http/TransferFactory.php
+@@ -19,7 +19,6 @@ use Magento\Payment\Gateway\Http\TransferBuilder;
+ use Magento\Payment\Gateway\Http\TransferFactoryInterface;
+ use Magento\Payment\Gateway\Http\TransferInterface;
+ 
+-
+ class TransferFactory implements TransferFactoryInterface
+ {
+     /**
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -75,8 +75,7 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         Data $coreHelper,
+         ManagerInterface $eventManager,
+         CategoryExclusion $categoryExclusion
+-    )
+-    {
++    ) {
+         $this->config = $config;
+         $this->coreHelper = $coreHelper;
+         $this->productMetaData = $productMetadata;
+
+--- a/Gateway/Request/CaptureRequestBuilder.php
++++ b/Gateway/Request/CaptureRequestBuilder.php
+@@ -93,8 +93,7 @@ class CaptureRequestBuilder implements BuilderInterface
+         if (!$quote->getReservedOrderId()) {
+             try {
+                 $quote->reserveOrderId()->save();
+-            }
+-            catch(\Exception $e) {
++            } catch (\Exception $e) {
+                 $this->logger->debug($e->getMessage());
+             }
+         }
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -129,5 +129,4 @@ class SettlementRequestBuilder implements BuilderInterface
+ 
+         return $data;
+     }
+-
+ }
+
+--- a/Gateway/Response/CompleteAuthHandler.php
++++ b/Gateway/Response/CompleteAuthHandler.php
+@@ -59,8 +59,7 @@ class CompleteAuthHandler implements HandlerInterface
+         SubjectReader $subjectReader,
+         PendingAuthorizationInterfaceFactory $pendingAuthorizationFactory,
+         Data $coreHelper
+-    )
+-    {
++    ) {
+         $this->logger = $logger;
+         $this->subjectReader = $subjectReader;
+         $this->coreHelper = $coreHelper;
+
+--- a/Gateway/Response/CompleteSaleHandler.php
++++ b/Gateway/Response/CompleteSaleHandler.php
+@@ -97,8 +97,7 @@ class CompleteSaleHandler implements HandlerInterface
+                 $payment->setIsTransactionPending(true);
+                 $order->setState($order::STATE_PAYMENT_REVIEW)->setStatus($order::STATE_PAYMENT_REVIEW);
+                 $payment->setIsTransactionClosed(false);
+-            }
+-            else {
++            } else {
+                 $payment->setIsTransactionClosed(true);
+             }
+ 
+@@ -106,5 +105,4 @@ class CompleteSaleHandler implements HandlerInterface
+             $quoteLink->setConfirmed(true)->save();
+         }
+     }
+-
+ }
+
+--- a/Gateway/Response/RefundHandler.php
++++ b/Gateway/Response/RefundHandler.php
+@@ -51,7 +51,7 @@ class RefundHandler implements HandlerInterface
+     private $coreHelper;
+ 
+     /**
+-     * @var PendingRefundInterfaceFactory 
++     * @var PendingRefundInterfaceFactory
+      */
+     private $pendingRefundFactory;
+ 
+
+--- a/Gateway/Response/SettlementHandler.php
++++ b/Gateway/Response/SettlementHandler.php
+@@ -101,11 +101,9 @@ class SettlementHandler implements HandlerInterface
+                 $quoteLink = $this->subjectReader->getQuoteLink($quote->getId());
+                 $quoteLink->setConfirmed(true)->save();
+             }
+-        }
+-        else {
++        } else {
+             // finish capture
+             $payment->setTransactionId($response['transaction_id']);
+         }
+     }
+-
+ }
+
+--- a/Gateway/Response/VoidHandler.php
++++ b/Gateway/Response/VoidHandler.php
+@@ -76,10 +76,8 @@ class VoidHandler implements HandlerInterface
+             $this->messageManager->addErrorMessage(
+                 __('Unable to cancel the order or the Amazon Order ID is incorrect.')
+             );
+-        }
+-        else {
++        } else {
+             $this->messageManager->addSuccessMessage(__('Successfully cancelled Amazon Pay.'));
+         }
+     }
+-
+ }
+
+--- a/Gateway/Validator/AuthorizationValidator.php
++++ b/Gateway/Validator/AuthorizationValidator.php
+@@ -59,7 +59,6 @@ class AuthorizationValidator extends AbstractValidator
+         }
+ 
+         return $this->createResult(false, $messages);
+-
+     }
+ 
+     /**
+@@ -70,5 +69,4 @@ class AuthorizationValidator extends AbstractValidator
+     {
+         return $constraint->getId();
+     }
+-
+ }
+
+--- a/Gateway/Validator/ConstraintValidator.php
++++ b/Gateway/Validator/ConstraintValidator.php
+@@ -53,7 +53,8 @@ class ConstraintValidator extends AbstractValidator
+      * @param AmazonConstraint $constraint
+      * @return string
+      */
+-    private function getConstraint(AmazonConstraint $constraint) {
++    private function getConstraint(AmazonConstraint $constraint)
++    {
+         return $constraint->getId();
+     }
+ }
+
+--- a/Helper/Shortcut/Validator.php
++++ b/Helper/Shortcut/Validator.php
+@@ -22,7 +22,7 @@ namespace Amazon\Payment\Helper\Shortcut;
+ class Validator implements ValidatorInterface
+ {
+     /**
+-     * @var \Amazon\Payment\Gateway\Config\Config 
++     * @var \Amazon\Payment\Gateway\Config\Config
+      */
+     private $amazonConfig;
+ 
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -271,7 +271,7 @@ class AmazonPaymentAdapter
+ 
+         /** if first synchronous attempt failed, on second attempt try an asynchronous attempt. */
+         if ($authMode != 'synchronous' && $attempts) {
+-            $authorizeData['transaction_timeout'] = 5;
++            $authorizeData['transaction_timeout'] = 1440;
+         }
+ 
+         $response['status'] = false;
+
+--- a/Model/Ipn/AuthorizationProcessor.php
++++ b/Model/Ipn/AuthorizationProcessor.php
+@@ -79,7 +79,8 @@ class AuthorizationProcessor implements ProcessorInterface
+         $collection = $this->collectionFactory
+             ->create()
+             ->addFieldToFilter(
+-                PendingAuthorizationInterface::AUTHORIZATION_ID, [
++                PendingAuthorizationInterface::AUTHORIZATION_ID,
++                [
+                 'eq' => $details->getAuthorizeTransactionId()
+                 ]
+             )
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -144,8 +144,7 @@ class Authorization extends AbstractOperation
+         StoreManagerInterface $storeManager,
+         PaymentManagement $paymentManagement,
+         LoggerInterface $logger
+-    )
+-    {
++    ) {
+         $this->clientFactory = $clientFactory;
+         $this->pendingAuthorizationFactory = $pendingAuthorizationFactory;
+         $this->amazonAuthorizationDetailsResponseFactory = $amazonAuthorizationDetailsResponseFactory;
+@@ -178,8 +177,7 @@ class Authorization extends AbstractOperation
+         $pendingAuthorizationId,
+         AmazonAuthorizationDetails $authorizationDetails = null,
+         AmazonOrderDetails $orderDetails = null
+-    )
+-    {
++    ) {
+         try {
+             $pendingAuthorization = $this->pendingAuthorizationFactory->create();
+             $pendingAuthorization->getResource()->beginTransaction();
+@@ -216,8 +214,7 @@ class Authorization extends AbstractOperation
+     protected function processUpdateAuthorization(
+         PendingAuthorizationInterface $pendingAuthorization,
+         AmazonAuthorizationDetails $authorizationDetails = null
+-    )
+-    {
++    ) {
+         $order = $this->orderRepository->get($pendingAuthorization->getOrderId());
+         $payment = $this->orderPaymentRepository->get($pendingAuthorization->getPaymentId());
+         $order->setPayment($payment);
+@@ -283,8 +280,7 @@ class Authorization extends AbstractOperation
+         PendingAuthorizationInterface $pendingAuthorization,
+         $capture,
+         TransactionInterface $newTransaction = null
+-    )
+-    {
++    ) {
+         $transactionId = ($capture) ? $pendingAuthorization->getCaptureId()
+             : $pendingAuthorization->getAuthorizationId();
+ 
+@@ -332,8 +328,7 @@ class Authorization extends AbstractOperation
+         OrderPaymentInterface $payment,
+         PendingAuthorizationInterface $pendingAuthorization,
+         $capture
+-    )
+-    {
++    ) {
+         $transactionId = ($capture) ? $pendingAuthorization->getCaptureId()
+             : $pendingAuthorization->getAuthorizationId();
+ 
+@@ -377,8 +372,7 @@ class Authorization extends AbstractOperation
+         OrderPaymentInterface $payment,
+         PendingAuthorizationInterface $pendingAuthorization,
+         $capture
+-    )
+-    {
++    ) {
+         $transactionId = ($capture) ? $pendingAuthorization->getCaptureId()
+             : $pendingAuthorization->getAuthorizationId();
+ 
+@@ -418,8 +412,7 @@ class Authorization extends AbstractOperation
+     protected function processNewAuthorization(
+         PendingAuthorizationInterface $pendingAuthorization,
+         AmazonOrderDetails $orderDetails = null
+-    )
+-    {
++    ) {
+         $order = $this->orderRepository->get($pendingAuthorization->getOrderId());
+         $payment = $this->orderPaymentRepository->get($pendingAuthorization->getPaymentId());
+         $order->setPayment($payment);
+@@ -462,8 +455,7 @@ class Authorization extends AbstractOperation
+         OrderInterface $order,
+         OrderPaymentInterface $payment,
+         PendingAuthorizationInterface $pendingAuthorization
+-    )
+-    {
++    ) {
+         $capture = false;
+ 
+         try {
+@@ -502,8 +494,7 @@ class Authorization extends AbstractOperation
+         OrderInterface $order,
+         OrderPaymentInterface $payment,
+         PendingAuthorizationInterface $pendingAuthorization
+-    )
+-    {
++    ) {
+         $capture = true;
+ 
+         try {
+
+--- a/Observer/DataAssignObserver.php
++++ b/Observer/DataAssignObserver.php
+@@ -54,5 +54,4 @@ class DataAssignObserver extends AbstractDataAssignObserver
+             }
+         }
+     }
+-
+ }
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -29,7 +29,6 @@ use Magento\Framework\Exception\LocalizedException;
+ use Amazon\Payment\Gateway\Config\Config as GatewayConfig;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ 
+-
+ /**
+  * Class ConfirmOrderReference
+  *
+@@ -83,7 +82,7 @@ class ConfirmOrderReference
+         $cartId,
+         PaymentInterface $paymentMethod
+     ) {
+-        if($paymentMethod->getMethod() == GatewayConfig::CODE) {
++        if ($paymentMethod->getMethod() == GatewayConfig::CODE) {
+             $quote = $this->quoteRepository->get($cartId);
+             $quoteExtensionAttributes = $quote->getExtensionAttributes();
+             if ($quoteExtensionAttributes) {
+
+--- a/Plugin/DisableAmazonPaymentMethod.php
++++ b/Plugin/DisableAmazonPaymentMethod.php
+@@ -27,7 +27,7 @@ class DisableAmazonPaymentMethod
+      */
+     public function __construct(
+         Session $checkoutSession
+-    ){
++    ) {
+         $this->checkoutSession = $checkoutSession;
+     }
+ 
+@@ -39,7 +39,7 @@ class DisableAmazonPaymentMethod
+     public function afterIsAvailable(
+         \Amazon\Payment\Model\Method\AmazonLoginMethod $subject,
+         $result
+-    ){
++    ) {
+         /** @var \Magento\Quote\Model\Quote $quote */
+         $quote = $this->checkoutSession->getQuote();
+ 
+
+--- a/Plugin/ShippingInformationManagement.php
++++ b/Plugin/ShippingInformationManagement.php
+@@ -98,7 +98,7 @@ class ShippingInformationManagement
+          *  the region_id is explicitly emptied, to prevent the old one being used.
+          */
+         $shippingAddress = $shippingInformation->getShippingAddress();
+-        if(!$shippingAddress->hasData('region_id')) {
++        if (!$shippingAddress->hasData('region_id')) {
+             $shippingAddress->setRegionId("");
+         }
+ 
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "2.2.18",
++  "version": "2.3.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.18",
+-    "amzn/login-with-amazon-module": "^2.2.18",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.3.1",
++    "amzn/login-with-amazon-module": "^2.3.1",
+     "magento/module-eav": "*",
+     "magento/module-sales": "*",
+     "magento/module-quote": "*",
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -38,6 +38,7 @@
+                 <platform_id>AUGT0HMCLQVX1</platform_id>
+                 <hard_decline_code>4273</hard_decline_code>
+                 <soft_decline_code>7638</soft_decline_code>
++                <sca_regions>de,uk</sca_regions>
+             </amazon_payment>
+         </payment>
+     </default>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="2.2.18" >
++    <module name="Amazon_Payment" setup_version="2.3.1" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/templates/minicart-button.phtml
++++ b/view/frontend/templates/minicart-button.phtml
+@@ -17,17 +17,9 @@
+ /**
+  * @var \Amazon\Payment\Block\Minicart\Button $block
+  */
+-$config = [
+-    'Amazon_Payment/js/amazon-button' => [
+-        'buttonType' => 'PwA'
+-    ]
+-];
+-
+-$tooltipConfig = [
+-    'dropdown' => [
+-        'activeClass' => '_active'
+-    ]
+-];
++$config = ['buttonType' => 'PwA'];
++$tooltipConfig = ['activeClass' => '_active'];
++$jsonHelper = $this->helper(Magento\Framework\Json\Helper\Data::class);
+ ?>
+ 
+ <div id="minicart-amazon-pay-button" class="amazon-minicart-container">
+@@ -35,14 +27,14 @@ $tooltipConfig = [
+         <div class="amazon-button-container__cell">
+             <div id="PayWithAmazon-<?= /* @noEscape */ $block->getParentBlock()->getJsId() ?>"
+                  class="login-with-amazon"
+-                 data-mage-init='<?= /* @noEscape */ json_encode($config); ?>'>
++                 data-mage-init='{"Amazon_Payment/js/amazon-button":<?= /* @noEscape */ $jsonHelper->jsonEncode($config) ?>}'>
+             </div>
+         </div>
+ 
+         <div class="amazon-button-container__cell">
+             <div class="field-tooltip toggle">
+                 <span class="field-tooltip-action action-help"
+-                      data-mage-init='<?= /* @noEscape */ json_encode($tooltipConfig); ?>'
++                      data-mage-init='{"dropdown":<?= /* @noEscape */ $jsonHelper->jsonEncode($tooltipConfig) ?>}'
+                       data-toggle="dropdown"
+                       aria-haspopup="true"
+                       aria-expanded="false">
+
+--- a/view/frontend/web/css/source/_module.less
++++ b/view/frontend/web/css/source/_module.less
+@@ -62,6 +62,7 @@
+ 
+     .revert-checkout {
+         margin-top: 20px;
++        margin-bottom: 20px;
+         display: block;
+     }
+ 
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -55,7 +55,7 @@ define(
+             }
+ 
+             fullScreenLoader.startLoader();
+-            if(['de', 'uk'].indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
++            if(amazonPaymentConfig.getValue('scaRegions').indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
+                 console.log('SCA enabled for region: ' + amazonPaymentConfig.getValue('region'));
+                 return OffAmazonPayments.initConfirmationFlow(amazonPaymentConfig.getValue('merchantId'), amazonStorage.getOrderReference(), function(confirmationFlow) {
+                     return storage.post(
+
+--- a/view/frontend/web/js/amazon-button.js
++++ b/view/frontend/web/js/amazon-button.js
+@@ -151,7 +151,6 @@ define([
+                      * Authorization callback
+                      */
+                     authorization: function () {
+-                        fullScreenLoader.startLoader();
+                         //eslint-disable-next-line no-undef
+                         amazon.Login.authorize(_this._getLoginOptions(), _this._popupCallback());
+                     }
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -46,16 +46,25 @@ define(
+             isAmazonCartInValid = ko.computed(function () {
+                 return isAmazonAccountLoggedIn() && isQuoteDirty();
+             }),
+-            isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash');
++            isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash'),
++            amazonCustomerEmail = ko.computed(function () {
++                // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
++                if (window.checkoutConfig.hasOwnProperty('amazonLogin') &&
++                    typeof window.checkoutConfig.amazonLogin.amazon_customer_email === 'string'
++                ) {
++                    return window.checkoutConfig.amazonLogin.amazon_customer_email;
++                }
++                // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
++                return '';
++            });
++
+ 
+ 
+         /**
+          * Log out amazon user
+          */
+         function amazonLogOut() {
+-            if (amazonCore.amazonDefined()) {
+-                amazon.Login.logout(); // eslint-disable-line no-undef
+-            }
++            amazonCore.AmazonLogout();
+             this.isAmazonAccountLoggedIn(false);
+         }
+ 
+@@ -98,6 +107,7 @@ define(
+             isPwaVisible: isPwaVisible,
+             amazonlogOut: amazonLogOut,
+             amazonDefined: amazonCore.amazonDefined,
++            amazonCustomerEmail: amazonCustomerEmail,
+ 
+             /**
+              * Set order reference
+
+--- a/view/frontend/web/js/view/checkout-revert.js
++++ b/view/frontend/web/js/view/checkout-revert.js
+@@ -52,7 +52,7 @@ define(
+                 ).done(
+                     function () {
+                         amazonStorage.amazonlogOut();
+-                        window.location.reload();
++                        fullScreenLoader.stopLoader();
+                     }
+                 ).fail(
+                     function (response) {
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -57,6 +57,7 @@ define(
+                 widgetScope: registry.get('amazonPayment').loginScope
+             },
+             isCustomerLoggedIn: customer.isLoggedIn,
++            amazonCustomerEmail: amazonStorage.amazonCustomerEmail,
+             isAmazonAccountLoggedIn: amazonStorage.isAmazonAccountLoggedIn,
+             isAmazonEnabled: ko.observable(registry.get('amazonPayment').isPwaEnabled),
+             rates: shippingService.getShippingRates(),
+
+--- a/view/frontend/web/js/view/shipping-address/inline-form.js
++++ b/view/frontend/web/js/view/shipping-address/inline-form.js
+@@ -8,7 +8,8 @@ define([
+     return Component.extend({
+         defaults: {
+             template: 'Amazon_Payment/shipping-address/inline-form',
+-            formSelector: 'co-shipping-form'
++            formSelector: 'co-shipping-form',
++            accountFormSelector: 'customer-email-fieldset'
+         },
+ 
+         /**
+@@ -31,10 +32,14 @@ define([
+          * Show/hide inline form
+          */
+         hideInlineForm: function(hide) {
+-            var elem = document.getElementById(this.formSelector);
++            var shippingForm = document.getElementById(this.formSelector);
++            var accountForm = document.getElementById(this.accountFormSelector);
+ 
+-            if (elem) {
+-                document.getElementById(this.formSelector).style.display = hide ? 'none' : 'block';
++            if (shippingForm) {
++                shippingForm.style.display = hide ? 'none' : 'block';
++            }
++            if (accountForm) {
++                accountForm.parentElement.style.display = hide ? 'none' : 'block';
+             }
+         }
+     });
+
+--- a/view/frontend/web/template/checkout-widget-address.html
++++ b/view/frontend/web/template/checkout-widget-address.html
+@@ -20,6 +20,10 @@
+ <!--/ko-->
+ 
+ <!-- ko if: (isAmazonAccountLoggedIn) -->
++    <label class="label" for="amazon-email-address">
++        <span data-bind="i18n: 'Email Address:'"></span>
++    </label>
++    <span id="amazon-email-address" data-bind="text: amazonCustomerEmail" />
+     <div class="amazon-widget-container">
+         <div id="addressBookWidgetDiv" class="amazon-widget amazon-widget--address" data-bind="afterRender: initAddressWidget"></div>
+     </div>
+

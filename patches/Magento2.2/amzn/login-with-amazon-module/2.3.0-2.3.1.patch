@@ -1,0 +1,88 @@
+--- a/Controller/Login/Guest.php
++++ b/Controller/Login/Guest.php
+@@ -77,8 +77,7 @@ class Guest extends Action
+         Session $session,
+         ClientFactoryInterface $clientFactory,
+         LoggerInterface $logger
+-    )
+-    {
++    ) {
+         $this->amazonCoreHelper = $amazonCoreHelper;
+         $this->customerUrl = $customerUrl;
+         $this->accessTokenRequestValidator = $accessTokenRequestValidator;
+
+--- a/Domain/LayoutConfig.php
++++ b/Domain/LayoutConfig.php
+@@ -15,10 +15,10 @@
+  */
+ 
+ namespace Amazon\Login\Domain;
++
+ use Magento\Framework\Model\AbstractModel;
+ use Amazon\Core\Helper\Data as CoreHelper;
+ 
+-
+ /**
+  * Used for accessing Amazon Login layout configuration
+  */
+@@ -48,5 +48,4 @@ class LayoutConfig
+     {
+         return !$this->coreHelper->isLwaEnabled();
+     }
+-
+ }
+
+--- a/Test/Unit/Model/LayoutConfigTest.php
++++ b/Test/Unit/Model/LayoutConfigTest.php
+@@ -49,5 +49,4 @@ class LayoutConfigTest extends \PHPUnit\Framework\TestCase
+             [false, true]
+         ];
+     }
+-
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "2.3.0",
++  "version": "2.3.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.3.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.3.1",
+     "magento/module-customer": "*",
+     "magento/module-store": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0"?>
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="2.3.0">
++    <module name="Amazon_Login" setup_version="2.3.1">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/view/frontend/templates/oAuthRedirect.phtml
++++ b/view/frontend/templates/oAuthRedirect.phtml
+@@ -18,9 +18,9 @@
+ <div>
+     <?= $block->escapeHtml(__('You will be redirected shortly...')); ?><br/>
+     <?= $block->escapeHtml(__(
+-            'If you are not redirected automatically, try refreshing the page,'
++        'If you are not redirected automatically, try refreshing the page,'
+             . ' or return to your cart and use another payment method.'
+-        )); ?>
++    )); ?>
+ </div>
+ <script>
+ require([
+

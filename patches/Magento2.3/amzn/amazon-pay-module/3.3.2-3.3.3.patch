@@ -1,0 +1,57 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.3.2",
++  "version": "3.3.3",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.3.2",
+-    "amzn/login-with-amazon-module": "^3.3.2",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.3.3",
++    "amzn/login-with-amazon-module": "^3.3.3",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.3.2" >
++    <module name="Amazon_Payment" setup_version="3.3.3" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -23,9 +23,10 @@ define(
+         'Magento_Customer/js/model/customer',
+         'Magento_Checkout/js/model/full-screen-loader',
+         'Amazon_Payment/js/model/storage',
+-        'Amazon_Payment/js/model/amazonPaymentConfig'
++        'Amazon_Payment/js/model/amazonPaymentConfig',
++        'Magento_Customer/js/customer-data'
+     ],
+-    function (quote, urlBuilder, storage, url, errorProcessor, customer, fullScreenLoader, amazonStorage, amazonPaymentConfig) {
++    function (quote, urlBuilder, storage, url, errorProcessor, customer, fullScreenLoader, amazonStorage, amazonPaymentConfig, customerData) {
+         'use strict';
+ 
+         return function (paymentData, redirectOnSuccess) {
+@@ -54,6 +55,7 @@ define(
+             }
+ 
+             fullScreenLoader.startLoader();
++            customerData.invalidate(['cart']);
+             if(amazonPaymentConfig.getValue('scaRegions').indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
+                 console.log('SCA enabled for region: ' + amazonPaymentConfig.getValue('region'));
+                 return OffAmazonPayments.initConfirmationFlow(amazonPaymentConfig.getValue('merchantId'), amazonStorage.getOrderReference(), function(confirmationFlow) {
+
