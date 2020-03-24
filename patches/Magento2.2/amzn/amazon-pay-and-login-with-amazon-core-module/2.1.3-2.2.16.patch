@@ -220,6 +220,17 @@
  
      /**
 
+--- a/Domain/AmazonAddressDecoratorDe.php
++++ b/Domain/AmazonAddressDecoratorDe.php
+@@ -178,6 +178,6 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+      */
+     public function getLine($lineNumber)
+     {
+-        $this->amazonAddress->getLine($lineNumber);
++        return $this->amazonAddress->getLine($lineNumber);
+     }
+ }
+
 --- a/Domain/AmazonAddressFactory.php
 +++ b/Domain/AmazonAddressFactory.php
 @@ -23,10 +23,6 @@ use Magento\Framework\Escaper;
@@ -448,7 +459,7 @@
    "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
    "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
    "type": "magento2-module",
--  "version": "2.1.4",
+-  "version": "2.1.3",
 +  "version": "2.2.16",
    "license": [
      "Apache-2.0"
@@ -459,7 +470,7 @@
 @@ -1,6 +1,6 @@
  <?xml version="1.0"?>
  <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
--    <module name="Amazon_Core" setup_version="2.1.4">
+-    <module name="Amazon_Core" setup_version="2.1.3">
 +    <module name="Amazon_Core" setup_version="2.2.16">
          <sequence>
              <module name="Magento_Store"/>

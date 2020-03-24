@@ -1,0 +1,4 @@
+gitdb==4.0.2
+GitPython==3.1.0
+semver==2.9.1
+smmap==3.0.1
