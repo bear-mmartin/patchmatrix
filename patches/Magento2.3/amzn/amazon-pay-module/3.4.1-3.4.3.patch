@@ -1,0 +1,210 @@
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -144,24 +144,11 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+             ];
+ 
+             $responseParser = $this->clientFactory->create($storeId)->setOrderReferenceDetails($data);
+-            try {
+-                $response       = $this->amazonSetOrderDetailsResponseFactory->create(
+-                    [
+-                    'response' => $responseParser
+-                    ]
+-                );
++            $response = $this->amazonSetOrderDetailsResponseFactory->create([
++                'response' => $responseParser
++            ]);
+ 
+-                $this->validateConstraints($response, $allowedConstraints);
+-            } catch (AmazonServiceUnavailableException $e) {
+-                if($e->getApiErrorCode() == 'OrderReferenceNotModifiable') {
+-                    $this->logger->warning(
+-                        "Could not modify Amazon order details for $amazonOrderReferenceId: "
+-                        . $e->getApiErrorMessage()
+-                    );
+-                } else {
+-                    throw $e;
+-                }
+-            }
++            $this->validateConstraints($response, $allowedConstraints);
+         } catch (LocalizedException $e) {
+             throw $e;
+         } catch (Exception $e) {
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -25,6 +25,7 @@ use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+ use Amazon\Payment\Model\OrderInformationManagement;
+ use Magento\Quote\Api\Data\PaymentInterface;
+ use Magento\Quote\Api\Data\AddressInterface;
++use Magento\Framework\Webapi\Rest\Request;
+ use Magento\Framework\Exception\LocalizedException;
+ use Amazon\Payment\Gateway\Config\Config as GatewayConfig;
+ use Magento\Quote\Api\CartRepositoryInterface;
+@@ -41,6 +42,11 @@ class ConfirmOrderReference
+      */
+     private $checkoutSession;
+ 
++    /**
++     * @var Request
++     */
++    private $request;
++
+     /**
+      * @var OrderInformationManagement
+      */
+@@ -54,19 +60,31 @@ class ConfirmOrderReference
+     /**
+      * ConfirmOrderReference constructor.
+      * @param Session $checkoutSession
++     * @param Request $request
+      * @param OrderInformationManagement $orderInformationManagement
+      * @param CartRepositoryInterface $quoteRepository
+      */
+     public function __construct(
+         Session $checkoutSession,
++        Request $request,
+         OrderInformationManagement $orderInformationManagement,
+         CartRepositoryInterface $quoteRepository
+     ) {
+         $this->checkoutSession = $checkoutSession;
++        $this->request = $request;
+         $this->orderInformationManagement = $orderInformationManagement;
+         $this->quoteRepository = $quoteRepository;
+     }
+ 
++    /**
++     * @return boolean
++     */
++    protected function canConfirmOrderReference()
++    {
++        $data = $this->request->getRequestData();
++        return !empty($data['confirmOrder']);
++    }
++
+     /**
+      * @param PaymentMethodManagementInterface $subject
+      * @param $result
+@@ -94,10 +112,12 @@ class ConfirmOrderReference
+                     $this->orderInformationManagement->saveOrderInformation($amazonOrderReferenceId);
+                 }
+ 
+-                $this->orderInformationManagement->confirmOrderReference(
+-                    $amazonOrderReferenceId,
+-                    $quote->getStoreId()
+-                );
++                if ($this->canConfirmOrderReference()) {
++                    $this->orderInformationManagement->confirmOrderReference(
++                        $amazonOrderReferenceId,
++                        $quote->getStoreId()
++                    );
++                }
+             }
+         }
+ 
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.4.1",
++  "version": "3.4.3",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1",
+-    "amzn/login-with-amazon-module": "^3.4.1",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.3",
++    "amzn/login-with-amazon-module": "^3.4.3",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.4.1" >
++    <module name="Amazon_Payment" setup_version="3.4.3" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -40,6 +40,7 @@ define(
+                     quoteId: quote.getQuoteId()
+                 });
+                 payload = {
++                    confirmOrder: true,
+                     cartId: quote.getQuoteId(),
+                     email: quote.guestEmail,
+                     paymentMethod: paymentData,
+@@ -48,6 +49,7 @@ define(
+             } else {
+                 serviceUrl = urlBuilder.createUrl('/carts/mine/set-payment-information', {});
+                 payload = {
++                    confirmOrder: true,
+                     cartId: quote.getQuoteId(),
+                     paymentMethod: paymentData,
+                     billingAddress: quote.billingAddress()
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -50,7 +50,8 @@ define(
+             isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash'),
+             amazonCustomerEmail = ko.computed(function () {
+                 // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+-                if (window.checkoutConfig.hasOwnProperty('amazonLogin') &&
++                if (window.hasOwnProperty('checkoutConfig') &&
++                    window.checkoutConfig.hasOwnProperty('amazonLogin') &&
+                     typeof window.checkoutConfig.amazonLogin.amazon_customer_email === 'string'
+                 ) {
+                     return window.checkoutConfig.amazonLogin.amazon_customer_email;
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -52,28 +52,16 @@ define(
+              * New setShipping Action for Amazon Pay to bypass validation
+              */
+             setShippingInformation: function () {
+-
+-                /**
+-                 * Set Amazon shipping info
+-                 */
+-                function setShippingInformationAmazon() {
+-                    setShippingInformationAction().done(
+-                        function () {
+-                            stepNavigator.next();
+-                        }
+-                    );
+-                }
+-
+-                if (amazonStorage.isAmazonAccountLoggedIn() && customer.isLoggedIn()) {
+-                    setShippingInformationAmazon();
+-                } else if (amazonStorage.isAmazonAccountLoggedIn() && !customer.isLoggedIn()) {
+-
+-                    if (this.validateGuestEmail()) {
+-                        setShippingInformationAmazon();
++                if (amazonStorage.isAmazonAccountLoggedIn()) {
++                    if (customer.isLoggedIn() || this.validateGuestEmail()) {
++                        setShippingInformationAction().done(
++                            function () {
++                                stepNavigator.next();
++                            }
++                        );
+                     }
+-                    //if using guest checkout or guest checkout with amazon pay we need to use the main validation
+-                } else if (this.validateShippingInformation()) {
+-                    setShippingInformationAmazon();
++                } else {
++                    this._super();
+                 }
+             }
+         });
+
