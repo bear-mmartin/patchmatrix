@@ -580,6 +580,401 @@
  
          (isset($data['additional_information']) && $data['additional_information'] != 'default')
 
+--- a/Test/Mftf/Data/AmazonPaymentData.xml
++++ b/Test/Mftf/Data/AmazonPaymentData.xml
+@@ -11,6 +11,8 @@
+         <requiredEntity type="sandbox">SampleAmazonSandbox</requiredEntity>
+         <requiredEntity type="payment_action">SampleAmazonPaymentAction</requiredEntity>
+         <requiredEntity type="authorization_mode">SampleAmazonAuthorizationMode</requiredEntity>
++        <requiredEntity type="amazon_pay_active">SampleAmazonPayActive</requiredEntity>
++        <requiredEntity type="lwa_enabled">SampleAmazonLwaEnabled</requiredEntity>
+     </entity>
+     <entity name="SampleAmazonMerchantId" type="merchant_id">
+         <data key="value">someMerchantId</data>
+@@ -39,6 +41,12 @@
+     <entity name="SampleAmazonAuthorizationMode" type="authorization_mode">
+         <data key="value">synchronous</data>
+     </entity>
++    <entity name="SampleAmazonPayActive" type="authorization_mode">
++        <data key="value">1</data>
++    </entity>
++    <entity name="SampleAmazonLwaEnabled" type="authorization_mode">
++        <data key="value">1</data>
++    </entity>
+     <!-- default configuration used to restore Magento config -->
+     <entity name="DefaultAmazonPaymentConfig" type="amazon_payment_config_state">
+         <requiredEntity type="merchant_id">DefaultAmazonMerchantId</requiredEntity>
+@@ -50,6 +58,8 @@
+         <requiredEntity type="sandbox">DefaultAmazonSandbox</requiredEntity>
+         <requiredEntity type="payment_action">DefaultAmazonPaymentAction</requiredEntity>
+         <requiredEntity type="authorization_mode">DefaultAmazonAuthorizationMode</requiredEntity>
++        <requiredEntity type="amazon_pay_active">DefaultAmazonPayActive</requiredEntity>
++        <requiredEntity type="lwa_enabled">DefaultAmazonLwaEnabled</requiredEntity>
+     </entity>
+     <entity name="DefaultAmazonMerchantId" type="merchant_id">
+         <data key="value"/>
+@@ -78,4 +88,10 @@
+     <entity name="DefaultAmazonAuthorizationMode" type="authorization_mode">
+         <data key="value">synchronous</data>
+     </entity>
++    <entity name="DefaultAmazonPayActive" type="amazon_pay_active">
++        <data key="value">0</data>
++    </entity>
++    <entity name="DefaultAmazonLwaEnabled" type="lwa_enabled">
++        <data key="value">0</data>
++    </entity>
+ </entities>
+
+--- a/Test/Mftf/Metadata/amazon_payment_config-meta.xml
++++ b/Test/Mftf/Metadata/amazon_payment_config-meta.xml
+@@ -36,8 +36,18 @@
+                             </object>
+                         </object>
+                     </object>
++                    <object key="options" dataType="amazon_payment_config_state">
++                        <object key="fields" dataType="amazon_payment_config_state">
++                            <object key="active" dataType="amazon_pay_active">
++                                <field key="value">string</field>
++                            </object>
++                            <object key="lwa_enabled" dataType="lwa_enabled">
++                                <field key="value">string</field>
++                            </object>
++                        </object>
++                    </object>
+                 </object>
+             </object>
+         </object>
+     </operation>
+-</operations>
+\ No newline at end of file
++</operations>
+
+--- a/Test/Mftf/Section/AmazonCheckoutSection.xml
++++ b/Test/Mftf/Section/AmazonCheckoutSection.xml
+@@ -9,10 +9,10 @@
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
+     <section name="AmazonCheckoutSection">
+-        <element name="cartPayButton" type="img" selector="#PayWithAmazon-checkout-cart-shortcut-buttons img"/>
+-        <element name="miniCartPayButton" type="img" selector="#minicart-amazon-pay-button img"/>
+-        <element name="productPayButton" type="div" selector="#amazon-addtoCart-amazon-pay-button-product"/>
+-        <element name="checkoutPayButton" type="img" selector=".amazon-button-container img"/>
+-        <element name="loginButton" type="img" selector="#LoginWithAmazon-amazon-login img"/>
++        <element name="cartPayButton" type="button" selector="#PayWithAmazon-checkout-cart-shortcut-buttons img"/>
++        <element name="miniCartPayButton" type="button" selector="#minicart-amazon-pay-button img"/>
++        <element name="productPayButton" type="button" selector="#amazon-addtoCart-amazon-pay-button-product"/>
++        <element name="checkoutPayButton" type="button" selector=".amazon-button-container img"/>
++        <element name="loginButton" type="button" selector="#LoginWithAmazon-amazon-login img"/>
+     </section>
+ </sections>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
+@@ -16,9 +16,21 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -40,7 +52,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+         <!--Begin checkout-->
+@@ -70,9 +82,21 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -90,9 +114,6 @@
+         <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+     </test>
+     <test name="AmazonCheckoutDeclineTransactionTimedOutInstant" extends="AmazonCheckoutAddProductDetail">
+-        <before>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
+-        </before>
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+             <title value="Amazon Pay Decline TransactionTimedOut with Instant Authorization"/>
+@@ -100,9 +121,22 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
++
++        <before>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -116,12 +150,6 @@
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+     </test>
+     <test name="AmazonCheckoutDeclineTransactionTimedOutAutomatic" extends="AmazonCheckoutAddProductDetail">
+-        <before>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous" />
+-        </before>
+-        <after>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
+-        </after>
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+             <title value="Amazon Pay Decline TransactionTimedOut with Automatic Authorization)"/>
+@@ -129,9 +157,23 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
++
++        <before>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous" />
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -150,9 +192,21 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Go to Cart-->
+         <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+@@ -180,9 +234,21 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Go to Cart-->
+         <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
+@@ -17,17 +17,19 @@
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+         <!--Go to product page-->
+@@ -50,17 +52,19 @@
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+         <!--Go to product page-->
+@@ -81,7 +85,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+@@ -97,7 +101,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+@@ -122,7 +126,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+@@ -147,7 +151,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+@@ -172,7 +176,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+@@ -195,7 +199,7 @@
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+             <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
++                <issueId value="AmazonPayCredentialSupport" />
+             </skip>
+         </annotations>
+ 
+
+--- a/Test/Mftf/composer.json
++++ /dev/null
+@@ -1,28 +0,0 @@
+-{
+-  "name": "amzn/login-with-amazon-module",
+-  "description": "Login with Amazon module",
+-  "type": "magento2-module",
+-  "version": "2.2.2",
+-  "license": [
+-    "Apache-2.0"
+-  ],
+-  "require": {
+-    "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.2",
+-    "magento/module-customer": "^101.0",
+-    "magento/module-store": "^100.1",
+-    "magento/module-eav": "101.0.*",
+-    "magento/module-checkout": "100.2.*",
+-    "magento/module-checkout-agreements": "100.2.*"
+-
+-  },
+-  "suggest": {
+-    "magento/module-sales": "101.0.*"
+-  },
+-  "autoload": {
+-    "files": ["registration.php"],
+-    "psr-4": {
+-      "Amazon\\Login\\": ""
+-    }
+-  }
+-}
+
 --- a/composer.json
 +++ b/composer.json
 @@ -2,14 +2,14 @@
@@ -592,9 +987,10 @@
      "Apache-2.0"
    ],
    "require": {
-     "php": "~7.1.3||~7.2.0",
+-    "php": "~7.1.3||~7.2.0",
 -    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.6",
 -    "amzn/login-with-amazon-module": "^3.2.6",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
 +    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.13",
 +    "amzn/login-with-amazon-module": "^3.2.13",
      "magento/framework": "^102",

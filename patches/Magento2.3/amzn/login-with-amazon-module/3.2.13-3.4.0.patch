@@ -1,3 +1,33 @@
+--- a/Domain/LayoutConfig.php
++++ b/Domain/LayoutConfig.php
+@@ -15,10 +15,10 @@
+  */
+ 
+ namespace Amazon\Login\Domain;
++
+ use Magento\Framework\Model\AbstractModel;
+ use Amazon\Core\Helper\Data as CoreHelper;
+ 
+-
+ /**
+  * Used for accessing Amazon Login layout configuration
+  */
+@@ -48,5 +48,4 @@ class LayoutConfig
+     {
+         return !$this->coreHelper->isLwaEnabled();
+     }
+-
+ }
+
+--- a/Test/Unit/Model/LayoutConfigTest.php
++++ b/Test/Unit/Model/LayoutConfigTest.php
+@@ -49,5 +49,4 @@ class LayoutConfigTest extends \PHPUnit\Framework\TestCase
+             [false, true]
+         ];
+     }
+-
+ }
+
 --- a/composer.json
 +++ b/composer.json
 @@ -2,13 +2,13 @@

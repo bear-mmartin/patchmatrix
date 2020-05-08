@@ -47,15 +47,7 @@
 
 --- a/Helper/Data.php
 +++ b/Helper/Data.php
-@@ -24,7 +24,6 @@ use Magento\Store\Model\StoreManagerInterface;
- use Magento\Framework\Module\ModuleListInterface;
- use Magento\Framework\Module\StatusFactory;
- use Amazon\Core\Model\AmazonConfig;
--use Magento\Framework\App\ObjectManager;
- 
- /**
-  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
-@@ -198,6 +197,20 @@ class Data extends AbstractHelper
+@@ -197,6 +197,20 @@ class Data extends AbstractHelper
          return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
      }
  
@@ -166,7 +158,7 @@
 
 --- a/composer.json
 +++ b/composer.json
-@@ -2,12 +2,12 @@
+@@ -2,7 +2,7 @@
    "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
    "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
    "type": "magento2-module",
@@ -175,12 +167,6 @@
    "license": [
      "Apache-2.0"
    ],
-   "require": {
--    "php": "~7.1.3||~7.2.0",
-+    "php": "~7.1.3||~7.2.0||~7.3.0",
-     "magento/framework": "*",
-     "magento/module-sales": "*",
-     "magento/module-config": "*",
 
 --- a/etc/module.xml
 +++ b/etc/module.xml

@@ -44,15 +44,7 @@
 
 --- a/Helper/Data.php
 +++ b/Helper/Data.php
-@@ -24,6 +24,7 @@ use Magento\Store\Model\StoreManagerInterface;
- use Magento\Framework\Module\ModuleListInterface;
- use Magento\Framework\Module\StatusFactory;
- use Amazon\Core\Model\AmazonConfig;
-+use Magento\Framework\App\ObjectManager;
- 
- /**
-  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
-@@ -33,6 +34,31 @@ class Data extends AbstractHelper
+@@ -33,6 +33,31 @@ class Data extends AbstractHelper
  
      const AMAZON_ACTIVE = 'payment/amazon_payment/active';
  
@@ -84,7 +76,7 @@
      /**
       * @var Config
       */
-@@ -41,11 +67,6 @@ class Data extends AbstractHelper
+@@ -41,11 +66,6 @@ class Data extends AbstractHelper
      /**
       * Data constructor.
       *
@@ -96,7 +88,7 @@
       * @param ModuleListInterface $moduleList
       * @param Context $context
       * @param EncryptorInterface $encryptor
-@@ -55,66 +76,87 @@ class Data extends AbstractHelper
+@@ -55,66 +75,87 @@ class Data extends AbstractHelper
       * @param AmazonConfig $config
       */
      public function __construct(
@@ -204,7 +196,7 @@
      }
  
      /*
-@@ -124,37 +166,63 @@ class Data extends AbstractHelper
+@@ -124,37 +165,63 @@ class Data extends AbstractHelper
       */
      public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
      {
@@ -278,7 +270,7 @@
      }
  
      /**
-@@ -163,12 +231,14 @@ class Data extends AbstractHelper
+@@ -163,12 +230,14 @@ class Data extends AbstractHelper
       * @param $key
       * @param null $store
       * @return mixed
@@ -296,7 +288,7 @@
      }
  
      /**
-@@ -176,164 +246,229 @@ class Data extends AbstractHelper
+@@ -176,164 +245,229 @@ class Data extends AbstractHelper
       * @param null|string $scopeCode
       *
       * @return string
@@ -574,7 +566,7 @@
      }
  
      /*
-@@ -341,113 +476,145 @@ class Data extends AbstractHelper
+@@ -341,113 +475,145 @@ class Data extends AbstractHelper
       */
      public function getAdditionalAccessScope($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
      {
@@ -751,7 +743,7 @@
      }
  
      /**
-@@ -456,12 +623,14 @@ class Data extends AbstractHelper
+@@ -456,12 +622,14 @@ class Data extends AbstractHelper
       * @param $key
       * @param null $store
       * @return mixed
@@ -769,7 +761,7 @@
      }
  
      /**
-@@ -470,12 +639,14 @@ class Data extends AbstractHelper
+@@ -470,12 +638,14 @@ class Data extends AbstractHelper
       * @param $key
       * @param null $store
       * @return mixed
@@ -787,7 +779,7 @@
      }
  
      /**
-@@ -483,12 +654,11 @@ class Data extends AbstractHelper
+@@ -483,12 +653,11 @@ class Data extends AbstractHelper
       * @param null|string $scopeCode
       *
       * @return array
@@ -802,7 +794,7 @@
      }
  
      /**
-@@ -496,22 +666,19 @@ class Data extends AbstractHelper
+@@ -496,22 +665,19 @@ class Data extends AbstractHelper
       * @param null|string $scopeCode
       *
       * @return bool
@@ -828,7 +820,7 @@
      }
  
      /**
-@@ -519,36 +686,35 @@ class Data extends AbstractHelper
+@@ -519,36 +685,35 @@ class Data extends AbstractHelper
       * @param null|string $scopeCode
       *
       * @return bool
@@ -873,7 +865,7 @@
      }
  
      /**
-@@ -556,41 +722,64 @@ class Data extends AbstractHelper
+@@ -556,41 +721,64 @@ class Data extends AbstractHelper
       * @param null|string $scopeCode
       *
       * @return string
@@ -1811,7 +1803,7 @@
 
 --- a/composer.json
 +++ b/composer.json
-@@ -2,7 +2,7 @@
+@@ -2,12 +2,12 @@
    "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
    "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
    "type": "magento2-module",
@@ -1820,6 +1812,12 @@
    "license": [
      "Apache-2.0"
    ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
+     "magento/framework": "*",
+     "magento/module-sales": "*",
+     "magento/module-config": "*",
 
 --- a/etc/module.xml
 +++ b/etc/module.xml

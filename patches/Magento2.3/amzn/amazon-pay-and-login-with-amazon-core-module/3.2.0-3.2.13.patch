@@ -331,17 +331,6 @@
          }
  
 
---- a/Helper/Data.php
-+++ b/Helper/Data.php
-@@ -24,6 +24,7 @@ use Magento\Store\Model\StoreManagerInterface;
- use Magento\Framework\Module\ModuleListInterface;
- use Magento\Framework\Module\StatusFactory;
- use Amazon\Core\Model\AmazonConfig;
-+use Magento\Framework\App\ObjectManager;
- 
- /**
-  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
-
 --- /dev/null
 +++ b/Logger/ExceptionLogger.php
 @@ -0,0 +1,31 @@
@@ -422,11 +411,12 @@
      "Apache-2.0"
    ],
    "require": {
-     "php": "~7.1.3||~7.2.0",
+-    "php": "~7.1.3||~7.2.0",
 -    "magento/framework": "^102",
 -    "magento/module-sales": "^102",
 -    "magento/module-config": "101.1",
 -    "magento/module-store": "^101",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
 +    "magento/framework": "*",
 +    "magento/module-sales": "*",
 +    "magento/module-config": "*",

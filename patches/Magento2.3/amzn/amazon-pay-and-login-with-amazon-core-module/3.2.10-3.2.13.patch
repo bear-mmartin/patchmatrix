@@ -44,15 +44,16 @@
 
 --- a/Helper/Data.php
 +++ b/Helper/Data.php
-@@ -24,7 +24,6 @@ use Magento\Store\Model\StoreManagerInterface;
+@@ -24,8 +24,6 @@ use Magento\Store\Model\StoreManagerInterface;
  use Magento\Framework\Module\ModuleListInterface;
  use Magento\Framework\Module\StatusFactory;
  use Amazon\Core\Model\AmazonConfig;
 -use Magento\Framework\App\Cache\TypeListInterface;
- use Magento\Framework\App\ObjectManager;
+-use Magento\Framework\App\ObjectManager;
  
  /**
-@@ -65,11 +64,6 @@ class Data extends AbstractHelper
+  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
+@@ -65,11 +63,6 @@ class Data extends AbstractHelper
       */
      private $config;
  
@@ -64,7 +65,7 @@
      /**
       * Data constructor.
       *
-@@ -80,7 +74,6 @@ class Data extends AbstractHelper
+@@ -80,7 +73,6 @@ class Data extends AbstractHelper
       * @param ClientIp $clientIpHelper
       * @param StatusFactory $moduleStatusFactory
       * @param AmazonConfig $config
@@ -72,7 +73,7 @@
       */
      public function __construct(
          ModuleListInterface $moduleList,
-@@ -89,8 +82,7 @@ class Data extends AbstractHelper
+@@ -89,8 +81,7 @@ class Data extends AbstractHelper
          StoreManagerInterface $storeManager,
          ClientIp $clientIpHelper,
          StatusFactory $moduleStatusFactory,
@@ -82,7 +83,7 @@
      ) {
          parent::__construct($context);
          $this->moduleList = $moduleList;
-@@ -99,7 +91,6 @@ class Data extends AbstractHelper
+@@ -99,7 +90,6 @@ class Data extends AbstractHelper
          $this->clientIpHelper = $clientIpHelper;
          $this->moduleStatusFactory = $moduleStatusFactory;
          $this->config = $config;
@@ -90,7 +91,7 @@
      }
  
      /*
-@@ -789,7 +780,6 @@ class Data extends AbstractHelper
+@@ -789,7 +779,6 @@ class Data extends AbstractHelper
          // Make sure all of them are disabled if any one of them is disabled.
          if ($isDisabled > 0 && $isDisabled != 3) {
              $this->moduleStatusFactory->create()->setIsEnabled(false, ['Amazon_Payment', 'Amazon_Login', 'Amazon_Core']);
@@ -111,7 +112,7 @@
 
 --- a/composer.json
 +++ b/composer.json
-@@ -2,7 +2,7 @@
+@@ -2,12 +2,12 @@
    "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
    "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
    "type": "magento2-module",
@@ -120,6 +121,12 @@
    "license": [
      "Apache-2.0"
    ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
+     "magento/framework": "*",
+     "magento/module-sales": "*",
+     "magento/module-config": "*",
 
 --- a/etc/module.xml
 +++ b/etc/module.xml
