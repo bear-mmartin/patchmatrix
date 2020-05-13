@@ -692,7 +692,7 @@
 +         * Show/hide inline form
 +         */
 +        hideInlineForm: function(hide) {
-+            var elem = document.getElementById(this.formSelector);
++            let elem = document.getElementById(this.formSelector);
  
 -                if (elem) {
 -                    document.getElementById(this.formSelector).style.display = 'none';

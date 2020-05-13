@@ -2591,7 +2591,7 @@
           * Show/hide inline form
           */
          hideInlineForm: function(hide) {
--            var elem = document.getElementById(this.formSelector);
+-            let elem = document.getElementById(this.formSelector);
 +            var shippingForm = document.getElementById(this.formSelector);
 +            var accountForm = document.getElementById(this.accountFormSelector);
  

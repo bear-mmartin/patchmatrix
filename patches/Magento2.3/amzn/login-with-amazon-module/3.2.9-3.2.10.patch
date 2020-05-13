@@ -29,3 +29,15 @@
              <module name="Amazon_Core"/>
          </sequence>
 
+--- a/view/frontend/web/js/amazon-redirect.js
++++ b/view/frontend/web/js/amazon-redirect.js
+@@ -44,7 +44,7 @@ define([
+             // we don't have the customer's consent or invalid request
+             this.redirectOnRequestWithError();
+             this.setAuthStateCookies();
+-            let onAmazonDefined = function () {
++            var onAmazonDefined = function () {
+                 //only set this on the redirect page
+                 amazon.Login.setUseCookie(true); //eslint-disable-line no-undef
+                 amazonCore.verifyAmazonLoggedIn().then(function (loggedIn) {
+
