@@ -1,0 +1,51 @@
+--- a/Domain/AmazonAddressDecoratorJp.php
++++ b/Domain/AmazonAddressDecoratorJp.php
+@@ -38,13 +38,7 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getLines()
+     {
+-        $city = $this->amazonAddress->getCity();
+-
+-        /*
+-         * AmazonAddressDecoratorJp->getCity() returns address line 1 when city is empty.
+-         * Omit line 1 from the street address in this case.
+-         */
+-        return array_slice($this->amazonAddress->getLines(), empty($city) ? 1 : 0);
++        return $this->amazonAddress->getLines();
+     }
+ 
+     /**
+@@ -76,7 +70,7 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getCity()
+     {
+-        return $this->amazonAddress->getCity() ?? $this->amazonAddress->getLine(1);
++        return $this->amazonAddress->getCity() ?? '-';
+     }
+ 
+     /**
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "4.0.0",
++  "version": "4.0.2",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="4.0.0">
++    <module name="Amazon_Core" setup_version="4.0.2">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
