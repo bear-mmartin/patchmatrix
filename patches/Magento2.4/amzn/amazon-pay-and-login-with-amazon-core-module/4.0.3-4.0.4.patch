@@ -1,0 +1,222 @@
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -59,7 +59,7 @@ class Data extends AbstractHelper
+     private $moduleStatusFactory;
+ 
+     /**
+-     * @var Config
++     * @var AmazonConfig
+      */
+     private $config;
+ 
+@@ -611,7 +611,9 @@ class Data extends AbstractHelper
+      */
+     public function isCurrentCurrencySupportedByAmazon()
+     {
+-        return $this->config->getBaseCurrencyCode() == $this->getCurrencyCode();
++        $regionCurrency = $this->getCurrencyCode();
++        $currentCurrency = $this->config->getPresentmentCurrency();
++        return $currentCurrency === $regionCurrency || $this->config->canUseCurrency($currentCurrency);
+     }
+ 
+     /**
+
+--- a/Model/AmazonConfig.php
++++ b/Model/AmazonConfig.php
+@@ -77,21 +77,20 @@ class AmazonConfig
+      * Checks to see if store's selected region is a multicurrency region.
+      * @param string $scope
+      * @param null $scopeCode
+-     * @param null $store
+      * @return bool
+      */
+-    public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
++    public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+         $mcRegions = $this->scopeConfig->getValue(
+             'multicurrency/regions',
+             $scope,
+-            $store
++            $scopeCode
+         );
+ 
+         if ($mcRegions) {
+             $allowedRegions = explode(',', $mcRegions);
+ 
+-            if (in_array($this->getPaymentRegion(), $allowedRegions)) {
++            if (in_array($this->getPaymentRegion($scope, $scopeCode), $allowedRegions)) {
+                 return true;
+             }
+         }
+@@ -104,11 +103,10 @@ class AmazonConfig
+      *
+      * @param string $scope
+      * @param null $scopeCode
+-     * @param null $store
+      *
+      * @return bool
+      */
+-    public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
++    public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+         $enabled = $this->scopeConfig->getValue(
+             'payment/amazon_payment/multicurrency',
+@@ -117,12 +115,37 @@ class AmazonConfig
+         );
+ 
+         if ($enabled) {
+-            return $this->isMulticurrencyRegion($scope, $scopeCode, $store);
++            return $this->isMulticurrencyRegion($scope, $scopeCode);
+         }
+ 
+         return false;
+     }
+ 
++    /**
++     * @param string $scope
++     * @param string $scopeCode
++     * @return array
++     */
++    public function getValidCurrencies($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return explode(',', $this->scopeConfig->getValue('multicurrency/currencies', $scope, $scopeCode));
++    }
++
++    /**
++     * @param string $currencyCode
++     * @param string $scope
++     * @param string $scopeCode
++     * @return boolean
++     */
++    public function canUseCurrency($currencyCode, $scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $result = false;
++        if ($this->multiCurrencyEnabled($scope, $scopeCode)) {
++            $result = in_array($currencyCode, $this->getValidCurrencies($scope, $scopeCode));
++        }
++        return $result;
++    }
++
+     /**
+      * Only certain currency codes are allowed to be used with multi-currency
+      *
+@@ -131,23 +154,7 @@ class AmazonConfig
+      */
+     public function useMultiCurrency($store = null)
+     {
+-        if ($this->multiCurrencyEnabled()) {
+-            // get allowed presentment currencies from config.xml
+-            $currencies = $this->scopeConfig->getValue(
+-                'multicurrency/currencies',
+-                ScopeInterface::SCOPE_STORE,
+-                $store
+-            );
+-
+-            if ($currencies) {
+-                $allowedCurrencies = explode(',', $currencies);
+-
+-                if (in_array($this->getCurrentCurrencyCode(), $allowedCurrencies)) {
+-                    return true;
+-                }
+-            }
+-        }
+-        return false;
++        return $this->canUseCurrency($this->getCurrentCurrencyCode(), ScopeInterface::SCOPE_STORE, $store);
+     }
+ 
+     /*
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -539,9 +539,14 @@ class SimplePath
+      */
+     public function getRegion()
+     {
+-        $currency = $this->getConfig('currency/options/default');
++        $currency = $this->getCurrency();
++
++        $region = null;
++        if ($currency) {
++            $region = isset($this->_mapCurrencyRegion[$currency]) ? strtoupper($this->_mapCurrencyRegion[$currency]) : 'DE';
++        }
++
+ 
+-        $region = isset($this->_mapCurrencyRegion[$currency]) ? strtoupper($this->_mapCurrencyRegion[$currency]) : '';
+         if ($region == 'DE') {
+             $region = 'Euro Region';
+         }
+@@ -555,7 +560,15 @@ class SimplePath
+     public function getCurrency()
+     {
+         $currency = $this->getConfig('currency/options/default');
+-        return (isset($this->_mapCurrencyRegion[$currency])) ? $currency : null;
++        $isCurrencyValid = isset($this->_mapCurrencyRegion[$currency]);
++        if (!$isCurrencyValid) {
++            if ($this->getConfig(CoreHelper::AMAZON_ACTIVE, $this->_scope, $this->_scopeId)) {
++                $isCurrencyValid = $this->amazonConfig->canUseCurrency($currency, $this->_scope, $this->_scopeId);
++            } else {
++                $isCurrencyValid = in_array($currency, $this->amazonConfig->getValidCurrencies($this->_scope, $this->_scopeId));
++            }
++        }
++        return $isCurrencyValid ? $currency : null;
+     }
+ 
+     /**
+@@ -581,7 +594,7 @@ class SimplePath
+             'isSecure'      => (int) ($this->request->isSecure()),
+             'hasOpenssl'    => (int) (extension_loaded('openssl')),
+             'formParams'    => $this->getFormParams(),
+-            'isMultiCurrencyRegion' => (int) $this->amazonConfig->isMulticurrencyRegion(),
++            'isMultiCurrencyRegion' => (int) $this->amazonConfig->isMulticurrencyRegion($this->_scope, $this->_scopeId),
+         ];
+     }
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,7 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "4.0.3",
++  "version": "4.0.4",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/adminhtml/system.xml
++++ b/etc/adminhtml/system.xml
+@@ -152,7 +152,7 @@
+                             <label>Store Name</label>
+                             <config_path>payment/amazon_payment/storename</config_path>
+                         </field>
+-                        <field id="multicurrency" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
++                        <field id="multicurrency" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                             <label>Use Multi-currency</label>
+                             <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                             <config_path>payment/amazon_payment/multicurrency</config_path>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="4.0.3">
++    <module name="Amazon_Core" setup_version="4.0.4">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+

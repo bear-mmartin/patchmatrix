@@ -1679,25 +1679,46 @@
 
 --- a/composer.json
 +++ b/composer.json
-@@ -2,14 +2,14 @@
-   "name": "amzn/amazon-pay-module",
-   "description": "Amazon Pay module",
-   "type": "magento2-module",
+@@ -1,37 +1 @@
+-{
+-  "name": "amzn/amazon-pay-module",
+-  "description": "Amazon Pay module",
+-  "type": "magento2-module",
 -  "version": "3.2.12",
-+  "version": "3.4.1-p2",
-   "license": [
-     "Apache-2.0"
-   ],
-   "require": {
+-  "license": [
+-    "Apache-2.0"
+-  ],
+-  "require": {
 -    "php": "~7.1.3||~7.2.0",
 -    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.12",
 -    "amzn/login-with-amazon-module": "^3.2.12",
-+    "php": "~7.1.3||~7.2.0||~7.3.0",
-+    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p2",
-+    "amzn/login-with-amazon-module": "^3.4.1-p2",
-     "magento/framework": "^102",
-     "magento/module-customer": "^102",
-     "magento/module-eav": "^102",
+-    "magento/framework": "^102",
+-    "magento/module-customer": "^102",
+-    "magento/module-eav": "^102",
+-    "magento/module-sales": "^102",
+-    "magento/module-quote": "^101.1",
+-    "magento/module-payment": "^100.3",
+-    "magento/module-backend": "^101",
+-    "magento/module-store": "^101",
+-    "magento/module-checkout": "^100.3",
+-    "magento/module-catalog": "^103",
+-    "magento/module-paypal": "*",
+-    "magento/module-directory": "^100.3"
+-  },
+-  "suggest": {
+-    "magento/module-customer": "*",
+-    "magento/module-scalable-checkout": "*",
+-    "magento/module-scalable-oms": "*"
+-  },
+-  "autoload": {
+-    "files": ["registration.php"],
+-    "psr-4": {
+-      "Amazon\\Payment\\": ""
+-    }
+-  }
+-}
++{"name":"amzn/amazon-pay-module","description":"Amazon Pay module","type":"magento2-module","version":"3.4.1-p2","license":["Apache-2.0"],"require":{"php":"~7.1.3||~7.2.0||~7.3.0","amzn/amazon-pay-and-login-with-amazon-core-module":"^3.4.1-p2","amzn/login-with-amazon-module":"^3.4.1-p2","magento/framework":"^102","magento/module-customer":"^102","magento/module-eav":"^102","magento/module-sales":"^102","magento/module-quote":"^101.1","magento/module-payment":"^100.3","magento/module-backend":"^101","magento/module-store":"^101","magento/module-checkout":"^100.3","magento/module-catalog":"^103","magento/module-paypal":"*","magento/module-directory":"^100.3"},"suggest":{"magento/module-customer":"*","magento/module-scalable-checkout":"*","magento/module-scalable-oms":"*"},"autoload":{"files":["registration.php"],"psr-4":{"Amazon\\Payment\\":""}}}
+\ No newline at end of file
 
 --- a/etc/config.xml
 +++ b/etc/config.xml
@@ -1717,7 +1738,7 @@
  -->
  <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
 -    <module name="Amazon_Payment" setup_version="3.2.12" >
-+    <module name="Amazon_Payment" setup_version="3.4.1-p2" >
++    <module name="Amazon_Payment" setup_version="3.4.1" >
          <sequence>
              <module name="Amazon_Core"/>
              <module name="Amazon_Login"/>

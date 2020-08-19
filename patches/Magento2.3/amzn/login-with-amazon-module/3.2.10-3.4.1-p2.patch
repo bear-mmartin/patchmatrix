@@ -111,23 +111,38 @@
 
 --- a/composer.json
 +++ b/composer.json
-@@ -2,13 +2,13 @@
-   "name": "amzn/login-with-amazon-module",
-   "description": "Login with Amazon module",
-   "type": "magento2-module",
+@@ -1,29 +1 @@
+-{
+-  "name": "amzn/login-with-amazon-module",
+-  "description": "Login with Amazon module",
+-  "type": "magento2-module",
 -  "version": "3.2.10",
-+  "version": "3.4.1-p2",
-   "license": [
-     "Apache-2.0"
-   ],
-   "require": {
+-  "license": [
+-    "Apache-2.0"
+-  ],
+-  "require": {
 -    "php": "~7.1.3||~7.2.0",
 -    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.10",
-+    "php": "~7.1.3||~7.2.0||~7.3.0",
-+    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p2",
-     "magento/framework": "^102",
-     "magento/module-customer": "^102",
-     "magento/module-store": "^101",
+-    "magento/framework": "^102",
+-    "magento/module-customer": "^102",
+-    "magento/module-store": "^101",
+-    "magento/module-eav": "^102",
+-    "magento/module-checkout": "^100.3",
+-    "magento/module-checkout-agreements": "*"
+-
+-  },
+-  "suggest": {
+-    "magento/module-sales": "*"
+-  },
+-  "autoload": {
+-    "files": ["registration.php"],
+-    "psr-4": {
+-      "Amazon\\Login\\": ""
+-    }
+-  }
+-}
++{"name":"amzn/login-with-amazon-module","description":"Login with Amazon module","type":"magento2-module","version":"3.4.1-p2","license":["Apache-2.0"],"require":{"php":"~7.1.3||~7.2.0||~7.3.0","amzn/amazon-pay-and-login-with-amazon-core-module":"^3.4.1-p2","magento/framework":"^102","magento/module-customer":"^102","magento/module-store":"^101","magento/module-eav":"^102","magento/module-checkout":"^100.3","magento/module-checkout-agreements":"*"},"suggest":{"magento/module-sales":"*"},"autoload":{"files":["registration.php"],"psr-4":{"Amazon\\Login\\":""}}}
+\ No newline at end of file
 
 --- a/etc/module.xml
 +++ b/etc/module.xml
@@ -136,7 +151,7 @@
  -->
  <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
 -    <module name="Amazon_Login" setup_version="3.2.10">
-+    <module name="Amazon_Login" setup_version="3.4.1-p2">
++    <module name="Amazon_Login" setup_version="3.4.1">
          <sequence>
              <module name="Amazon_Core"/>
          </sequence>
