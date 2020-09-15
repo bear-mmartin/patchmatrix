@@ -1,0 +1,241 @@
+--- a/Model/CustomerLinkManagement.php
++++ b/Model/CustomerLinkManagement.php
+@@ -99,7 +99,7 @@ class CustomerLinkManagement implements \Amazon\Login\Api\CustomerLinkManagement
+         $customerData->setFirstname($amazonCustomer->getFirstName());
+         $customerData->setLastname($amazonCustomer->getLastName());
+         $customerData->setEmail($amazonCustomer->getEmail());
+-        $password = $this->random->getRandomString(64);
++        $password = "4mZ!" . $this->random->getRandomString(60);
+ 
+         $customer = $this->accountManagement->createAccount($customerData, $password);
+ 
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.3.2",
++  "version": "3.7.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.3.2",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.7.0",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-store": "^101",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.3.2">
++    <module name="Amazon_Login" setup_version="3.7.0">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Passwort vergessen?"
+ "Login with Amazon available in authentication popup","Login mit Amazon im Anmelde-Popup anzeigen"
++"You will be redirected shortly...","Sie werden in Kürze weitergeleitet..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Falls Sie nicht weitergeleitet werden, versuchen Sie bitte die Seite neu zu laden, oder gehen Sie zurück zum Warenkorb um ggf. eine andere Zahlungsmethode zu verwenden."
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Passwort vergessen?"
+ "Login with Amazon available in authentication popup","Login mit Amazon im Anmelde-Popup anzeigen"
++"You will be redirected shortly...","Sie werden in Kürze weitergeleitet..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Falls Sie nicht weitergeleitet werden, versuchen Sie bitte die Seite neu zu laden, oder gehen Sie zurück zum Warenkorb um ggf. eine andere Zahlungsmethode zu verwenden."
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Passwort vergessen?"
+ "Login with Amazon available in authentication popup","Login mit Amazon im Anmelde-Popup anzeigen"
++"You will be redirected shortly...","Sie werden in Kürze weitergeleitet..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Falls Sie nicht weitergeleitet werden, versuchen Sie bitte die Seite neu zu laden, oder gehen Sie zurück zum Warenkorb um ggf. eine andere Zahlungsmethode zu verwenden."
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -12,4 +12,5 @@
+ "Ok","Ok"
+ "Forgot Your Password?","Forgot Your Password?"
+ "Login with Amazon available in authentication popup","Login with Amazon available in authentication popup"
+-
++"You will be redirected shortly...","You will be redirected shortly..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method."
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+@@ -115,4 +115,6 @@
+ "Welcome back!","Welcome back!"
+ "With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop.","With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop."
+ "You will be registering for a %1 account based on the base currency of your shop (%2).","You will be registering for a %1 account based on the base currency of your shop (%2)."
+-"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
+\ No newline at end of file
++"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
++"You will be redirected shortly...","You will be redirected shortly..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method."
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+\ No newline at end of file
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Vous avez oublié votre mot de passe ?"
+ "Login with Amazon available in authentication popup","Connectez-vous avec Amazon disponible dans la fenêtre pop-up d'authentification"
++"You will be redirected shortly...","Vous allez être automatiquement redirigé..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si vous n’êtes pas automatiquement redirigé, veuillez rafraîchir la page ou veuillez retourner à votre panier et sélectionner une autre méthode de paiement."
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Vous avez oublié votre mot de passe ?"
+ "Login with Amazon available in authentication popup","Connectez-vous avec Amazon disponible dans la fenêtre pop-up d'authentification"
++"You will be redirected shortly...","Vous allez être automatiquement redirigé..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si vous n’êtes pas automatiquement redirigé, veuillez rafraîchir la page ou veuillez retourner à votre panier et sélectionner une autre méthode de paiement."
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Hai dimenticato la password?"
+ "Login with Amazon available in authentication popup","Accedi con Amazon disponibile nel pop-up di autenticazione"
++"You will be redirected shortly...","Verrai reindirizzato a breve..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Se non vieni reindirizzato automaticamente, prova a ricaricare la pagina o torna al carrello e utilizza un altro metodo di pagamento."
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Hai dimenticato la password?"
+ "Login with Amazon available in authentication popup","Accedi con Amazon disponibile nel pop-up di autenticazione"
++"You will be redirected shortly...","Verrai reindirizzato a breve..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Se non vieni reindirizzato automaticamente, prova a ricaricare la pagina o torna al carrello e utilizza un altro metodo di pagamento."
+
+--- a/view/frontend/web/js/amazon-logout.js
++++ b/view/frontend/web/js/amazon-logout.js
+@@ -16,7 +16,6 @@
+ define([
+     'jquery',
+     'amazonCore',
+-    'jquery/ui',
+     'mage/cookies'
+ ], function ($, core) {
+     'use strict';
+
+--- a/view/frontend/web/js/amazon-redirect.js
++++ b/view/frontend/web/js/amazon-redirect.js
+@@ -20,7 +20,6 @@ define([
+     'amazonCsrf',
+     'Magento_Customer/js/customer-data',
+     'mage/loader',
+-    'jquery/ui',
+     'mage/cookies'
+ ], function ($, amazonCore, amazonPaymentConfig, amazonCsrf, customerData) {
+     'use strict';
+
