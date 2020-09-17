@@ -1,0 +1,110 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "4.0.4",
++  "version": "4.1.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.3.0||~7.4.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.0.4",
+-    "amzn/login-with-amazon-module": "^4.0.4",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.0",
++    "amzn/login-with-amazon-module": "^4.1.0",
+     "magento/framework": "*",
+     "magento/module-customer": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="4.0.4" >
++    <module name="Amazon_Payment" setup_version="4.1.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/messages.js
++++ b/view/frontend/web/js/messages.js
+@@ -44,6 +44,14 @@ define(
+                         }
+                     });
+                 }
++            },
++
++            addMessage: function (type, messageText) {
++                var messageComponent = messagesFactory();
++
++                if (type === 'error') {
++                    messageList.addErrorMessage({message: $.mage.__($("<textarea/>").html(messageText).text())});
++                }
+             }
+         }
+     }
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -164,6 +164,8 @@ define(
+                             addressConverter.quoteAddressToFormAddressData(addressData)
+                         );
+                         checkoutDataResolver.resolveEstimationAddress();
++
++                        amazonStorage.isAmazonShippingAddressSelected(true);
+                     }
+                 ).fail(
+                     function (response) {
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -4,17 +4,20 @@ define(
+         'jquery',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
+-        'Amazon_Payment/js/model/storage'
++        'Amazon_Payment/js/model/storage',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+         Component,
+         customer,
+-        amazonStorage
++        amazonStorage,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+         return Component.extend({
++            noShippingAddressSelectedMsg: 'No shipping address has been selected for this order, please try to refresh the page or add a new shipping address in the Address Book widget.',
+ 
+             /**
+              * Initialize shipping
+@@ -51,7 +54,19 @@ define(
+                 }
+ 
+                 if (!customer.isLoggedIn()) {
+-                    return this.validateGuestEmail();
++                    if (!(amazonStorage.isAmazonShippingAddressSelected() && this.validateGuestEmail())) {
++                        amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                        amazonMessages.displayMessages();
++
++                        return false;
++                    }
++                }
++
++                if (!(amazonStorage.isAmazonShippingAddressSelected())) {
++                    amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                    amazonMessages.displayMessages();
++
++                    return false;
+                 }
+ 
+                 return true;
+

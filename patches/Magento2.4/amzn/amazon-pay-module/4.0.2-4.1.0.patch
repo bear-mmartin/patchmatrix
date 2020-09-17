@@ -2866,7 +2866,7 @@
    "description": "Amazon Pay module",
    "type": "magento2-module",
 -  "version": "4.0.2",
-+  "version": "4.0.4",
++  "version": "4.1.0",
    "license": [
      "Apache-2.0"
    ],
@@ -2874,8 +2874,8 @@
      "php": "~7.3.0||~7.4.0",
 -    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.0.2",
 -    "amzn/login-with-amazon-module": "^4.0.2",
-+    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.0.4",
-+    "amzn/login-with-amazon-module": "^4.0.4",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.0",
++    "amzn/login-with-amazon-module": "^4.1.0",
      "magento/framework": "*",
      "magento/module-customer": "*",
      "magento/module-eav": "*",
@@ -2907,7 +2907,7 @@
  -->
  <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
 -    <module name="Amazon_Payment" setup_version="4.0.2" >
-+    <module name="Amazon_Payment" setup_version="4.0.4" >
++    <module name="Amazon_Payment" setup_version="4.1.0" >
          <sequence>
              <module name="Amazon_Core"/>
              <module name="Amazon_Login"/>
@@ -3254,6 +3254,36 @@
 +"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
 +"The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
 
+--- a/view/frontend/web/js/messages.js
++++ b/view/frontend/web/js/messages.js
+@@ -44,6 +44,14 @@ define(
+                         }
+                     });
+                 }
++            },
++
++            addMessage: function (type, messageText) {
++                var messageComponent = messagesFactory();
++
++                if (type === 'error') {
++                    messageList.addErrorMessage({message: $.mage.__($("<textarea/>").html(messageText).text())});
++                }
+             }
+         }
+     }
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -164,6 +164,8 @@ define(
+                             addressConverter.quoteAddressToFormAddressData(addressData)
+                         );
+                         checkoutDataResolver.resolveEstimationAddress();
++
++                        amazonStorage.isAmazonShippingAddressSelected(true);
+                     }
+                 ).fail(
+                     function (response) {
+
 --- a/view/frontend/web/js/view/payment/list.js
 +++ b/view/frontend/web/js/view/payment/list.js
 @@ -35,6 +35,12 @@ define([
@@ -3272,7 +3302,7 @@
 
 --- a/view/frontend/web/js/view/shipping.js
 +++ b/view/frontend/web/js/view/shipping.js
-@@ -2,22 +2,14 @@
+@@ -2,27 +2,22 @@
  define(
      [
          'jquery',
@@ -3282,7 +3312,9 @@
          'Magento_Customer/js/model/customer',
 -        'Magento_Checkout/js/action/set-shipping-information',
 -        'Magento_Checkout/js/model/step-navigator',
-         'Amazon_Payment/js/model/storage'
+-        'Amazon_Payment/js/model/storage'
++        'Amazon_Payment/js/model/storage',
++        'Amazon_Payment/js/messages'
      ],
      function (
          $,
@@ -3292,10 +3324,18 @@
          customer,
 -        setShippingInformationAction,
 -        stepNavigator,
-         amazonStorage
+-        amazonStorage
++        amazonStorage,
++        amazonMessages
      ) {
          'use strict';
-@@ -49,20 +41,20 @@ define(
+ 
+         return Component.extend({
++            noShippingAddressSelectedMsg: 'No shipping address has been selected for this order, please try to refresh the page or add a new shipping address in the Address Book widget.',
+ 
+             /**
+              * Initialize shipping
+@@ -49,20 +44,32 @@ define(
              },
  
              /**
@@ -3312,16 +3352,27 @@
 -                                stepNavigator.next();
 -                            }
 -                        );
--                    }
--                } else {
--                    this._super();
 +            validateShippingInformation: function () {
 +                if (!amazonStorage.isAmazonAccountLoggedIn()) {
 +                    return this._super();
-                 }
++                }
 +
 +                if (!customer.isLoggedIn()) {
-+                    return this.validateGuestEmail();
++                    if (!(amazonStorage.isAmazonShippingAddressSelected() && this.validateGuestEmail())) {
++                        amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                        amazonMessages.displayMessages();
++
++                        return false;
+                     }
+-                } else {
+-                    this._super();
+                 }
++
++                if (!(amazonStorage.isAmazonShippingAddressSelected())) {
++                    amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                    amazonMessages.displayMessages();
++
++                    return false;
 +                }
 +
 +                return true;
