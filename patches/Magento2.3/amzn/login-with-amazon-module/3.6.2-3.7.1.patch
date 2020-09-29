@@ -1,0 +1,43 @@
+--- a/Model/CustomerLinkManagement.php
++++ b/Model/CustomerLinkManagement.php
+@@ -99,7 +99,7 @@ class CustomerLinkManagement implements \Amazon\Login\Api\CustomerLinkManagement
+         $customerData->setFirstname($amazonCustomer->getFirstName());
+         $customerData->setLastname($amazonCustomer->getLastName());
+         $customerData->setEmail($amazonCustomer->getEmail());
+-        $password = $this->random->getRandomString(64);
++        $password = "4mZ!" . $this->random->getRandomString(60);
+ 
+         $customer = $this->accountManagement->createAccount($customerData, $password);
+ 
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.6.2",
++  "version": "3.7.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.6.2",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.7.1",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-store": "^101",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.6.2">
++    <module name="Amazon_Login" setup_version="3.7.1">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+

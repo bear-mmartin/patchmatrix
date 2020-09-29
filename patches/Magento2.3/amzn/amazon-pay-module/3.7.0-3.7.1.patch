@@ -1,0 +1,248 @@
+--- a/Gateway/Config/Config.php
++++ b/Gateway/Config/Config.php
+@@ -5,10 +5,14 @@
+  */
+ namespace Amazon\Payment\Gateway\Config;
+ 
++/**
++ * Class Config
++ * @package Amazon\Payment\Gateway\Config
++ */
+ class Config extends \Magento\Payment\Gateway\Config\Config
+ {
+     const CODE = 'amazon_payment';
+-    
++
+     const KEY_ACTIVE = 'active';
+ 
+     /**
+@@ -17,14 +21,31 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     protected $amazonConfig;
+ 
+     /**
++     * @var \Magento\Framework\App\RequestInterface
++     */
++    protected $request;
++
++    /**
++     * @var \Magento\Sales\Api\OrderRepositoryInterface
++     */
++    protected $orderRepository;
++
++    /**
++     * Config constructor.
+      * @param \Amazon\Core\Model\AmazonConfig $amazonConfig
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     * @param \Magento\Framework\App\RequestInterface $request
++     * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+      */
+     public function __construct(
+         \Amazon\Core\Model\AmazonConfig $amazonConfig,
+-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
++        \Magento\Framework\App\RequestInterface $request,
++        \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+     ) {
+         $this->amazonConfig = $amazonConfig;
++        $this->request = $request;
++        $this->orderRepository = $orderRepository;
+         parent::__construct($scopeConfig, self::CODE);
+     }
+ 
+@@ -34,6 +55,15 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+      */
+     protected function canCapturePartial($storeId = null)
+     {
++        // get the order store id if not provided
++        if (empty($storeId)) {
++            $orderId = $this->request->getParam('order_id');
++            if ($orderId) {
++                $order = $this->orderRepository->get($orderId);
++                $storeId = $order->getStoreId();
++            }
++        }
++
+         $region = $this->amazonConfig->getPaymentRegion(\Magento\Store\Model\ScopeInterface::SCOPE_STORE, $storeId);
+         switch ($region) {
+             case 'de':
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -101,7 +101,12 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         $storeName = '';
+ 
+         $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
+-        $total = $payment->getAmountOrdered();
++        if ($payment->getAmazonDisplayInvoiceAmount()) {
++            $total = $payment->getAmazonDisplayInvoiceAmount();
++        }
++        else {
++            $total = $payment->getAmountOrdered();
++        }
+ 
+         // capture sale or new auth/capture for partial capture
+         if (isset($buildSubject['multicurrency']) && $buildSubject['multicurrency']['multicurrency']) {
+
+--- a/Gateway/Request/RefundRequestBuilder.php
++++ b/Gateway/Request/RefundRequestBuilder.php
+@@ -92,7 +92,7 @@ class RefundRequestBuilder implements BuilderInterface
+         $orderDO = $paymentDO->getOrder();
+ 
+         $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
+-        $total = $payment->getAmountOrdered();
++        $total = $payment->getCreditMemo()->getGrandTotal();
+         $storeId = $orderDO->getStoreId();
+ 
+         // The magento order adapter doesn't expose everything we need to send a request to the AP API so we
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -130,9 +130,15 @@ class SettlementRequestBuilder implements BuilderInterface
+         $paymentDO = $this->subjectReader->readPayment($buildSubject);
+         $orderDO = $paymentDO->getOrder();
+         $order = $paymentDO->getPayment()->getOrder();
++        $payment = $paymentDO->getPayment();
+ 
+         $currencyCode = $order->getOrderCurrencyCode();
+-        $total = $paymentDO->getPayment()->getAmountOrdered();
++        if ($payment->getAmazonDisplayInvoiceAmount()) {
++            $total = $payment->getAmazonDisplayInvoiceAmount();
++        }
++        else {
++            $total = $payment->getAmountOrdered();
++        }
+ 
+         if ($buildSubject['multicurrency']['multicurrency']) {
+             $currencyCode = $buildSubject['multicurrency']['order_currency'];
+
+--- /dev/null
++++ b/Observer/OrderPaymentCapture.php
+@@ -0,0 +1,39 @@
++<?php
++/**
++ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Observer;
++
++
++use Magento\Framework\Event\Observer;
++use Magento\Framework\Event\ObserverInterface;
++
++/**
++ * Class OrderPaymentCapture
++ * @package Amazon\Payment\Observer
++ */
++class OrderPaymentCapture implements ObserverInterface
++{
++    /**
++     * @param Observer $observer
++     */
++    public function execute(Observer $observer)
++    {
++        $payment = $observer->getPayment();
++        $invoice = $observer->getInvoice();
++
++        // set custom invoice amount on the payment in the display currency, as Magento does everything on the base currency
++        $payment->setAmazonDisplayInvoiceAmount($invoice->getGrandTotal());
++    }
++}
+
+--- a/Plugin/OrderCurrencyComment.php
++++ b/Plugin/OrderCurrencyComment.php
+@@ -34,10 +34,17 @@ class OrderCurrencyComment
+     {
+         if ($subject->getMethod() == Config::CODE) {
+             $order = $subject->getOrder();
+-            if ($order->getBaseCurrencyCode() != $order->getOrderOrderCurrencyCode()) {
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                if ($subject->getOrder()->getPayment()->getCreditmemo()) {
++                    $displayCurrencyAmount = $subject->getCreditmemo()->getGrandTotal();
++                }
++                else {
++                    $displayCurrencyAmount = $subject->getOrder()->getPayment()->getAmazonDisplayInvoiceAmount() ?: $subject->getAmountOrdered();
++                }
+                 $messagePrependTo = __(
+                     $messagePrependTo->getText(),
+-                    $order->getBaseCurrency()->formatTxt($order->getBaseGrandTotal()) .' ['. $order->formatPriceTxt($subject->getAmountOrdered()) .']'
++                    $order->getBaseCurrency()
++                        ->formatTxt($messagePrependTo->getArguments()[0]) .' ['. $order->formatPriceTxt($displayCurrencyAmount) .']'
+                 );
+ 
+                 return [$messagePrependTo];
+@@ -61,7 +68,7 @@ class OrderCurrencyComment
+                 && $subject->getMessage()->getText() == 'Canceled order online')
+                 || strpos($subject->getTransactionId(), '-void') !== FALSE
+             ) {
+-                return $result .' ['. $order->formatPriceTxt($subject->getAmountOrdered()) .']';
++                return $result .' ['. $order->formatPriceTxt($subject->getCreditmemo()->getGrandTotal()) .']';
+             }
+         }
+ 
+
+--- a/Test/Mftf/Section/AmazonLoginSection.xml
++++ b/Test/Mftf/Section/AmazonLoginSection.xml
+@@ -11,7 +11,7 @@
+     <section name="AmazonLoginSection">
+         <element name="apEmail" type="input" selector="#ap_email"/>
+         <element name="apPassword" type="input" selector="#ap_password"/>
+-        <element name="apSignin" type="button" selector="#signInSubmit button"/>
++        <element name="apSignin" type="button" selector="#signInSubmit"/>
+         <element name="apConsent" type="button" selector="[name=consentApproved]"/>
+     </section>
+ </sections>
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.7.0",
++  "version": "3.7.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.7.0",
+-    "amzn/login-with-amazon-module": "^3.7.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.7.1",
++    "amzn/login-with-amazon-module": "^3.7.1",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/events.xml
++++ b/etc/events.xml
+@@ -40,4 +40,7 @@
+     <event name="amazon_payment_pending_authorization_hard_decline_after">
+         <observer name="amazon_payment_hard_decline_email" instance="Amazon\Payment\Observer\HardDeclinedEmailSender" />
+     </event>
++    <event name="sales_order_payment_capture">
++        <observer name="amazon_payment_order_payment_capture" instance="Amazon\Payment\Observer\OrderPaymentCapture" />
++    </event>
+ </config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.7.0" >
++    <module name="Amazon_Payment" setup_version="3.7.1" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+

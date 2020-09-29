@@ -1,0 +1,2676 @@
+--- a/Block/Widget/ResetPassword.php
++++ b/Block/Widget/ResetPassword.php
+@@ -10,7 +10,7 @@ namespace Amazon\Payment\Block\Widget;
+ 
+ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+-use Magento\Framework\UrlFactory;
++use Magento\Customer\Model\Url;
+ use Magento\Customer\Model\Session;
+ use Amazon\Login\Api\CustomerLinkRepositoryInterface;
+ 
+@@ -28,13 +28,13 @@ class ResetPassword extends Template
+ 
+     public function __construct(
+         Context $context,
+-        UrlFactory $urlFactory,
++        Url $urlModel,
+         Session $session,
+         CustomerLinkRepositoryInterface $customerLink,
+         array $data = []
+     ) {
+         parent::__construct($context, $data);
+-        $this->urlModel = $urlFactory->create();
++        $this->urlModel = $urlModel;
+         $this->session = $session;
+         $this->customerLink = $customerLink;
+     }
+@@ -63,7 +63,7 @@ class ResetPassword extends Template
+ 
+     public function getLink()
+     {
+-        $url = $this->urlModel->getUrl('customer/account/forgotpassword');
++        $url = $this->urlModel->getLogoutUrl();
+ 
+         return $url;
+     }
+
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -15,11 +15,15 @@
+  */
+ namespace Amazon\Payment\Controller\Payment;
+ 
++use Amazon\Core\Exception\AmazonServiceUnavailableException;
++use Amazon\Core\Helper\Data as AmazonHelper;
+ use Amazon\Core\Model\AmazonConfig;
+ use Amazon\Core\Exception\AmazonWebapiException;
+ use Amazon\Core\Logger\ExceptionLogger;
++use Amazon\Payment\Api\OrderInformationManagementInterface;
+ use Magento\Framework\App\Action\Action;
+ use Magento\Framework\App\Action\Context;
++use Magento\Framework\Exception\NotFoundException;
+ use Magento\Quote\Api\CartManagementInterface;
+ use Magento\Quote\Api\GuestCartManagementInterface;
+ use Magento\Checkout\Model\Session as CheckoutSession;
+@@ -41,6 +45,11 @@ class CompleteCheckout extends Action
+      */
+     private $amazonConfig;
+ 
++    /**
++     * @var AmazonHelper
++     */
++    private $amazonHelper;
++
+     /**
+      * @var CheckoutSession
+      */
+@@ -61,11 +70,17 @@ class CompleteCheckout extends Action
+      */
+     private $exceptionLogger;
+ 
++    /**
++     * @var OrderInformationManagementInterface
++     */
++    private $orderInformationManagement;
++
+     /**
+      * CompleteCheckout constructor.
+      *
+      * @param Context $context
+      * @param AmazonConfig $amazonConfig
++     * @param AmazonHelper $amazonHelper
+      * @param CartManagementInterface $cartManagement
+      * @param GuestCartManagementInterface $guestCartManagement
+      * @param CheckoutSession $checkoutSession
+@@ -73,26 +88,32 @@ class CompleteCheckout extends Action
+      * @param PageFactory $pageFactory
+      * @param MessageManager $messageManager
+      * @param ExceptionLogger $exceptionLogger
++     * @param OrderInformationManagementInterface $orderInformationManagement
+      */
+     public function __construct(
+         Context $context,
+         AmazonConfig $amazonConfig,
++        AmazonHelper $amazonHelper,
+         CartManagementInterface $cartManagement,
+         GuestCartManagementInterface $guestCartManagement,
+         CheckoutSession $checkoutSession,
+         Session $session,
+         PageFactory $pageFactory,
+         MessageManager $messageManager,
+-        ExceptionLogger $exceptionLogger = null
++        ExceptionLogger $exceptionLogger = null,
++        OrderInformationManagementInterface $orderInformationManagement = null
+     ) {
+         parent::__construct($context);
+         $this->amazonConfig = $amazonConfig;
++        $this->amazonHelper = $amazonHelper;
+         $this->cartManagement = $cartManagement;
+         $this->checkoutSession = $checkoutSession;
+         $this->session = $session;
+         $this->pageFactory = $pageFactory;
+         $this->messageManager = $messageManager;
+         $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
++        $this->orderInformationManagement = $orderInformationManagement ?: ObjectManager::getInstance()
++            ->get(OrderInformationManagementInterface::class);
+     }
+ 
+     /*
+@@ -102,6 +123,8 @@ class CompleteCheckout extends Action
+     {
+         try {
+             $authenticationStatus = $this->getRequest()->getParam('AuthenticationStatus');
++            // Bypass cache check in \Magento\PageCache\Model\DepersonalizeChecker
++            $this->getRequest()->setParams(['ajax' => 1]);
+             switch ($authenticationStatus) {
+                 case 'Success':
+                     try {
+@@ -109,8 +132,20 @@ class CompleteCheckout extends Action
+                             $this->checkoutSession->getQuote()->setCheckoutMethod(CartManagementInterface::METHOD_GUEST);
+                         }
+                         $this->cartManagement->placeOrder($this->checkoutSession->getQuoteId());
++                        if ($this->amazonHelper->getAuthorizationMode() == 'synchronous_possible') {
++                            $this->messageManager->addNoticeMessage(__(
++                                'Your transaction with Amazon Pay is currently being validated. ' .
++                                'Please be aware that we will inform you shortly as needed.'
++                            ));
++                        }
+                         return $this->_redirect('checkout/onepage/success');
+                     } catch (AmazonWebapiException $e) {
++                        if ($this->amazonConfig->isSoftDecline($e->getCode())) {
++                            return $this->_redirect('checkout', [
++                                '_query' => 'orderReferenceId=' . $this->getOrderReferenceId(),
++                                '_fragment' => 'payment',
++                            ]);
++                        }
+                         $this->exceptionLogger->logException($e);
+                         $this->messageManager->addErrorMessage($e->getMessage());
+                     }
+@@ -127,11 +162,47 @@ class CompleteCheckout extends Action
+                         'The SCA challenge was not completed successfully.  '
+                         . 'Please try again, or use a different payment method.'
+                     ));
++                    return $this->_redirect('checkout', [
++                        '_query' => 'orderReferenceId=' . $this->getOrderReferenceId(),
++                        '_fragment' => 'payment',
++                    ]);
+             }
++
++            $orderReferenceId = $this->getOrderReferenceId();
++
++            if ($orderReferenceId) {
++                // Cancel the order to prevent confusion when the merchant views Transactions in Seller Central
++                try {
++                    $this->orderInformationManagement->cancelOrderReference($orderReferenceId, $this->checkoutSession->getQuote()->getStoreId());
++                } catch (AmazonServiceUnavailableException $e) {
++                    $this->exceptionLogger->logException($e);
++                }
++            }
++
+             return $this->_redirect('checkout/cart');
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+     }
++
++    /**
++     * Return Amazon order reference ID
++     *
++     * @return string
++     * @throws NotFoundException
++     * @throws \Magento\Framework\Exception\LocalizedException
++     * @throws \Magento\Framework\Exception\NoSuchEntityException
++     */
++    private function getOrderReferenceId()
++    {
++        $quote = $this->checkoutSession->getQuote();
++        if (!$quote) {
++            throw new NotFoundException(__('Failed to retrieve quote from checkoutSession'));
++        }
++        return $quote
++            ->getExtensionAttributes()
++            ->getAmazonOrderReferenceId()
++            ->getAmazonOrderReferenceId();
++    }
+ }
+
+--- a/Domain/AmazonSetOrderDetailsResponse.php
++++ b/Domain/AmazonSetOrderDetailsResponse.php
+@@ -30,7 +30,11 @@ class AmazonSetOrderDetailsResponse
+         $data = $response->toArray();
+ 
+         if (200 != $data['ResponseStatus']) {
+-            throw new AmazonServiceUnavailableException();
++            throw new AmazonServiceUnavailableException(
++                $data['Error']['Type'],
++                $data['Error']['Code'],
++                $data['Error']['Message']
++            );
+         }
+ 
+         $details = $data['SetOrderReferenceDetailsResult']['OrderReferenceDetails'];
+
+--- a/Domain/Validator/AmazonAuthorization.php
++++ b/Domain/Validator/AmazonAuthorization.php
+@@ -63,9 +63,9 @@ class AmazonAuthorization
+     {
+         switch ($status->getReasonCode()) {
+             case AmazonAuthorizationStatus::REASON_TRANSACTION_TIMEOUT:
+-                return 'timeout';
+-            case AmazonAuthorizationStatus::REASON_AMAZON_REJECTED:
+             case AmazonAuthorizationStatus::REASON_PROCESSING_FAILURE:
++                return 'temporary';
++            case AmazonAuthorizationStatus::REASON_AMAZON_REJECTED:
+                 return 'hard_decline';
+             case AmazonAuthorizationStatus::REASON_INVALID_PAYMENT_METHOD:
+                 return 'soft_decline';
+
+--- a/Gateway/Command/AmazonAuthCommand.php
++++ b/Gateway/Command/AmazonAuthCommand.php
+@@ -154,7 +154,7 @@ class AmazonAuthCommand implements CommandInterface
+                     $response
+                 );
+             }
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Gateway/Command/CaptureStrategyCommand.php
++++ b/Gateway/Command/CaptureStrategyCommand.php
+@@ -133,7 +133,7 @@ class CaptureStrategyCommand implements CommandInterface
+                     $this->commandPool->get($command)->execute($commandSubject);
+                 }
+             }
+-        } catch(\Exception $e) {
++        } catch (\Exception $e) {
+             $this->exceptionLogger->logException($e);
+             throw $e;
+         }
+
+--- a/Model/AddressManagement.php
++++ b/Model/AddressManagement.php
+@@ -21,8 +21,11 @@ use Amazon\Core\Exception\AmazonServiceUnavailableException;
+ use Amazon\Payment\Api\AddressManagementInterface;
+ use Amazon\Payment\Api\Data\QuoteLinkInterfaceFactory;
+ use Amazon\Payment\Helper\Address;
++use Amazon\Payment\Domain\AmazonOrderStatus;
++use Amazon\Payment\Domain\AmazonAuthorizationStatus;
+ use Exception;
+ use Magento\Checkout\Model\Session;
++use Magento\Customer\Model\AddressFactory;
+ use Magento\Directory\Model\ResourceModel\Country\CollectionFactory;
+ use Magento\Framework\Exception\SessionException;
+ use Magento\Framework\Validator\Exception as ValidatorException;
+@@ -77,6 +80,11 @@ class AddressManagement implements AddressManagementInterface
+      */
+     private $logger;
+ 
++    /**
++     * @var AddressFactory
++     */
++    private $addressFactory;
++
+     /**
+      * @param ClientFactoryInterface    $clientFactory
+      * @param Address                   $addressHelper
+@@ -86,6 +94,7 @@ class AddressManagement implements AddressManagementInterface
+      * @param AmazonAddressFactory      $amazonAddressFactory
+      * @param Factory                   $validatorFactory
+      * @param LoggerInterface           $logger
++     * @param AddressFactory            $addressFactory
+      */
+     public function __construct(
+         ClientFactoryInterface $clientFactory,
+@@ -95,7 +104,8 @@ class AddressManagement implements AddressManagementInterface
+         CollectionFactory $countryCollectionFactory,
+         AmazonAddressFactory $amazonAddressFactory,
+         Factory $validatorFactory,
+-        LoggerInterface $logger
++        LoggerInterface $logger,
++        AddressFactory $addressFactory
+     ) {
+         $this->clientFactory            = $clientFactory;
+         $this->addressHelper            = $addressHelper;
+@@ -105,6 +115,7 @@ class AddressManagement implements AddressManagementInterface
+         $this->amazonAddressFactory     = $amazonAddressFactory;
+         $this->validatorFactory         = $validatorFactory;
+         $this->logger                   = $logger;
++        $this->addressFactory           = $addressFactory;
+     }
+ 
+     /**
+@@ -115,6 +126,11 @@ class AddressManagement implements AddressManagementInterface
+         try {
+             $data = $this->getOrderReferenceDetails($amazonOrderReferenceId, $addressConsentToken);
+ 
++            if ($this->isSuspendedStatus($data)) {
++                throw new WebapiException(__('There has been a problem with the selected payment method on your ' .
++                    'Amazon account. Please choose another one.'));
++            }
++
+             $this->updateQuoteLink($amazonOrderReferenceId);
+ 
+             if (isset($data['OrderReferenceDetails']['Destination']['PhysicalDestination'])) {
+@@ -146,6 +162,9 @@ class AddressManagement implements AddressManagementInterface
+ 
+             $this->updateQuoteLink($amazonOrderReferenceId);
+ 
++            // Re-open suspended InvalidPaymentMethod decline during ConfirmOrderReference
++            $this->session->setData('is_amazon_suspended', $this->isSuspendedStatus($data));
++
+             if (isset($data['OrderReferenceDetails']['BillingAddress']['PhysicalAddress'])) {
+                 $billingAddress = $data['OrderReferenceDetails']['BillingAddress']['PhysicalAddress'];
+                 if (!isset($billingAddress['Phone']) || !$billingAddress['Phone']) {
+@@ -199,6 +218,13 @@ class AddressManagement implements AddressManagementInterface
+             if (1 != $collectionSize) {
+                 throw new WebapiException(__('the country for your address is not allowed for this store'));
+             }
++
++            // Validate address
++            $validate = $this->addressFactory->create()->updateData($magentoAddress)->validate();
++            if (is_array($validate)) {
++                $validate[] = __('Your address may be updated in your Amazon account.');
++                throw new ValidatorException(null, null, [$validate]);
++            }
+         }
+ 
+         return [$this->addressHelper->convertToArray($magentoAddress)];
+@@ -245,4 +271,12 @@ class AddressManagement implements AddressManagementInterface
+                 ->save();
+         }
+     }
++
++    protected function isSuspendedStatus($data)
++    {
++        $orderStatus = $data['OrderReferenceDetails']['OrderReferenceStatus'] ?? false;
++
++        return ($orderStatus && $orderStatus['State'] == AmazonOrderStatus::STATE_SUSPENDED
++            && $orderStatus['ReasonCode'] == AmazonAuthorizationStatus::REASON_INVALID_PAYMENT_METHOD);
++    }
+ }
+
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -144,11 +144,9 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+             ];
+ 
+             $responseParser = $this->clientFactory->create($storeId)->setOrderReferenceDetails($data);
+-            $response       = $this->amazonSetOrderDetailsResponseFactory->create(
+-                [
++            $response = $this->amazonSetOrderDetailsResponseFactory->create([
+                 'response' => $responseParser
+-                ]
+-            );
++            ]);
+ 
+             $this->validateConstraints($response, $allowedConstraints);
+         } catch (LocalizedException $e) {
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -19,6 +19,7 @@ namespace Amazon\Payment\Model\PaymentManagement;
+ use Amazon\Core\Client\ClientFactoryInterface;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterface;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterfaceFactory;
++use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+ use Amazon\Payment\Model\PaymentManagement;
+ use Amazon\Payment\Domain\AmazonAuthorizationDetailsResponseFactory;
+ use Amazon\Payment\Domain\AmazonGetOrderDetailsResponseFactory;
+@@ -88,11 +89,6 @@ class Authorization extends AbstractOperation
+      */
+     private $amazonGetOrderDetailsResponseFactory;
+ 
+-    /**
+-     * @var StoreManagerInterface
+-     */
+-    private $storeManager;
+-
+     /**
+      * @var PaymentManagement
+      */
+@@ -108,6 +104,8 @@ class Authorization extends AbstractOperation
+      */
+     private $throwExceptions = false;
+ 
++    private $amazonPaymentAdapter;
++
+     /**
+      * Authorization constructor.
+      *
+@@ -123,7 +121,6 @@ class Authorization extends AbstractOperation
+      * @param OrderRepositoryInterface $orderRepository
+      * @param ManagerInterface $eventManager
+      * @param AmazonGetOrderDetailsResponseFactory $amazonGetOrderDetailsResponseFactory
+-     * @param StoreManagerInterface $storeManager
+      * @param PaymentManagement $paymentManagement
+      * @param LoggerInterface $logger
+      * @SuppressWarnings(PHPMD.ExcessiveParameterList)
+@@ -141,9 +138,9 @@ class Authorization extends AbstractOperation
+         OrderRepositoryInterface $orderRepository,
+         ManagerInterface $eventManager,
+         AmazonGetOrderDetailsResponseFactory $amazonGetOrderDetailsResponseFactory,
+-        StoreManagerInterface $storeManager,
+         PaymentManagement $paymentManagement,
+-        LoggerInterface $logger
++        LoggerInterface $logger,
++        AmazonPaymentAdapter $adapter
+     ) {
+         $this->clientFactory = $clientFactory;
+         $this->pendingAuthorizationFactory = $pendingAuthorizationFactory;
+@@ -153,9 +150,9 @@ class Authorization extends AbstractOperation
+         $this->orderRepository = $orderRepository;
+         $this->eventManager = $eventManager;
+         $this->amazonGetOrderDetailsResponseFactory = $amazonGetOrderDetailsResponseFactory;
+-        $this->storeManager = $storeManager;
+         $this->paymentManagement = $paymentManagement;
+         $this->logger = $logger;
++        $this->amazonPaymentAdapter = $adapter;
+ 
+         parent::__construct($notifier, $urlBuilder, $searchCriteriaBuilderFactory, $invoiceRepository);
+     }
+@@ -221,7 +218,6 @@ class Authorization extends AbstractOperation
+         $order->setData(OrderInterface::PAYMENT, $payment);
+ 
+         $storeId = $order->getStoreId();
+-        $this->storeManager->setCurrentStore($storeId);
+ 
+         $authorizationId = $pendingAuthorization->getAuthorizationId();
+ 
+@@ -246,10 +242,8 @@ class Authorization extends AbstractOperation
+             } else {
+                 if (!$validation['result']) {
+                     switch ($validation['reason']) {
+-                        case 'timeout':
+-                            throw new TransactionTimeoutException(
+-                                __('Amazon authorize invalid state : Transaction timed out.')
+-                            );
++                        case 'temporary':
++                            $this->resubmitPendingAuthorization($order, $payment, $pendingAuthorization, $capture);
+                             break;
+                         case 'hard_decline':
+                             $this->hardDeclinePendingAuthorization($order, $payment, $pendingAuthorization, $capture);
+@@ -313,6 +307,42 @@ class Authorization extends AbstractOperation
+         $order->save();
+     }
+ 
++    /**
++     * Handles reauthorization in the case of a soft failure
++     *
++     * @param OrderInterface $order
++     * @param OrderPaymentInterface $payment
++     * @param PendingAuthorizationInterface $pendingAuthorization
++     * @param $capture
++     * @throws Exception
++     * @throws \Magento\Framework\Exception\NoSuchEntityException
++     */
++    protected function resubmitPendingAuthorization(
++        OrderInterface $order,
++        OrderPaymentInterface $payment,
++        PendingAuthorizationInterface $pendingAuthorization,
++        $capture
++    ) {
++        $transactionId = ($capture) ? $pendingAuthorization->getCaptureId()
++            : $pendingAuthorization->getAuthorizationId();
++
++        if ($capture) {
++            $invoice = $this->getInvoice($transactionId, $order);
++            $this->setPaymentReview($order);
++            $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        } else {
++            $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++        }
++
++        $this->paymentManagement->closeTransaction($transactionId, $payment, $order);
++
++        $this->processNewAuthorization($pendingAuthorization);
++
++        $pendingAuthorization->setProcessed(true);
++        $pendingAuthorization->save();
++        $order->save();
++    }
++
+     /**
+      * Handles authorization soft decline during cron
+      *
+@@ -419,12 +449,13 @@ class Authorization extends AbstractOperation
+         $order->setData(OrderInterface::PAYMENT, $payment);
+ 
+         $storeId = $order->getStoreId();
+-        $this->storeManager->setCurrentStore($storeId);
+ 
+         if (null === $orderDetails) {
+             $responseParser = $this->clientFactory->create($storeId)->getOrderReferenceDetails(
+                 [
+-                    'amazon_order_reference_id' => $order->getExtensionAttributes()->getAmazonOrderReferenceId()
++                    'amazon_order_reference_id' => $order->getExtensionAttributes()
++                        ->getAmazonOrderReferenceId()
++                        ->getAmazonOrderReferenceId()
+                 ]
+             );
+ 
+@@ -434,12 +465,7 @@ class Authorization extends AbstractOperation
+ 
+         if (AmazonOrderStatus::STATE_OPEN == $orderDetails->getStatus()->getState()) {
+             $capture = $pendingAuthorization->isCapture();
+-
+-            if ($capture) {
+-                $this->requestNewAuthorizationAndCapture($order, $payment, $pendingAuthorization);
+-            } else {
+-                $this->requestNewAuthorization($order, $payment, $pendingAuthorization);
+-            }
++            $this->requestNewAuthorization($order, $payment, $pendingAuthorization, $capture);
+         }
+     }
+ 
+@@ -449,74 +475,54 @@ class Authorization extends AbstractOperation
+      * @param OrderInterface $order
+      * @param OrderPaymentInterface $payment
+      * @param PendingAuthorizationInterface $pendingAuthorization
++     * @param $capture
+      * @throws \Magento\Framework\Exception\NoSuchEntityException
+      */
+     protected function requestNewAuthorization(
+         OrderInterface $order,
+         OrderPaymentInterface $payment,
+-        PendingAuthorizationInterface $pendingAuthorization
+-    ) {
+-        $capture = false;
+-
+-        try {
+-            $baseAmount = $payment->formatAmount($payment->getBaseAmountAuthorized());
+-
+-            $method = $payment->getMethodInstance();
+-            $method->setStore($order->getStoreId());
+-            $method->authorizeInCron($payment, $baseAmount, $capture);
+-
+-            $transaction = $payment->addTransaction(Transaction::TYPE_AUTH);
+-
+-            $this->completePendingAuthorization(
+-                $order,
+-                $payment,
+-                $pendingAuthorization,
+-                $capture,
+-                $transaction
+-            );
+-        } catch (SoftDeclineException $e) {
+-            $this->softDeclinePendingAuthorization($order, $payment, $pendingAuthorization, $capture);
+-        } catch (\Exception $e) {
+-            $this->hardDeclinePendingAuthorization($order, $payment, $pendingAuthorization, $capture);
+-        }
+-    }
+-
+-    /**
+-     * Attempts to authorize and capture a pending transaction during cron.
+-     *
+-     * @param OrderInterface $order
+-     * @param OrderPaymentInterface $payment
+-     * @param PendingAuthorizationInterface $pendingAuthorization
+-     * @throws Exception
+-     * @throws \Magento\Framework\Exception\NoSuchEntityException
+-     */
+-    protected function requestNewAuthorizationAndCapture(
+-        OrderInterface $order,
+-        OrderPaymentInterface $payment,
+-        PendingAuthorizationInterface $pendingAuthorization
++        PendingAuthorizationInterface $pendingAuthorization,
++        $capture = false
+     ) {
+-        $capture = true;
+-
+         try {
+-            $invoice = $this->getInvoice($pendingAuthorization->getCaptureId(), $order);
+-
+-            $baseAmount = $payment->formatAmount($invoice->getBaseGrandTotal());
+-
+-            $method = $payment->getMethodInstance();
+-            $method->setStore($order->getStoreId());
+-            $method->authorizeInCron($payment, $baseAmount, $capture);
++            if ($capture) {
++                $invoice = $this->getInvoice($pendingAuthorization->getCaptureId(), $order);
++                $baseAmount = $payment->formatAmount($invoice->getBaseGrandTotal());
++            } else {
++                $baseAmount = $payment->formatAmount($payment->getBaseAmountAuthorized());
++            }
+ 
+-            $transaction = $payment->addTransaction(Transaction::TYPE_CAPTURE, $invoice, true);
++            $data = [
++                'amazon_order_reference_id' => $order->getExtensionAttributes()
++                    ->getAmazonOrderReferenceId()
++                    ->getAmazonOrderReferenceId(),
++                'amount' => $baseAmount,
++                'currency_code' => $order->getOrderCurrencyCode()
++            ];
++            $response = $this->amazonPaymentAdapter->authorize($data, $capture, 1);
++            if ($response['response_code'] != 'TransactionTimedOut') {
++                throw new Exception('Unexpected Authorization status for asynchronous authorization');
++            }
++            $newAuthorization = $this->pendingAuthorizationFactory->create()
++                ->setAuthorizationId($response['authorize_transaction_id'])
++                ->setCapture($capture);
++            if ($capture) {
++                $newAuthorization->setCaptureId($response['capture_transaction_id']);
++                $invoice->setTransactionId($response['capture_transaction_id'])
++                    ->save();
++                $payment->setTransactionId($response['capture_transaction_id']);
++                $payment->setParentTransactionId($response['authorize_transaction_id']);
++                $payment->addTransaction(Transaction::TYPE_CAPTURE, $invoice, true)
++                    ->save();
++            } else {
++                $payment->setTransactionId($response['authorize_transaction_id']);
++                $payment->addTransaction(Transaction::TYPE_AUTH, null, true)
++                    ->save();
++            }
++            $payment->save();
++            $newAuthorization->save();
++            $pendingAuthorization->delete();
+ 
+-            $this->completePendingAuthorization(
+-                $order,
+-                $payment,
+-                $pendingAuthorization,
+-                $capture,
+-                $transaction
+-            );
+-        } catch (SoftDeclineException $e) {
+-            $this->softDeclinePendingAuthorization($order, $payment, $pendingAuthorization, $capture);
+         } catch (\Exception $e) {
+             $this->hardDeclinePendingAuthorization($order, $payment, $pendingAuthorization, $capture);
+         }
+
+--- a/Observer/IgnoreBillingAddressValidation.php
++++ b/Observer/IgnoreBillingAddressValidation.php
+@@ -26,6 +26,7 @@ class IgnoreBillingAddressValidation implements ObserverInterface
+         $quote = $observer->getEvent()->getQuote();
+         if (AmazonPayment::CODE === $quote->getPayment()->getMethod()) {
+             $quote->getBillingAddress()->setShouldIgnoreValidation(true);
++            $quote->getShippingAddress()->setShouldIgnoreValidation(true);
+         }
+     }
+ }
+
+--- a/Plugin/CheckoutProcessor.php
++++ b/Plugin/CheckoutProcessor.php
+@@ -62,12 +62,6 @@ class CheckoutProcessor
+         ['children']['payment'];
+ 
+         if (!$quote->isVirtual() && $this->amazonHelper->isPwaEnabled()) {
+-            $shippingConfig['component'] = 'Amazon_Payment/js/view/shipping';
+-            $shippingConfig['children']['customer-email']['component'] = 'Amazon_Payment/js/view/form/element/email';
+-            $shippingConfig['children']['address-list']['component'] = 'Amazon_Payment/js/view/shipping-address/list';
+-            $shippingConfig['children']['shipping-address-fieldset']['children']
+-            ['inline-form-manipulator']['component'] = 'Amazon_Payment/js/view/shipping-address/inline-form';
+-
+             $paymentConfig['children']['payments-list']['component'] = 'Amazon_Payment/js/view/payment/list';
+         } else {
+             unset($shippingConfig['children']['customer-email']['children']['amazon-button-region']);
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -25,11 +25,11 @@ use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+ use Amazon\Payment\Model\OrderInformationManagement;
+ use Magento\Quote\Api\Data\PaymentInterface;
+ use Magento\Quote\Api\Data\AddressInterface;
++use Magento\Framework\Webapi\Rest\Request;
+ use Magento\Framework\Exception\LocalizedException;
+ use Amazon\Payment\Gateway\Config\Config as GatewayConfig;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ 
+-
+ /**
+  * Class ConfirmOrderReference
+  *
+@@ -42,6 +42,11 @@ class ConfirmOrderReference
+      */
+     private $checkoutSession;
+ 
++    /**
++     * @var Request
++     */
++    private $request;
++
+     /**
+      * @var OrderInformationManagement
+      */
+@@ -55,19 +60,31 @@ class ConfirmOrderReference
+     /**
+      * ConfirmOrderReference constructor.
+      * @param Session $checkoutSession
++     * @param Request $request
+      * @param OrderInformationManagement $orderInformationManagement
+      * @param CartRepositoryInterface $quoteRepository
+      */
+     public function __construct(
+         Session $checkoutSession,
++        Request $request,
+         OrderInformationManagement $orderInformationManagement,
+         CartRepositoryInterface $quoteRepository
+     ) {
+         $this->checkoutSession = $checkoutSession;
++        $this->request = $request;
+         $this->orderInformationManagement = $orderInformationManagement;
+         $this->quoteRepository = $quoteRepository;
+     }
+ 
++    /**
++     * @return boolean
++     */
++    protected function canConfirmOrderReference()
++    {
++        $data = $this->request->getRequestData();
++        return !empty($data['confirmOrder']);
++    }
++
+     /**
+      * @param PaymentMethodManagementInterface $subject
+      * @param $result
+@@ -83,7 +100,7 @@ class ConfirmOrderReference
+         $cartId,
+         PaymentInterface $paymentMethod
+     ) {
+-        if($paymentMethod->getMethod() == GatewayConfig::CODE) {
++        if ($paymentMethod->getMethod() == GatewayConfig::CODE) {
+             $quote = $this->quoteRepository->get($cartId);
+             $quoteExtensionAttributes = $quote->getExtensionAttributes();
+             if ($quoteExtensionAttributes) {
+@@ -91,11 +108,16 @@ class ConfirmOrderReference
+                     ->getAmazonOrderReferenceId()
+                     ->getAmazonOrderReferenceId();
+ 
+-                $this->orderInformationManagement->saveOrderInformation($amazonOrderReferenceId);
+-                $this->orderInformationManagement->confirmOrderReference(
+-                    $amazonOrderReferenceId,
+-                    $quote->getStoreId()
+-                );
++                if (!$this->checkoutSession->getData('is_amazon_suspended')) {
++                    $this->orderInformationManagement->saveOrderInformation($amazonOrderReferenceId);
++                }
++
++                if ($this->canConfirmOrderReference()) {
++                    $this->orderInformationManagement->confirmOrderReference(
++                        $amazonOrderReferenceId,
++                        $quote->getStoreId()
++                    );
++                }
+             }
+         }
+ 
+
+--- a/Plugin/ShippingInformationManagement.php
++++ b/Plugin/ShippingInformationManagement.php
+@@ -100,7 +100,7 @@ class ShippingInformationManagement
+          *  the region_id is explicitly emptied, to prevent the old one being used.
+          */
+         $shippingAddress = $shippingInformation->getShippingAddress();
+-        if(!$shippingAddress->hasData('region_id')) {
++        if (!$shippingAddress->hasData('region_id')) {
+             $shippingAddress->setRegionId("");
+         }
+ 
+
+--- /dev/null
++++ b/Test/Mftf/ActionGroup/AmazonConfigActionGroup.xml
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++/**
++ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++-->
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++              xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <actionGroup name="ConfigureEuroCurrency">
++        <magentoCLI command="config:set currency/options/base EUR" stepKey="setBaseCurrency"/>
++        <magentoCLI command="config:set currency/options/default EUR" stepKey="setDisplayCurrency"/>
++        <magentoCLI command="config:set currency/options/allow EUR,USD" stepKey="setAllowedCurrencies"/>
++    </actionGroup>
++</actionGroups>
+
+--- a/Test/Mftf/ActionGroup/AmazonLoginActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup.xml
+@@ -13,11 +13,11 @@
+         <!--Save opener window name since popup auto-closes-->
+         <executeJS function="return window.name;" stepKey="openerName"/>
+ 
+-        <waitForPageLoad stepKey="waitForPageLoadPopup"/>
+         <switchToWindow userInput="amazonloginpopup" stepKey="switchToWindowLoginpopup"/>
++        <waitForPageLoad stepKey="waitForPageLoadPopup"/>
+ 
+         <!-- Fill in login form -->
+-        <waitForElement selector="{{AmazonLoginSection.apEmail}}" time="10" stepKey="apWaitForLogin"/>
++        <waitForElement selector="{{AmazonLoginSection.apEmail}}" time="30" stepKey="apWaitForLogin"/>
+         <fillField selector="{{AmazonLoginSection.apEmail}}" userInput="{{AmazonLogin.email}}" stepKey="apEnterEmail"/>
+         <fillField selector="{{AmazonLoginSection.apPassword}}" userInput="{{AmazonLogin.password}}" stepKey="apEnterPassword"/>
+         <click selector="{{AmazonLoginSection.apSignin}}" stepKey="clickSigninButton"/>
+@@ -35,4 +35,4 @@
+         <waitForPageLoad stepKey="waitForPageLoadLogin"/>
+         <conditionalClick selector="{{AmazonLoginSection.apConsent}}" dependentSelector="{{AmazonLoginSection.apConsent}}" visible="true" stepKey="clickLoginConsent"/>
+     </actionGroup>
+-</actionGroups>
+\ No newline at end of file
++</actionGroups>
+
+--- /dev/null
++++ b/Test/Mftf/Data/AmazonAddressData.xml
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++          xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
++    <!--"Fail Address" to trigger Magento shipping address validation error-->
++    <entity name="AmazonAddressFail" type="amazon_address">
++        <data key="country">BQ</data>
++        <data key="name">Bonaire International Airport</data>
++        <data key="address">Plasa Medardo SV Thielman 1</data>
++        <data key="city">Kralendijk</data>
++        <data key="region">Caribbean Netherlands</data>
++        <data key="postal">12345</data>
++        <data key="phone">+555 555 5555</data>
++    </entity>
++</entities>
+
+--- a/Test/Mftf/Data/AmazonLoginData.xml
++++ b/Test/Mftf/Data/AmazonLoginData.xml
+@@ -2,7 +2,7 @@
+ <entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:noNamespaceSchemaLocation="../../../../../../../../dev/tests/acceptance/vendor/magento/magento2-functional-testing-framework/src/Magento/FunctionalTestingFramework/DataGenerator/etc/dataProfileSchema.xsd">
+     <entity name="AmazonLogin" type="amazon_login">
+-        <data key="email">payment-test@amazon.com</data>
+-        <data key="password">test123</data>
++        <data key="email">{{_CREDS.amazon/test_account_eu_email}}</data>
++        <data key="password">{{_CREDS.amazon/test_account_eu_password}}</data>
+     </entity>
+ </entities>
+
+--- a/Test/Mftf/Data/AmazonPaymentData.xml
++++ b/Test/Mftf/Data/AmazonPaymentData.xml
+@@ -11,24 +11,26 @@
+         <requiredEntity type="sandbox">SampleAmazonSandbox</requiredEntity>
+         <requiredEntity type="payment_action">SampleAmazonPaymentAction</requiredEntity>
+         <requiredEntity type="authorization_mode">SampleAmazonAuthorizationMode</requiredEntity>
++        <requiredEntity type="amazon_pay_active">SampleAmazonPayActive</requiredEntity>
++        <requiredEntity type="lwa_enabled">SampleAmazonLwaEnabled</requiredEntity>
+     </entity>
+     <entity name="SampleAmazonMerchantId" type="merchant_id">
+-        <data key="value">someMerchantId</data>
++        <data key="value">{{_CREDS.amazon/v1_merchant_id}}</data>
+     </entity>
+     <entity name="SampleAmazonAccessKey" type="access_key">
+-        <data key="value">someAccessKey</data>
++        <data key="value">{{_CREDS.amazon/v1_access_key}}</data>
+     </entity>
+     <entity name="SampleAmazonSecretKey" type="secret_key">
+-        <data key="value">someSecretKey</data>
++        <data key="value">{{_CREDS.amazon/v1_secret_key}}</data>
+     </entity>
+     <entity name="SampleAmazonClientId" type="client_id">
+-        <data key="value">someClientId</data>
++        <data key="value">{{_CREDS.amazon/v1_client_id}}</data>
+     </entity>
+     <entity name="SampleAmazonClientSecret" type="client_secret">
+-        <data key="value">someClientSecretKey</data>
++        <data key="value">{{_CREDS.amazon/v1_client_secret}}</data>
+     </entity>
+     <entity name="SampleAmazonPaymentRegion" type="payment_region">
+-        <data key="value">us</data>
++        <data key="value">{{_CREDS.amazon/v1_region}}</data>
+     </entity>
+     <entity name="SampleAmazonSandbox" type="sandbox">
+         <data key="value">1</data>
+@@ -39,6 +41,12 @@
+     <entity name="SampleAmazonAuthorizationMode" type="authorization_mode">
+         <data key="value">synchronous</data>
+     </entity>
++    <entity name="SampleAmazonPayActive" type="amazon_pay_active">
++        <data key="value">1</data>
++    </entity>
++    <entity name="SampleAmazonLwaEnabled" type="lwa_enabled">
++        <data key="value">1</data>
++    </entity>
+     <!-- default configuration used to restore Magento config -->
+     <entity name="DefaultAmazonPaymentConfig" type="amazon_payment_config_state">
+         <requiredEntity type="merchant_id">DefaultAmazonMerchantId</requiredEntity>
+@@ -50,6 +58,8 @@
+         <requiredEntity type="sandbox">DefaultAmazonSandbox</requiredEntity>
+         <requiredEntity type="payment_action">DefaultAmazonPaymentAction</requiredEntity>
+         <requiredEntity type="authorization_mode">DefaultAmazonAuthorizationMode</requiredEntity>
++        <requiredEntity type="amazon_pay_active">DefaultAmazonPayActive</requiredEntity>
++        <requiredEntity type="lwa_enabled">DefaultAmazonLwaEnabled</requiredEntity>
+     </entity>
+     <entity name="DefaultAmazonMerchantId" type="merchant_id">
+         <data key="value"/>
+@@ -78,4 +88,10 @@
+     <entity name="DefaultAmazonAuthorizationMode" type="authorization_mode">
+         <data key="value">synchronous</data>
+     </entity>
++    <entity name="DefaultAmazonPayActive" type="amazon_pay_active">
++        <data key="value">0</data>
++    </entity>
++    <entity name="DefaultAmazonLwaEnabled" type="lwa_enabled">
++        <data key="value">0</data>
++    </entity>
+ </entities>
+
+--- a/Test/Mftf/Metadata/amazon_payment_config-meta.xml
++++ b/Test/Mftf/Metadata/amazon_payment_config-meta.xml
+@@ -36,8 +36,18 @@
+                             </object>
+                         </object>
+                     </object>
++                    <object key="options" dataType="amazon_payment_config_state">
++                        <object key="fields" dataType="amazon_payment_config_state">
++                            <object key="active" dataType="amazon_pay_active">
++                                <field key="value">string</field>
++                            </object>
++                            <object key="lwa_enabled" dataType="lwa_enabled">
++                                <field key="value">string</field>
++                            </object>
++                        </object>
++                    </object>
+                 </object>
+             </object>
+         </object>
+     </operation>
+-</operations>
+\ No newline at end of file
++</operations>
+
+--- /dev/null
++++ b/Test/Mftf/Section/AmazonAddressSection.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++
++<sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++    <!--Amazon New Address Widget-->
++    <section name="AmazonAddressSection">
++        <element name="country" type="select" selector="address-ui-widgets-countryCode-dropdown-nativeId"/>
++        <element name="name" type="input" selector="#address-ui-widgets-enterAddressFullName"/>
++        <element name="address" type="input" selector="#address-ui-widgets-enterAddressLine1"/>
++        <element name="city" type="input" selector="#address-ui-widgets-enterAddressCity"/>
++        <element name="region" type="input" selector="#address-ui-widgets-enterAddressStateOrRegion"/>
++        <element name="postal" type="input" selector="#address-ui-widgets-enterAddressPostalCode"/>
++        <element name="phone" type="input" selector="#address-ui-widgets-enterAddressPhoneNumber"/>
++        <element name="submit" type="button" selector="[type=submit]"/>
++    </section>
++</sections>
+
+--- a/Test/Mftf/Section/AmazonCheckoutSection.xml
++++ b/Test/Mftf/Section/AmazonCheckoutSection.xml
+@@ -9,10 +9,11 @@
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
+     <section name="AmazonCheckoutSection">
+-        <element name="cartPayButton" type="img" selector="#PayWithAmazon-checkout-cart-shortcut-buttons img"/>
+-        <element name="miniCartPayButton" type="img" selector="#minicart-amazon-pay-button img"/>
+-        <element name="productPayButton" type="div" selector="#amazon-addtoCart-amazon-pay-button-product"/>
+-        <element name="checkoutPayButton" type="img" selector=".amazon-button-container img"/>
+-        <element name="loginButton" type="img" selector="#LoginWithAmazon-amazon-login img"/>
++        <element name="cartPayButton" type="button" selector="#PayWithAmazon-checkout-cart-shortcut-buttons img"/>
++        <element name="miniCartPayButton" type="button" selector="#minicart-amazon-pay-button img"/>
++        <element name="productPayButton" type="button" selector="#amazon-addtoCart-amazon-pay-button-product"/>
++        <element name="checkoutPayButton" type="button" selector=".amazon-button-container img"/>
++        <element name="loginButton" type="button" selector="#LoginWithAmazon-amazon-login img"/>
++        <element name="addNewAddress" type="block" selector=".footer .info a"/>
+     </section>
+ </sections>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
+@@ -15,10 +15,19 @@
+             <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -26,7 +35,7 @@
+             <argument name="cc" value="4545" />
+         </actionGroup>
+         <!--Decline Error Message-->
+-        <waitForText userInput="Invalid payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <waitForText userInput="Please select a payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
+         <!--Use default CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
+         <!--See success message-->
+@@ -39,9 +48,6 @@
+             <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+@@ -51,16 +57,6 @@
+         </actionGroup>
+         <!--Decline Error Message-->
+         <waitForText userInput="There has been a problem with the selected payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
+-        <!--Verify iframe wallet message-->
+-        <executeJS function="return window.name;" stepKey="topName"/>
+-        <executeJS function="return jQuery('#walletWidgetDiv iframe').attr('name');" stepKey="iframeName"/>
+-        <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFramePaymentWidget"/>
+-        <see selector=".action a" userInput="Verify card info or use another card" stepKey="seeVerify"/>
+-        <switchToWindow userInput="{$topName}" stepKey="switchToWindowTop" />
+-        <!--Use default CC# using reloaded iframe-->
+-        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
+-        <!--See success message-->
+-        <see selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
+     </test>
+     <test name="AmazonCheckoutDeclineAmazonRejected" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+@@ -69,10 +65,19 @@
+             <description value="Test CC decline message, logout, and redirect to cart with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -81,28 +86,29 @@
+         </actionGroup>
+         <!--Decline Error Message-->
+         <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>        <!--Verify iframe wallet message-->
+-        <!--Wait for redirect to cart-->
+-        <wait time="5" stepKey="waitRedirect"/>
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+-        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
+-        <!--Confirm logged out from Amazon by logging in (popup)-->
+-        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+     </test>
+     <test name="AmazonCheckoutDeclineTransactionTimedOutInstant" extends="AmazonCheckoutAddProductDetail">
+-        <before>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
+-        </before>
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+             <title value="Amazon Pay Decline TransactionTimedOut with Instant Authorization"/>
+             <description value="Test CC timeout message with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
++
++        <before>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -116,22 +122,27 @@
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+     </test>
+     <test name="AmazonCheckoutDeclineTransactionTimedOutAutomatic" extends="AmazonCheckoutAddProductDetail">
+-        <before>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous" />
+-        </before>
+-        <after>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
+-        </after>
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+             <title value="Amazon Pay Decline TransactionTimedOut with Automatic Authorization)"/>
+             <description value="Test CC timeout message with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
++
++        <before>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous" />
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Begin checkout-->
+         <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+@@ -149,10 +160,19 @@
+             <description value="Perform checkout from cart page and ensure SCA Abandoned page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Go to Cart-->
+         <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+@@ -169,7 +189,7 @@
+             <argument name="cc" value="4440" />
+         </actionGroup>
+         <!--Transaction declined error message-->
+-        <waitForText userInput="The SCA challenge was not completed successfully." selector="#checkoutError" stepKey="waitForText"/>
++        <waitForText userInput="Something's wrong with your payment method." selector=".message" stepKey="waitForText"/>
+     </test>
+     <test name="AmazonCheckoutSCAFailure" extends="AmazonCheckoutAddProduct">
+         <annotations>
+@@ -179,10 +199,19 @@
+             <description value="Perform checkout from cart page and ensure SCA Failure page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Go to Cart-->
+         <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+@@ -199,6 +228,51 @@
+             <argument name="cc" value="8320" />
+         </actionGroup>
+         <!--Transaction declined error message-->
+-        <waitForText userInput="Amazon Pay was unable to authenticate the payment instrument." selector="#checkoutError" stepKey="waitForText"/>
++        <waitForText userInput="There was a problem with your payment." selector=".message" stepKey="waitForText"/>
++    </test>
++    <test name="AmazonCheckoutAddressFailure" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test new shipping address validation"/>
++            <title value="Amazon Pay Invalid Shipping Address"/>
++            <description value="Adds an invalid address to Amazon Address widget to test Magento shipping address validation"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Save opener window name since popup auto-closes-->
++        <executeJS function="return window.name;" stepKey="openerName"/>
++        <!--Get address widget iframe name (dynamic)-->
++        <executeJS function="return jQuery('#addressBookWidgetDiv iframe').attr('name');" stepKey="iframeName"/>
++        <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFrameWidget"/>
++        <!--Open new address pop-up-->
++        <click selector="{{AmazonCheckoutSection.addNewAddress}}" stepKey="clickAddNew"/>
++        <waitForPageLoad stepKey="waitForPageLoadPopup"/>
++        <executeJS function="return document.getElementById('addShippingAddressForm').target;" stepKey="windowAddressName"/>
++        <switchToWindow userInput="{$windowAddressName}" stepKey="switchToWindowAddress"/>
++        <waitForElement selector="{{AmazonAddressSection.name}}" time="10" stepKey="apWait"/>
++        <!--Add new address-->
++        <!--Select is hidden, so must change with JS-->
++        <executeJS function="document.getElementById('{{AmazonAddressSection.country}}').value = '{{AmazonAddressFail.country}}'" stepKey="apcountry"/>
++        <fillField selector="{{AmazonAddressSection.name}}" userInput="{{AmazonAddressFail.name}}" stepKey="enterName"/>
++        <fillField selector="{{AmazonAddressSection.address}}" userInput="{{AmazonAddressFail.address}}" stepKey="enterAddress"/>
++        <fillField selector="{{AmazonAddressSection.city}}" userInput="{{AmazonAddressFail.city}}" stepKey="enterCity"/>
++        <fillField selector="{{AmazonAddressSection.region}}" userInput="{{AmazonAddressFail.region}}" stepKey="enterRegion"/>
++        <fillField selector="{{AmazonAddressSection.postal}}" userInput="{{AmazonAddressFail.postal}}" stepKey="enterPostal"/>
++        <fillField selector="{{AmazonAddressSection.phone}}" userInput="{{AmazonAddressFail.phone}}" stepKey="enterPhone"/>
++        <click selector="{{AmazonAddressSection.submit}}" stepKey="clickAddAddressButton"/>
++        <!--Switch back to Magento and detect error from new address-->
++        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener" />
++        <waitForText userInput="The country associated with your address is not allowed" selector=".message" stepKey="waitForText"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
+@@ -16,26 +16,27 @@
+             <description value="Creates and loads simple product and adds it to cart using Amazon Pay button on product detail page."/>
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+         <!--Go to product page-->
+         <amOnPage url="$$createSimpleProduct.custom_attributes[url_key]$$.html" stepKey="navigateToSimpleProductPage"/>
+-        <waitForPageLoad stepKey="waitForPageLoadCatalog"/>
++        <waitForPageLoad stepKey="waitForPageLoadCatalog" time="30"/>
+ 
+         <!--Add to cart via Amazon Pay button on product page-->
+-        <waitForElement selector="{{AmazonCheckoutSection.productPayButton}}" time="5" stepKey="apWaitForPayButton"/>
++        <waitForElement selector="{{AmazonCheckoutSection.productPayButton}}" time="30" stepKey="apWaitForPayButton"/>
++        <waitForElement selector="#OffAmazonPaymentsWidgets0" time="30" stepKey="apWaitForPayButton2"/>
++        <waitForJS function="return document.getElementById('{{AmazonCheckoutSection.productPayButton}}'.substr(1)).clientHeight > 10;" stepKey="waitForPayButtonClickable" />
+         <click selector="{{AmazonCheckoutSection.productPayButton}}" stepKey="clickProductPayButton"/>
+ 
+         <!--Login (redirect)-->
+@@ -49,18 +50,17 @@
+             <description value="Adds product to cart."/>
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+         <!--Go to product page-->
+@@ -80,14 +80,267 @@
+             <description value="Perform checkout from product details page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <!--Place order-->
+         <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
++    <test name="AmazonCheckoutDisplayLanguage" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with non-default display language setting"/>
++            <title value="Amazon Pay Checkout Display Language"/>
++            <description value="Perform checkout with non-default display language and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <magentoCLI command="config:set payment/amazon_payment/button_display_language de_DE" stepKey="setDeDisplayLanguage"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="config:set payment/amazon_payment/button_display_language ''" stepKey="setDeDisplayLanguage"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++    </test>
++    <test name="AmazonCheckoutFreeShipping" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with free shipping"/>
++            <title value="Amazon Pay Checkout Free Shipping"/>
++            <description value="Perform checkout with free shipping"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <magentoCLI command="config:set carriers/freeshipping/active 1" stepKey="enableFreeShipping"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="config:set carriers/freeshipping/active 0" stepKey="disableFreeShipping"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++    </test>
++    <test name="AmazonCheckoutConfigurableProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with configurable product"/>
++            <title value="Amazon Pay Checkout Configurable Product"/>
++            <description value="Perform checkout with configurable product and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <!-- Create Default Category -->
++            <createData entity="_defaultCategory" stepKey="createCategory"/>
++
++            <!-- Create an attribute with three options to be used in the first child product -->
++            <createData entity="productAttributeWithTwoOptions" stepKey="createConfigProductAttribute"/>
++            <createData entity="productAttributeOption1" stepKey="createConfigProductAttributeOption1">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++            <createData entity="productAttributeOption2" stepKey="createConfigProductAttributeOption2">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++            <createData entity="productAttributeOption3" stepKey="createConfigProductAttributeOption3">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++
++            <!-- Add the attribute just created to default attribute set -->
++            <createData entity="AddToDefaultSet" stepKey="createConfigAddToAttributeSet">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++
++            <!-- Get the first option of the attribute created -->
++            <getData entity="ProductAttributeOptionGetter" index="1" stepKey="getConfigAttributeOption1">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </getData>
++
++            <!-- Get the second option of the attribute created -->
++            <getData entity="ProductAttributeOptionGetter" index="2" stepKey="getConfigAttributeOption2">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </getData>
++
++            <!-- Get the third option of the attribute created -->
++            <getData entity="ProductAttributeOptionGetter" index="3" stepKey="getConfigAttributeOption3">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </getData>
++
++            <!-- Create Configurable product -->
++            <createData entity="BaseConfigurableProduct" stepKey="createConfigProduct">
++                <requiredEntity createDataKey="createCategory"/>
++            </createData>
++
++            <!-- Create a simple product and give it the attribute with the first option -->
++            <createData entity="ApiSimpleOne" stepKey="createConfigChildProduct1">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption1"/>
++                <field key="price">10.00</field>
++            </createData>
++
++            <!--Create a simple product and give it the attribute with the second option -->
++            <createData entity="ApiSimpleTwo" stepKey="createConfigChildProduct2">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption2"/>
++                <field key="price">20.00</field>
++            </createData>
++
++            <!--Create a simple product and give it the attribute with the Third option -->
++            <createData entity="ApiSimpleTwo" stepKey="createConfigChildProduct3">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption3"/>
++                <field key="price">30.00</field>
++            </createData>
++
++            <!-- Create the configurable product -->
++            <createData entity="ConfigurableProductThreeOptions" stepKey="createConfigProductOption">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption1"/>
++                <requiredEntity createDataKey="getConfigAttributeOption2"/>
++                <requiredEntity createDataKey="getConfigAttributeOption3"/>
++            </createData>
++
++            <!-- Add the first simple product to the configurable product -->
++            <createData entity="ConfigurableProductAddChild" stepKey="createConfigProductAddChild1">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigChildProduct1"/>
++            </createData>
++
++            <!-- Add the second simple product to the configurable product -->
++            <createData entity="ConfigurableProductAddChild" stepKey="createConfigProductAddChild2">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigChildProduct2"/>
++            </createData>
++
++            <!-- Add the third simple product to the configurable product -->
++            <createData entity="ConfigurableProductAddChild" stepKey="createConfigProductAddChild3">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigChildProduct3"/>
++            </createData>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++            <magentoCLI command="indexer:reindex" stepKey="reindex"/>
++        </before>
++
++        <after>
++            <deleteData createDataKey="createConfigChildProduct1" stepKey="deleteSimpleProduct1"/>
++            <deleteData createDataKey="createConfigChildProduct2" stepKey="deleteSimpleProduct2"/>
++            <deleteData createDataKey="createConfigChildProduct3" stepKey="deleteSimpleProduct3"/>
++            <deleteData createDataKey="createConfigProduct" stepKey="deleteProduct"/>
++            <deleteData createDataKey="createCategory" stepKey="deleteCategory"/>
++            <deleteData createDataKey="createConfigProductAttribute" stepKey="deleteProductAttribute"/>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++        </after>
++
++        <!-- Add Configurable Product to the cart -->
++        <actionGroup ref="StorefrontAddConfigurableProductToTheCartActionGroup" stepKey="addConfigurableProductToCart">
++            <argument name="urlKey" value="$$createConfigProduct.custom_attributes[url_key]$$" />
++            <argument name="productAttribute" value="$$createConfigProductAttribute.default_value$$"/>
++            <argument name="productOption" value="$$getConfigAttributeOption2.label$$"/>
++            <argument name="qty" value="2"/>
++        </actionGroup>
++
++        <!--Open minicart-->
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart" />
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink" />
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart" />
++
++        <!--Login (redirect)-->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++    </test>
++    <test name="AmazonCheckoutGroupedProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with bundled product"/>
++            <title value="Amazon Pay Checkout Bundled Product"/>
++            <description value="Perform checkout with bundled product and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <!--Create Grouped product with three simple product -->
++            <createData entity="ApiProductWithDescription" stepKey="simple1" before="simple2">
++                <field key="price">100.00</field>
++            </createData>
++            <createData entity="ApiProductWithDescription" stepKey="simple2" before="simple3">
++                <field key="price">200.00</field>
++            </createData>
++            <createData entity="ApiProductWithDescription" stepKey="simple3" before="product">
++                <field key="price">300.00</field>
++            </createData>
++            <createData entity="ApiGroupedProduct" stepKey="product"/>
++            <createData entity="OneSimpleProductLink" stepKey="addProductOne">
++                <requiredEntity createDataKey="product"/>
++                <requiredEntity createDataKey="simple1"/>
++            </createData>
++            <updateData entity="OneMoreSimpleProductLink" createDataKey="addProductOne" stepKey="addProductTwo">
++                <requiredEntity createDataKey="product"/>
++                <requiredEntity createDataKey="simple2"/>
++            </updateData>
++            <updateData entity="OneMoreSimpleProductLink" createDataKey="addProductOne" stepKey="addProductThree">
++                <requiredEntity createDataKey="product"/>
++                <requiredEntity createDataKey="simple3"/>
++            </updateData>
++            <magentoCLI command="indexer:reindex" stepKey="reindex"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <deleteData createDataKey="simple1" stepKey="deleteProduct1"/>
++            <deleteData createDataKey="simple2" stepKey="deleteProduct2"/>
++            <deleteData createDataKey="simple3" stepKey="deleteProduct3"/>
++            <deleteData createDataKey="product" stepKey="deleteGroupProduct"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Fill Quantity and add Product to the cart -->
++        <actionGroup ref="StorefrontAddThreeGroupedProductToTheCartActionGroup" stepKey="addGropedProductsToTheCart">
++            <argument name="urlKey" value="$$product.custom_attributes[url_key]$$"/>
++            <argument name="product1" value="$$simple1.name$$"/>
++            <argument name="product2" value="$$simple2.name$$"/>
++            <argument name="product3" value="$$simple3.name$$"/>
++            <argument name="qty1" value="1"/>
++            <argument name="qty2" value="2"/>
++            <argument name="qty3" value="3"/>
++        </actionGroup>
++
++        <!--Open minicart-->
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart" />
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink" />
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart" />
++
++        <!--Login (redirect)-->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++    </test>
+     <test name="AmazonCheckoutCart" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -96,9 +349,6 @@
+             <description value="Perform checkout from cart page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <!--Go to Cart-->
+@@ -121,9 +371,6 @@
+             <description value="Perform checkout from minicart and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <!--Open minicart-->
+@@ -146,9 +393,6 @@
+             <description value="Perform checkout from checkout page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <!--Go to Checkout-->
+@@ -171,9 +415,6 @@
+             <description value="Perform checkout after logging in from customer account page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <!--Go to Customer page-->
+@@ -194,9 +435,6 @@
+             <description value="Perform checkout from cart page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+-            <skip>
+-                <issueId>AmazonPayCredentialSupport</issueId>
+-            </skip>
+         </annotations>
+ 
+         <!--Go to Cart-->
+
+--- a/Test/Mftf/composer.json
++++ /dev/null
+@@ -1,28 +0,0 @@
+-{
+-  "name": "amzn/login-with-amazon-module",
+-  "description": "Login with Amazon module",
+-  "type": "magento2-module",
+-  "version": "2.2.2",
+-  "license": [
+-    "Apache-2.0"
+-  ],
+-  "require": {
+-    "php": "~7.0.13|~7.1.0|~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^2.2.2",
+-    "magento/module-customer": "^101.0",
+-    "magento/module-store": "^100.1",
+-    "magento/module-eav": "101.0.*",
+-    "magento/module-checkout": "100.2.*",
+-    "magento/module-checkout-agreements": "100.2.*"
+-
+-  },
+-  "suggest": {
+-    "magento/module-sales": "101.0.*"
+-  },
+-  "autoload": {
+-    "files": ["registration.php"],
+-    "psr-4": {
+-      "Amazon\\Login\\": ""
+-    }
+-  }
+-}
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.2.12",
++  "version": "3.4.1-p3",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.12",
+-    "amzn/login-with-amazon-module": "^3.2.12",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p3",
++    "amzn/login-with-amazon-module": "^3.4.1-p3",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -54,6 +54,7 @@
+                 <platform_id>A2ZAYEJU54T1BM</platform_id>
+                 <hard_decline_code>4273</hard_decline_code>
+                 <soft_decline_code>7638</soft_decline_code>
++                <sca_regions>de,uk</sca_regions>
+             </amazon_payment>
+         </payment>
+     </default>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.2.12" >
++    <module name="Amazon_Payment" setup_version="3.4.1-p3" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -18,4 +18,7 @@
+ "Amazon could not process your request.","Amazon Pay konnte Ihre Anfrage nicht bearbeiten. Bitte versuchen Sie es noch einmal."
+ "Please select a payment method.","Wählen Sie eine Zahlungsweise aus."
+ "Your session has expired, please reload the page and try again.","Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite erneut und versuchen Sie es noch einmal."
+-"Return to standard checkout","Zum Standard Checkout zurückkehren"
+\ No newline at end of file
++"Return to standard checkout","Zum Standard Checkout zurückkehren"
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -18,4 +18,7 @@
+ "Amazon could not process your request.","Amazon Pay konnte Ihre Anfrage nicht bearbeiten. Bitte versuchen Sie es noch einmal."
+ "Please select a payment method.","Wählen Sie eine Zahlungsweise aus."
+ "Your session has expired, please reload the page and try again.","Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite erneut und versuchen Sie es noch einmal."
+-"Return to standard checkout","Zum Standard Checkout zurückkehren"
+\ No newline at end of file
++"Return to standard checkout","Zum Standard Checkout zurückkehren"
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay konnte Ihre Anfrage nicht bearbeiten. Bitte versuchen Sie es noch einmal."
+ "Please select a payment method.","Wählen Sie eine Zahlungsweise aus."
+ "Your session has expired, please reload the page and try again.","Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite erneut und versuchen Sie es noch einmal."
+-"Return to standard checkout","Zum Standard Checkout zurückkehren"
+\ No newline at end of file
++"Return to standard checkout","Zum Standard Checkout zurückkehren"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Beim Zahlungsvorgang ist ein Problem aufgetreten. Ihre Bestellung wurde nicht aufgegeben und Ihr Konto nicht belastet."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -18,3 +18,5 @@
+ "Please select a payment method.","Please select a payment method."
+ "Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
+ "Return to standard checkout","Return to standard checkout"
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page"
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -115,4 +115,8 @@
+ "Welcome back!","Welcome back!"
+ "With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop.","With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop."
+ "You will be registering for a %1 account based on the base currency of your shop (%2).","You will be registering for a %1 account based on the base currency of your shop (%2)."
+-"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
+\ No newline at end of file
++"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","There was a problem with your payment. Your order hasn't been placed, and you haven't been charged."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Something's wrong with your payment method. To place your order, try another."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page"
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay no ha podido procesar tu solicitud. Vuelve a intentarlo."
+ "Please select a payment method.","Selecciona un método de pago."
+ "Your session has expired, please reload the page and try again.","Tu sesión ha caducado. Actualiza la página e inténtalo de nuevo."
+-"Return to standard checkout","Vuelva a su checkout estándar"
+\ No newline at end of file
++"Return to standard checkout","Vuelva a su checkout estándar"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay n'a pas pu traiter votre demande. Veuillez réessayer."
+ "Please select a payment method.","Sélectionnez un mode de paiement."
+ "Your session has expired, please reload the page and try again.","Votre session a expiré. Actualisez la page et réessayez."
+-"Return to standard checkout","Revenir à la commande standard"
+\ No newline at end of file
++"Return to standard checkout","Revenir à la commande standard"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Un problème s’est produit avec votre paiement. Votre commande n'a pas été passée et vous n'avez pas été débité."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Votre transaction avec Amazon Pay est en cours de validation. Vous serez informe prochainement de son suivi."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Pour réinitialiser votre mot de passe, veuillez-vous <a href=""%1"">Déconnexion</a> et cliquer sur “Mot de passe oublié?” depuis la page de connexion"
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Amazon Pay n'a pas pu traiter votre demande. Veuillez réessayer."
+ "Please select a payment method.","Sélectionnez un mode de paiement."
+ "Your session has expired, please reload the page and try again.","Votre session a expiré. Actualisez la page et réessayez."
+-"Return to standard checkout","Revenir à la commande standard"
+\ No newline at end of file
++"Return to standard checkout","Revenir à la commande standard"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Un problème s’est produit avec votre paiement. Votre commande n'a pas été passée et vous n'avez pas été débité."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Votre transaction avec Amazon Pay est en cours de validation. Vous serez informe prochainement de son suivi."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Pour réinitialiser votre mot de passe, veuillez-vous <a href=""%1"">Déconnexion</a> et cliquer sur “Mot de passe oublié?” depuis la page de connexion"
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -18,4 +18,7 @@
+ "Amazon could not process your request.","Il servizio Amazon Pay non ha potuto elaborare la tua richiesta. Riprova."
+ "Please select a payment method.","Seleziona un metodo di pagamento."
+ "Your session has expired, please reload the page and try again.","La sessione è scaduta. Ricarica la pagina e riprova."
+-"Return to standard checkout","Ritorna al tuo checkout originale"
+\ No newline at end of file
++"Return to standard checkout","Ritorna al tuo checkout originale"
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","La vostra transazione con Amazon Pay e in fase di validazione. Vi informeremo del risultato della transazione a breve."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Per resettare la tua password, per favore <a href=""%1"">Esci</a> dal tuo account e seleziona “Hai dimenticato la password?" dalla pagina di Accesso"
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -18,4 +18,8 @@
+ "Amazon could not process your request.","Il servizio Amazon Pay non ha potuto elaborare la tua richiesta. Riprova."
+ "Please select a payment method.","Seleziona un metodo di pagamento."
+ "Your session has expired, please reload the page and try again.","La sessione è scaduta. Ricarica la pagina e riprova."
+-"Return to standard checkout","Ritorna al tuo checkout originale"
+\ No newline at end of file
++"Return to standard checkout","Ritorna al tuo checkout originale"
++"Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Si è verificato un problema con il pagamento. L'ordine non è stato effettuato, pertanto non ti è stato addebitato alcun importo."
++"The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
++"Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","La vostra transazione con Amazon Pay e in fase di validazione. Vi informeremo del risultato della transazione a breve."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Per resettare la tua password, per favore <a href=""%1"">Esci</a> dal tuo account e seleziona “Hai dimenticato la password?" dalla pagina di Accesso"
+
+--- a/view/frontend/layout/checkout_index_index.xml
++++ b/view/frontend/layout/checkout_index_index.xml
+@@ -15,7 +15,7 @@
+  * permissions and limitations under the License.
+  */
+ -->
+-<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="checkout" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
++<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+     <body>
+         <referenceBlock name="minicart">
+             <arguments>
+@@ -45,8 +45,20 @@
+                                         <item name="shipping-step" xsi:type="array">
+                                             <item name="children" xsi:type="array">
+                                                 <item name="shippingAddress" xsi:type="array">
++                                                    <item name="component" xsi:type="string">Amazon_Payment/js/view/shipping</item>
+                                                     <item name="children" xsi:type="array">
++                                                        <item name="address-list" xsi:type="array">
++                                                            <item name="component" xsi:type="string">Amazon_Payment/js/view/shipping-address/list</item>
++                                                        </item>
++                                                        <item name="shipping-address-fieldset" xsi:type="array">
++                                                            <item name="children" xsi:type="array">
++                                                                <item name="inline-form-manipulator" xsi:type="array">
++                                                                    <item name="component" xsi:type="string">Amazon_Payment/js/view/shipping-address/inline-form</item>
++                                                                </item>
++                                                            </item>
++                                                        </item>
+                                                         <item name="customer-email" xsi:type="array">
++                                                            <item name="component" xsi:type="string">Amazon_Payment/js/view/form/element/email</item>
+                                                             <item name="children" xsi:type="array">
+                                                                 <item name="amazon-button-region" xsi:type="array">
+                                                                     <item name="component" xsi:type="string">uiComponent</item>
+
+--- a/view/frontend/templates/minicart-button.phtml
++++ b/view/frontend/templates/minicart-button.phtml
+@@ -17,32 +17,29 @@
+ /**
+  * @var \Amazon\Payment\Block\Minicart\Button $block
+  */
+-$config = [
+-    'Amazon_Payment/js/amazon-button' => [
+-        'buttonType' => 'PwA'
+-    ]
+-];
++$config = ['buttonType' => 'PwA'];
+ 
+-$tooltipConfig = [
+-    'dropdown' => [
+-        'activeClass' => '_active'
+-    ]
+-];
++$tooltipConfig = ['activeClass' => '_active'];
++$jsonHelper = $this->helper(Magento\Framework\Json\Helper\Data::class);
+ ?>
+ 
+ <div id="minicart-amazon-pay-button" class="amazon-minicart-container">
++    <div class="amazon-divider">
++        <span><?= __('or') ?></span>
++    </div>
++
+     <div class="amazon-button-container">
+         <div class="amazon-button-container__cell">
+             <div id="PayWithAmazon-<?= /* @noEscape */ $block->getParentBlock()->getJsId() ?>"
+                  class="login-with-amazon"
+-                 data-mage-init='<?= /* @noEscape */ json_encode($config); ?>'>
++                 data-mage-init='{"Amazon_Payment/js/amazon-button":<?= /* @noEscape */ $jsonHelper->jsonEncode($config) ?>}'>
+             </div>
+         </div>
+ 
+         <div class="amazon-button-container__cell">
+             <div class="field-tooltip toggle">
+                 <span class="field-tooltip-action action-help"
+-                      data-mage-init='<?= /* @noEscape */ json_encode($tooltipConfig); ?>'
++                      data-mage-init='{"dropdown":<?= /* @noEscape */ $jsonHelper->jsonEncode($tooltipConfig) ?>}'
+                       data-toggle="dropdown"
+                       aria-haspopup="true"
+                       aria-expanded="false">
+
+--- a/view/frontend/templates/payment-link-product-page.phtml
++++ b/view/frontend/templates/payment-link-product-page.phtml
+@@ -15,7 +15,10 @@
+  */
+ ?>
+ <?php /** @var \Amazon\Payment\Block\ProductPagePaymentLink $block */ ?>
++<div class="amazon-checkout-now"><?= __('Checkout now') ?></div>
++
+ <div class="amazon-button-container centered-button">
++
+     <div class="amazon-button-container__cell">
+         <a href="javascript:;"
+            class="amazon-addtoCart"
+
+--- a/view/frontend/templates/widget/resetpassword.phtml
++++ b/view/frontend/templates/widget/resetpassword.phtml
+@@ -6,9 +6,11 @@
+ 
+ // @codingStandardsIgnoreFile
+ 
+-/** @var \Magento\Customer\Block\Widget\Company $block */
++/** @var \Amazon\Payment\Block\Widget\ResetPassword $block */
+ ?>
+ <div class="field password-info">
+-    <p><?= $block->escapeHtml(__('If you created this account using Amazon Pay, you might not know your site password.')) ?>
+-        <a href="<?= $block->escapeHtml($block->getLink()); ?>"><?= $block->escapeHtml(__('Request a password to change your account password.')); ?></a></p>
++    <p>
++        <?= $block->escapeHtml(__('If you created this account using Amazon Pay, you might not know your site password.')) ?><br />
++        <?= __('In order to reset your password, please <a href="%1">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page', $block->getLink()) ?>
++    </p>
+ </div>
+
+--- a/view/frontend/web/css/source/_module.less
++++ b/view/frontend/web/css/source/_module.less
+@@ -15,6 +15,18 @@
+ 
+ & when (@media-common = true) {
+ 
++    .amazon-divider {
++        border-bottom: 1px solid #cccccc;
++        line-height: 0.1em;
++        margin: 18px 0 20px;
++        text-align: center;
++        max-width: 500px;
++        span {
++            background: #fff;
++            padding:0 5px;
++        }
++    }
++
+     /** mini cart styling **/
+     .product-social-links,
+     .amazon-minicart-container {
+@@ -23,9 +35,8 @@
+         text-align: center;
+         .amazon-button-container {
+             display: inline-block;
+-            margin: 12px 0 4px 0;
++            margin: 0px;
+         }
+-
+         .field-tooltip {
+             .field-tooltip-content {
+                 top: 38px;
+@@ -50,7 +61,17 @@
+             }
+         }
+     }
+-
++    .product-social-links {
++        .amazon-button-container {
++            margin-bottom: 30px;
++            display: block;
++        }
++    }
++    .amazon-checkout-now {
++        border-top: 1px solid #c1c1c1;
++        padding-top: 10px;
++        margin-bottom: 10px;
++    }
+     .amazon-addtoCart {
+         display: block;
+         width: 100%;
+@@ -62,6 +83,7 @@
+ 
+     .revert-checkout {
+         margin-top: 20px;
++        margin-bottom: 20px;
+         display: block;
+     }
+ 
+@@ -89,7 +111,11 @@
+     }
+ 
+     .checkout-methods-items {
+-
++        .amazon-minicart-container {
++            .amazon-divider {
++                display: none;
++            }
++        }
+         .centered-button {
+             margin-bottom: 0;
+ 
+@@ -120,11 +146,6 @@
+         }
+     }
+ 
+-    /** hide alt currency - if multicurrency is enabled this will be unhidden dynamically **/
+-    tr.totals.charge {
+-        display: none;
+-    }
+-
+     .amazon-widget {
+         max-width: 400px;
+         height: 228px;
+@@ -141,6 +162,12 @@
+         }
+     }
+ 
++    #checkout-step-shipping {
++        .amazon-divider {
++            margin: 40px 0;
++        }
++    }
++
+     .checkout-payment-method {
+         .amazon-payment-method {
+             .payment-method-title {
+@@ -182,4 +209,4 @@
+             margin-bottom: 0;
+         }
+     }
+-}
+\ No newline at end of file
++}
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -23,9 +23,10 @@ define(
+         'Magento_Customer/js/model/customer',
+         'Magento_Checkout/js/model/full-screen-loader',
+         'Amazon_Payment/js/model/storage',
+-        'Amazon_Payment/js/model/amazonPaymentConfig'
++        'Amazon_Payment/js/model/amazonPaymentConfig',
++        'Magento_Customer/js/customer-data'
+     ],
+-    function (quote, urlBuilder, storage, url, errorProcessor, customer, fullScreenLoader, amazonStorage, amazonPaymentConfig) {
++    function (quote, urlBuilder, storage, url, errorProcessor, customer, fullScreenLoader, amazonStorage, amazonPaymentConfig, customerData) {
+         'use strict';
+ 
+         return function (paymentData, redirectOnSuccess) {
+@@ -39,6 +40,7 @@ define(
+                     quoteId: quote.getQuoteId()
+                 });
+                 payload = {
++                    confirmOrder: true,
+                     cartId: quote.getQuoteId(),
+                     email: quote.guestEmail,
+                     paymentMethod: paymentData,
+@@ -47,6 +49,7 @@ define(
+             } else {
+                 serviceUrl = urlBuilder.createUrl('/carts/mine/set-payment-information', {});
+                 payload = {
++                    confirmOrder: true,
+                     cartId: quote.getQuoteId(),
+                     paymentMethod: paymentData,
+                     billingAddress: quote.billingAddress()
+@@ -54,7 +57,8 @@ define(
+             }
+ 
+             fullScreenLoader.startLoader();
+-            if(['de', 'uk'].indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
++            customerData.invalidate(['cart']);
++            if(amazonPaymentConfig.getValue('scaRegions').indexOf(amazonPaymentConfig.getValue('region')) !== -1) {
+                 console.log('SCA enabled for region: ' + amazonPaymentConfig.getValue('region'));
+                 return OffAmazonPayments.initConfirmationFlow(amazonPaymentConfig.getValue('merchantId'), amazonStorage.getOrderReference(), function(confirmationFlow) {
+                     return storage.post(
+
+--- a/view/frontend/web/js/amazon-button.js
++++ b/view/frontend/web/js/amazon-button.js
+@@ -21,7 +21,6 @@ define([
+     'Magento_Checkout/js/model/full-screen-loader',
+     'modernizr/modernizr',
+     'amazonCore',
+-    'jquery/ui',
+     'uiRegistry',
+     'mage/cookies'
+ ], function ($, customerData, sectionConfig, amazonPaymentConfig, amazonCsrf, fullScreenLoader) {
+@@ -153,7 +152,6 @@ define([
+                      * Authorization callback
+                      */
+                     authorization: function () {
+-                        fullScreenLoader.startLoader();
+                         //eslint-disable-next-line no-undef
+                         amazon.Login.authorize(_this._getLoginOptions(), _this._popupCallback());
+                     }
+
+--- a/view/frontend/web/js/amazon-product-add.js
++++ b/view/frontend/web/js/amazon-product-add.js
+@@ -16,8 +16,7 @@
+ define([
+     'jquery',
+     'Magento_Customer/js/customer-data',
+-    'amazonCore',
+-    'jquery/ui'
++    'amazonCore'
+ ], function ($, customerData) {
+     'use strict';
+ 
+
+--- /dev/null
++++ b/view/frontend/web/js/messages.js
+@@ -0,0 +1,50 @@
++/**
++ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++define(
++    [
++        'jquery',
++        'Amazon_Payment/js/model/storage',
++        'Magento_Theme/js/view/messages',
++        'Magento_Ui/js/model/messageList'
++    ], function(
++        $,
++        amazonStorage,
++        messagesFactory,
++        messageList
++    ) {
++        'use strict';
++
++        return {
++            defaults: {},
++            isAmazonAccountLoggedIn: amazonStorage.isAmazonAccountLoggedIn,
++
++            /*
++             * Magento's core Checkout module removes the "messages" block from the layout,
++             *  so we display them on checkout using the messageList API.
++             */
++            displayMessages: function () {
++                if(this.isAmazonAccountLoggedIn()) {
++                    var messagesComponent = messagesFactory();
++                    messagesComponent.cookieMessages.forEach(function(message) {
++                        if(message.type == 'error') {
++                            messageList.addErrorMessage({message: $.mage.__($("<textarea/>").html(message.text).text())});
++                        }
++                    });
++                }
++            }
++        }
++    }
++);
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -30,6 +30,7 @@ define(
+ 
+         var isAmazonAccountLoggedIn = ko.observable(false),
+             isAmazonEnabled = ko.observable(amazonPaymentConfig.getValue('isPwaEnabled')),
++            orderReferenceId = ko.observable(amazonPaymentConfig.getValue('orderReferenceId')),
+             orderReference,
+             addressConsentToken = amazonCore.accessToken,
+             //eslint-disable-next-line no-use-before-define
+@@ -46,7 +47,18 @@ define(
+             isAmazonCartInValid = ko.computed(function () {
+                 return isAmazonAccountLoggedIn() && isQuoteDirty();
+             }),
+-            isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash');
++            isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash'),
++            amazonCustomerEmail = ko.computed(function () {
++                // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
++                if (window.checkoutConfig.hasOwnProperty('amazonLogin') &&
++                    typeof window.checkoutConfig.amazonLogin.amazon_customer_email === 'string'
++                ) {
++                    return window.checkoutConfig.amazonLogin.amazon_customer_email;
++                }
++                // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
++                return '';
++            });
++
+ 
+ 
+         /**
+@@ -87,6 +99,7 @@ define(
+         return {
+             isAmazonAccountLoggedIn: isAmazonAccountLoggedIn,
+             isAmazonEnabled: isAmazonEnabled,
++            orderReferenceId: orderReferenceId,
+             amazonDeclineCode: amazonDeclineCode,
+             sandboxSimulationReference: sandboxSimulationReference,
+             isPlaceOrderDisabled: isPlaceOrderDisabled,
+@@ -96,6 +109,7 @@ define(
+             isPwaVisible: isPwaVisible,
+             amazonlogOut: amazonLogOut,
+             amazonDefined: amazonCore.amazonDefined,
++            amazonCustomerEmail: amazonCustomerEmail,
+ 
+             /**
+              * Set order reference
+@@ -108,7 +122,7 @@ define(
+              * Get order reference
+              */
+             getOrderReference: function () {
+-                return orderReference;
++                return this.orderReferenceId() || orderReference;
+             },
+ 
+             /**
+
+--- a/view/frontend/web/js/view/checkout-revert.js
++++ b/view/frontend/web/js/view/checkout-revert.js
+@@ -52,7 +52,7 @@ define(
+                 ).done(
+                     function () {
+                         amazonStorage.amazonlogOut();
+-                        window.location.reload();
++                        fullScreenLoader.stopLoader();
+                     }
+                 ).fail(
+                     function (response) {
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -20,7 +20,8 @@ define(
+         'Magento_Checkout/js/model/url-builder',
+         'Magento_Checkout/js/checkout-data',
+         'Magento_Checkout/js/model/checkout-data-resolver',
+-        'uiRegistry'
++        'uiRegistry',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+@@ -41,7 +42,8 @@ define(
+         urlBuilder,
+         checkoutData,
+         checkoutDataResolver,
+-        registry
++        registry,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+@@ -57,6 +59,7 @@ define(
+                 widgetScope: registry.get('amazonPayment').loginScope
+             },
+             isCustomerLoggedIn: customer.isLoggedIn,
++            amazonCustomerEmail: amazonStorage.amazonCustomerEmail,
+             isAmazonAccountLoggedIn: amazonStorage.isAmazonAccountLoggedIn,
+             isAmazonEnabled: ko.observable(registry.get('amazonPayment').isPwaEnabled),
+             rates: shippingService.getShippingRates(),
+@@ -67,6 +70,10 @@ define(
+             initialize: function () {
+                 self = this;
+                 this._super();
++                // Update checkoutUrl for step-navigator if orderReferenceId is set (e.g. InvaldPaymentMethod)
++                if (amazonStorage.orderReferenceId()) {
++                    window.checkoutConfig.checkoutUrl += '?orderReferenceId=' + amazonStorage.orderReferenceId()
++                }
+             },
+ 
+             /**
+@@ -97,8 +104,7 @@ define(
+                      * Order reference creation callback
+                      */
+                     onOrderReferenceCreate: function (orderReference) {
+-                        var orderid = orderReference.getAmazonOrderReferenceId();
+-
++                        var orderid = amazonStorage.orderReferenceId() || orderReference.getAmazonOrderReferenceId();
+                         amazonStorage.setOrderReference(orderid);
+                     },
+ 
+@@ -108,6 +114,7 @@ define(
+                     onAddressSelect: function () { // orderReference
+                         self.getShippingAddressFromAmazon();
+                     },
++                    displayMode: self.isShippingAddressReadOnly() ? 'Read' : '',
+                     design: {
+                         designMode: 'responsive'
+                     },
+@@ -117,6 +124,7 @@ define(
+                      */
+                     onError: amazonCore.handleWidgetError
+                 }).bind(self.options.addressWidgetDOMId);
++                amazonMessages.displayMessages();
+             },
+ 
+             /**
+@@ -163,6 +171,10 @@ define(
+                         //remove shipping loader and set shipping rates to 0 on a fail
+                         shippingService.setShippingRates([]);
+                         amazonStorage.isShippingMethodsLoading(false);
++                        if (self.isShippingAddressReadOnly()) {
++                            shippingService.isLoading(false);
++                            $('.checkout-shipping-method').hide();
++                        }
+                     }
+                 );
+             },
+@@ -179,6 +191,20 @@ define(
+              */
+             getAddressConsentToken: function () {
+                 return amazonStorage.getAddressConsentToken();
++            },
++
++            /**
++             * Is shipping widget set to read-only (orderReferenceId already set?)
++             */
++            isShippingAddressReadOnly: function() {
++                return (amazonStorage.orderReferenceId());
++            },
++
++            /**
++             * Continue to payment (e.g. if shipping address is read-only)
++             */
++            continuePayment: function() {
++                window.location = window.checkoutConfig.checkoutUrl + '#payment';
+             }
+         });
+     }
+
+--- a/view/frontend/web/js/view/payment/list.js
++++ b/view/frontend/web/js/view/payment/list.js
+@@ -35,6 +35,12 @@ define([
+         initialize: function () {
+ 
+             self = this;
++            amazonStorage.isAmazonAccountLoggedIn.subscribe(function (value) {
++                if (!value) {
++                    this._reloadPaymentMethods();
++                }
++            }, this);
++
+             this._hidePaymentMethodsOnLoad(); //hide methods on load
+ 
+             //subscribe to payment methods to remove other payment methods from render list
+
+--- a/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
++++ b/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
+@@ -18,7 +18,8 @@ define(
+         'Magento_Checkout/js/model/payment/additional-validators',
+         'Magento_Checkout/js/model/url-builder',
+         'amazonPaymentConfig',
+-        'uiRegistry'
++        'uiRegistry',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+@@ -39,7 +40,8 @@ define(
+         additionalValidators,
+         urlBuilder,
+         amazonPaymentConfig,
+-        registry
++        registry,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+@@ -124,6 +126,7 @@ define(
+                     $(this.presentmentDOMId).show();
+                 }
+                 widget.bind(this.paymentWidgetDOMId);
++                amazonMessages.displayMessages();
+             },
+ 
+             /**
+
+--- a/view/frontend/web/js/view/shipping-address/inline-form.js
++++ b/view/frontend/web/js/view/shipping-address/inline-form.js
+@@ -8,7 +8,8 @@ define([
+     return Component.extend({
+         defaults: {
+             template: 'Amazon_Payment/shipping-address/inline-form',
+-            formSelector: 'co-shipping-form'
++            formSelector: 'co-shipping-form',
++            accountFormSelector: 'customer-email-fieldset'
+         },
+ 
+         /**
+@@ -31,10 +32,14 @@ define([
+          * Show/hide inline form
+          */
+         hideInlineForm: function(hide) {
+-            var elem = document.getElementById(this.formSelector);
++            var shippingForm = document.getElementById(this.formSelector);
++            var accountForm = document.getElementById(this.accountFormSelector);
+ 
+-            if (elem) {
+-                document.getElementById(this.formSelector).style.display = hide ? 'none' : 'block';
++            if (shippingForm) {
++                shippingForm.style.display = hide ? 'none' : 'block';
++            }
++            if (accountForm) {
++                accountForm.parentElement.style.display = hide ? 'none' : 'block';
+             }
+         }
+     });
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -2,22 +2,14 @@
+ define(
+     [
+         'jquery',
+-        'underscore',
+-        'ko',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
+-        'Magento_Checkout/js/action/set-shipping-information',
+-        'Magento_Checkout/js/model/step-navigator',
+         'Amazon_Payment/js/model/storage'
+     ],
+     function (
+         $,
+-        _,
+-        ko,
+         Component,
+         customer,
+-        setShippingInformationAction,
+-        stepNavigator,
+         amazonStorage
+     ) {
+         'use strict';
+@@ -49,32 +41,20 @@ define(
+             },
+ 
+             /**
+-             * New setShipping Action for Amazon Pay to bypass validation
++             * Overridden validateShippingInformation for Amazon Pay to bypass validation
++             *
++             * @inheritDoc
+              */
+-            setShippingInformation: function () {
+-
+-                /**
+-                 * Set Amazon shipping info
+-                 */
+-                function setShippingInformationAmazon() {
+-                    setShippingInformationAction().done(
+-                        function () {
+-                            stepNavigator.next();
+-                        }
+-                    );
++            validateShippingInformation: function () {
++                if (!amazonStorage.isAmazonAccountLoggedIn()) {
++                    return this._super();
+                 }
+ 
+-                if (amazonStorage.isAmazonAccountLoggedIn() && customer.isLoggedIn()) {
+-                    setShippingInformationAmazon();
+-                } else if (amazonStorage.isAmazonAccountLoggedIn() && !customer.isLoggedIn()) {
+-
+-                    if (this.validateGuestEmail()) {
+-                        setShippingInformationAmazon();
+-                    }
+-                    //if using guest checkout or guest checkout with amazon pay we need to use the main validation
+-                } else if (this.validateShippingInformation()) {
+-                    setShippingInformationAmazon();
++                if (!customer.isLoggedIn()) {
++                    return this.validateGuestEmail();
+                 }
++
++                return true;
+             }
+         });
+     }
+
+--- a/view/frontend/web/template/checkout-button.html
++++ b/view/frontend/web/template/checkout-button.html
+@@ -19,6 +19,8 @@
+     <!-- ko template: getTemplate() --><!-- /ko -->
+ <!--/ko-->
+ 
++<div class="amazon-express-title" data-bind="i18n: 'Express Checkout', visible: !isAmazonAccountLoggedIn() && isPwaVisible()"></div>
++
+ <div class="amazon-button-container" data-bind="visible: !isAmazonAccountLoggedIn() && isPwaVisible()">
+     <div class="amazon-button-container__cell">
+         <div class="login-with-amazon" data-bind="attr: {id: 'PayWithAmazon_' + displayArea}, mageInit: {'amazonButton':{'buttonType': 'PwA'}}"></div>
+@@ -32,6 +34,10 @@
+     </div>
+ </div>
+ 
++<div class="amazon-divider" data-bind="visible: !isAmazonAccountLoggedIn() && isPwaVisible()">
++    <span data-bind="i18n: 'Or continue below to pay with a credit card'"></span>
++</div>
++
+ <!-- ko foreach: getRegion('after-amazon-button') -->
+     <!-- ko template: getTemplate() --><!-- /ko -->
+ <!--/ko-->
+
+--- a/view/frontend/web/template/checkout-widget-address.html
++++ b/view/frontend/web/template/checkout-widget-address.html
+@@ -20,9 +20,23 @@
+ <!--/ko-->
+ 
+ <!-- ko if: (isAmazonAccountLoggedIn) -->
++    <label class="label" for="amazon-email-address">
++        <span data-bind="i18n: 'Email Address:'"></span>
++    </label>
++    <span id="amazon-email-address" data-bind="text: amazonCustomerEmail" />
+     <div class="amazon-widget-container">
+         <div id="addressBookWidgetDiv" class="amazon-widget amazon-widget--address" data-bind="afterRender: initAddressWidget"></div>
+     </div>
++
++    <div class="methods-shipping" data-bind="visible: isShippingAddressReadOnly()">
++        <div class="actions-toolbar">
++            <button id="amazon-continue-payment" data-role="opc-continue" type="submit" class="button action primary"
++                    data-bind="click: continuePayment">
++                <span data-bind="i18n: 'Next'"></span>
++            </button>
++        </div>
++    </div>
++
+ <!--/ko-->
+ 
+ <!-- ko foreach: getRegion('after-widget-address') -->
+

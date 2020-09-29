@@ -1,0 +1,121 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.4.1-p3",
++  "version": "3.4.3",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p3",
+-    "amzn/login-with-amazon-module": "^3.4.1-p3",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.3",
++    "amzn/login-with-amazon-module": "^3.4.3",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.4.1-p3" >
++    <module name="Amazon_Payment" setup_version="3.4.3" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -50,7 +50,8 @@ define(
+             isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash'),
+             amazonCustomerEmail = ko.computed(function () {
+                 // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+-                if (window.checkoutConfig.hasOwnProperty('amazonLogin') &&
++                if (window.hasOwnProperty('checkoutConfig') &&
++                    window.checkoutConfig.hasOwnProperty('amazonLogin') &&
+                     typeof window.checkoutConfig.amazonLogin.amazon_customer_email === 'string'
+                 ) {
+                     return window.checkoutConfig.amazonLogin.amazon_customer_email;
+
+--- a/view/frontend/web/js/view/payment/list.js
++++ b/view/frontend/web/js/view/payment/list.js
+@@ -35,12 +35,6 @@ define([
+         initialize: function () {
+ 
+             self = this;
+-            amazonStorage.isAmazonAccountLoggedIn.subscribe(function (value) {
+-                if (!value) {
+-                    this._reloadPaymentMethods();
+-                }
+-            }, this);
+-
+             this._hidePaymentMethodsOnLoad(); //hide methods on load
+ 
+             //subscribe to payment methods to remove other payment methods from render list
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -2,14 +2,22 @@
+ define(
+     [
+         'jquery',
++        'underscore',
++        'ko',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
++        'Magento_Checkout/js/action/set-shipping-information',
++        'Magento_Checkout/js/model/step-navigator',
+         'Amazon_Payment/js/model/storage'
+     ],
+     function (
+         $,
++        _,
++        ko,
+         Component,
+         customer,
++        setShippingInformationAction,
++        stepNavigator,
+         amazonStorage
+     ) {
+         'use strict';
+@@ -41,20 +49,20 @@ define(
+             },
+ 
+             /**
+-             * Overridden validateShippingInformation for Amazon Pay to bypass validation
+-             *
+-             * @inheritDoc
++             * New setShipping Action for Amazon Pay to bypass validation
+              */
+-            validateShippingInformation: function () {
+-                if (!amazonStorage.isAmazonAccountLoggedIn()) {
+-                    return this._super();
++            setShippingInformation: function () {
++                if (amazonStorage.isAmazonAccountLoggedIn()) {
++                    if (customer.isLoggedIn() || this.validateGuestEmail()) {
++                        setShippingInformationAction().done(
++                            function () {
++                                stepNavigator.next();
++                            }
++                        );
++                    }
++                } else {
++                    this._super();
+                 }
+-
+-                if (!customer.isLoggedIn()) {
+-                    return this.validateGuestEmail();
+-                }
+-
+-                return true;
+             }
+         });
+     }
+

@@ -1,0 +1,2153 @@
+--- a/Domain/AmazonConstraint.php
++++ b/Domain/AmazonConstraint.php
+@@ -66,10 +66,11 @@ class AmazonConstraint
+     {
+         switch ($this->getId()) {
+             case static::PAYMENT_METHOD_NOT_ALLOWED_ID:
++                return __('The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.');
+             case static::PAYMENT_PLAN_NOT_SET_ID:
+-                return 'Please select a payment method.';
++                return __('No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.');
+             default:
+-                return 'Amazon could not process your request.';
++                return __('The order failed due to a technical error, please select another payment method or contact our support.');
+         }
+     }
+ }
+
+--- a/Gateway/Config/Config.php
++++ b/Gateway/Config/Config.php
+@@ -11,6 +11,42 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     
+     const KEY_ACTIVE = 'active';
+ 
++    /**
++     * @var \Amazon\Core\Model\AmazonConfig
++     */
++    protected $amazonConfig;
++
++    /**
++     * @param \Amazon\Core\Model\AmazonConfig $amazonConfig
++     * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     */
++    public function __construct(
++        \Amazon\Core\Model\AmazonConfig $amazonConfig,
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++    ) {
++        $this->amazonConfig = $amazonConfig;
++        parent::__construct($scopeConfig, self::CODE);
++    }
++
++    /**
++     * @param int|null $storeId
++     * @return boolean
++     */
++    protected function canCapturePartial($storeId = null)
++    {
++        $region = $this->amazonConfig->getPaymentRegion(\Magento\Store\Model\ScopeInterface::SCOPE_STORE, $storeId);
++        switch ($region) {
++            case 'de':
++            case 'uk':
++                $result = false;
++                break;
++            default:
++                $result = parent::getValue('can_capture_partial', $storeId);
++                break;
++        }
++        return $result;
++    }
++
+     /**
+      * Gets Payment configuration status.
+      *
+@@ -21,4 +57,22 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     {
+         return (bool) $this->getValue(self::KEY_ACTIVE, $storeId);
+     }
++
++    /**
++     * @param string $field
++     * @param int|null $storeId
++     * @return mixed
++     */
++    public function getValue($field, $storeId = null)
++    {
++        switch ($field) {
++            case 'can_capture_partial':
++                $result = $this->canCapturePartial($storeId);
++                break;
++            default:
++                $result = parent::getValue($field, $storeId);
++                break;
++        }
++        return $result;
++    }
+ }
+
+--- a/Gateway/Http/Client/SettlementClient.php
++++ b/Gateway/Http/Client/SettlementClient.php
+@@ -37,8 +37,12 @@ class SettlementClient extends AbstractClient
+                 'currency_code' => $data['currency_code'],
+                 'capture_reference_id' => $data['amazon_order_reference_id'] . '-C' . time()
+             ];
++            if (isset($data['seller_note'])) {
++                $captureData['seller_capture_note'] = $data['seller_note'];
++            }
+ 
+-            $response = $this->adapter->completeCapture($captureData, $data['store_id']);
++            $response = $this->adapter->completeCapture($captureData, $data['store_id'], $data['amazon_order_reference_id']);
++            $response['reauthorized'] = false;
+         } else {
+             // if invalid - reauthorize and capture
+             $captureData = [
+@@ -49,6 +53,9 @@ class SettlementClient extends AbstractClient
+                 'custom_information' => $data['custom_information'],
+                 'platform_id' => $data['platform_id']
+             ];
++            if (isset($data['seller_note'])) {
++                $captureData['seller_authorization_note'] = $data['seller_note'];
++            }
+             $response = $this->adapter->authorize($data, true);
+             $response['reauthorized'] = true;
+         }
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -18,7 +18,6 @@ namespace Amazon\Payment\Gateway\Request;
+ 
+ use Magento\Payment\Gateway\ConfigInterface;
+ use Magento\Payment\Gateway\Request\BuilderInterface;
+-use Magento\Framework\App\ProductMetadata;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Core\Model\AmazonConfig;
+@@ -34,11 +33,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+      */
+     private $config;
+ 
+-    /**
+-     * @var ProductMetadata
+-     */
+-    private $productMetaData;
+-
+     /**
+      * @var SubjectReader
+      */
+@@ -68,7 +62,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+      * AuthorizationRequestBuilder constructor.
+      *
+      * @param ConfigInterface $config
+-     * @param ProductMetadata $productMetadata
+      * @param SubjectReader $subjectReader
+      * @param Data $coreHelper
+      * @param AmazonConfig $amazonConfig
+@@ -77,7 +70,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+      */
+     public function __construct(
+         ConfigInterface $config,
+-        ProductMetaData $productMetadata,
+         SubjectReader $subjectReader,
+         Data $coreHelper,
+         AmazonConfig $amazonConfig,
+@@ -87,7 +79,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         $this->config = $config;
+         $this->coreHelper = $coreHelper;
+         $this->amazonConfig = $amazonConfig;
+-        $this->productMetaData = $productMetadata;
+         $this->subjectReader = $subjectReader;
+         $this->eventManager = $eventManager;
+         $this->categoryExclusion = $categoryExclusion;
+@@ -109,8 +100,8 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         $storeId = $orderDO->getStoreId();
+         $storeName = '';
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
++        $total = $payment->getAmountOrdered();
+ 
+         // capture sale or new auth/capture for partial capture
+         if (isset($buildSubject['multicurrency']) && $buildSubject['multicurrency']['multicurrency']) {
+@@ -152,7 +143,7 @@ class AuthorizationRequestBuilder implements BuilderInterface
+                     'currency_code' => $currencyCode,
+                     'store_name' => $storeName,
+                     'custom_information' =>
+-                        'Magento Version : ' . $this->productMetaData->getVersion() . ' ' .
++                        'Magento Version : 2, ' .
+                         'Plugin Version : ' . $this->coreHelper->getVersion(),
+                     'platform_id' => $this->config->getValue('platform_id'),
+                     'request_payment_authorization' => true
+@@ -163,15 +154,7 @@ class AuthorizationRequestBuilder implements BuilderInterface
+             $data['additional_information'] =
+                 $payment->getAdditionalInformation(AdditionalInformation::KEY_SANDBOX_SIMULATION_REFERENCE);
+ 
+-            $eventData = [
+-                'amazon_order_reference_id' => $amazonId,
+-                'authorization_amount' => $total,
+-                'currency_code' => $currencyCode,
+-                'authorization_reference_id' => $amazonId . '-A' . time(),
+-                'capture_now' => false,
+-            ];
+-
+-            $transport = new DataObject($eventData);
++            $transport = new DataObject($data);
+             $this->eventManager->dispatch(
+                 'amazon_payment_authorize_before',
+                 [
+@@ -180,6 +163,7 @@ class AuthorizationRequestBuilder implements BuilderInterface
+                     'transport' => $transport
+                 ]
+             );
++            $data = $transport->getData();
+         }
+ 
+         return $data;
+
+--- a/Gateway/Request/RefundRequestBuilder.php
++++ b/Gateway/Request/RefundRequestBuilder.php
+@@ -91,8 +91,8 @@ class RefundRequestBuilder implements BuilderInterface
+ 
+         $orderDO = $paymentDO->getOrder();
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
++        $total = $payment->getAmountOrdered();
+         $storeId = $orderDO->getStoreId();
+ 
+         // The magento order adapter doesn't expose everything we need to send a request to the AP API so we
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -18,7 +18,6 @@ namespace Amazon\Payment\Gateway\Request;
+ 
+ use Amazon\Payment\Gateway\Config\Config;
+ use Magento\Payment\Gateway\Request\BuilderInterface;
+-use Magento\Framework\App\ProductMetadata;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Magento\Payment\Model\Method\Logger;
+@@ -37,11 +36,6 @@ class SettlementRequestBuilder implements BuilderInterface
+      */
+     private $logger;
+ 
+-    /**
+-     * @var ProductMetadata
+-     */
+-    private $productMetaData;
+-
+     /**
+      * @var SubjectReader
+      */
+@@ -66,7 +60,6 @@ class SettlementRequestBuilder implements BuilderInterface
+      * SettlementRequestBuilder constructor.
+      *
+      * @param Config $config
+-     * @param ProductMetadata $productMetadata
+      * @param OrderRepositoryInterface $orderRepository
+      * @param CartRepositoryInterface $quoteRepository
+      * @param SubjectReader $subjectReader
+@@ -75,7 +68,6 @@ class SettlementRequestBuilder implements BuilderInterface
+      */
+     public function __construct(
+         Config $config,
+-        ProductMetaData $productMetadata,
+         OrderRepositoryInterface $orderRepository,
+         CartRepositoryInterface $quoteRepository,
+         SubjectReader $subjectReader,
+@@ -86,11 +78,45 @@ class SettlementRequestBuilder implements BuilderInterface
+         $this->orderRepository = $orderRepository;
+         $this->quoteRepository = $quoteRepository;
+         $this->coreHelper = $coreHelper;
+-        $this->productMetaData = $productMetadata;
+         $this->subjectReader = $subjectReader;
+         $this->logger = $logger;
+     }
+ 
++    /**
++     * @param \Magento\Sales\Model\Order\Payment $payment
++     * @return \Magento\Sales\Model\Order\Invoice
++     */
++    protected function getCurrentInvoice($payment)
++    {
++        $result = null;
++        $order = $payment->getOrder();
++        foreach ($order->getInvoiceCollection() as $invoice) {
++            if (!$invoice->getId()) {
++                $result = $invoice;
++                break;
++            }
++        }
++        return $result;
++    }
++
++    /**
++     * @param \Magento\Sales\Model\Order\Payment $payment
++     * @return string
++     */
++    protected function getSellerNote($payment)
++    {
++        $result = '';
++        $invoice = $this->getCurrentInvoice($payment);
++        if ($invoice && $invoice->getComments()) {
++            foreach ($invoice->getComments() as $comment) {
++                if ($comment->getComment()) {
++                    $result = $comment->getComment();
++                    break;
++                }
++            }
++        }
++        return $result;
++    }
+ 
+     /**
+      * @param array $buildSubject
+@@ -102,11 +128,11 @@ class SettlementRequestBuilder implements BuilderInterface
+         $data = [];
+ 
+         $paymentDO = $this->subjectReader->readPayment($buildSubject);
+-
+         $orderDO = $paymentDO->getOrder();
++        $order = $paymentDO->getPayment()->getOrder();
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $order->getOrderCurrencyCode();
++        $total = $paymentDO->getPayment()->getAmountOrdered();
+ 
+         if ($buildSubject['multicurrency']['multicurrency']) {
+             $currencyCode = $buildSubject['multicurrency']['order_currency'];
+@@ -123,7 +149,7 @@ class SettlementRequestBuilder implements BuilderInterface
+                     'store_id' => $buildSubject['multicurrency']['store_id'],
+                     'store_name' => $buildSubject['multicurrency']['store_name'],
+                     'custom_information' =>
+-                        'Magento Version : ' . $this->productMetaData->getVersion() . ' ' .
++                        'Magento Version : 2, ' .
+                         'Plugin Version : ' . $this->coreHelper->getVersion(),
+                     'platform_id' => $this->config->getValue('platform_id'),
+                     'request_payment_authorization' => false
+@@ -134,6 +160,10 @@ class SettlementRequestBuilder implements BuilderInterface
+                 }
+         }
+ 
++        if ($this->coreHelper->isSandboxEnabled('store', $orderDO->getStoreId())) {
++            $data['seller_note'] = $this->getSellerNote($paymentDO->getPayment());
++        }
++
+         return $data;
+     }
+ }
+
+--- a/Gateway/Response/SettlementHandler.php
++++ b/Gateway/Response/SettlementHandler.php
+@@ -18,8 +18,8 @@ namespace Amazon\Payment\Gateway\Response;
+ 
+ use Magento\Payment\Gateway\Response\HandlerInterface;
+ use Magento\Payment\Model\Method\Logger;
++use Amazon\Payment\Api\Data\PendingCaptureInterfaceFactory;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+-use Amazon\Core\Helper\Data;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ 
+@@ -37,9 +37,9 @@ class SettlementHandler implements HandlerInterface
+     private $subjectReader;
+ 
+     /**
+-     * @var Data
++     * @var PendingCaptureInterfaceFactory
+      */
+-    private $coreHelper;
++    private $pendingCaptureFactory;
+ 
+     /**
+      * @var OrderRepositoryInterface
+@@ -56,20 +56,20 @@ class SettlementHandler implements HandlerInterface
+      *
+      * @param Logger                   $logger
+      * @param SubjectReader            $subjectReader
+-     * @param Data                     $coreHelper
++     * @param PendingCaptureInterfaceFactory $pendingCaptureFactory
+      * @param OrderRepositoryInterface $orderRepository
+      * @param CartRepositoryInterface  $quoteRepository
+      */
+     public function __construct(
+         Logger $logger,
+         SubjectReader $subjectReader,
+-        Data $coreHelper,
++        PendingCaptureInterfaceFactory $pendingCaptureFactory,
+         OrderRepositoryInterface $orderRepository,
+         CartRepositoryInterface $quoteRepository
+     ) {
+         $this->logger = $logger;
+         $this->subjectReader = $subjectReader;
+-        $this->coreHelper = $coreHelper;
++        $this->pendingCaptureFactory = $pendingCaptureFactory;
+         $this->orderRepository = $orderRepository;
+         $this->quoteRepository = $quoteRepository;
+     }
+@@ -98,6 +98,16 @@ class SettlementHandler implements HandlerInterface
+                 $quoteLink->setConfirmed(true)->save();
+             }
+         } else {
++            if ($response['pending']) {
++                $this->pendingCaptureFactory->create()
++                    ->setCaptureId($response['transaction_id'])
++                    ->setOrderId($paymentDO->getOrder()->getId())
++                    ->setPaymentId($payment->getId())
++                    ->save();
++
++                $payment->setIsTransactionPending(true);
++                $payment->setIsTransactionClosed(false);
++            }
+             // finish capture
+             $payment->setTransactionId($response['transaction_id']);
+         }
+
+--- a/Gateway/Validator/CurrencyValidator.php
++++ /dev/null
+@@ -1,79 +0,0 @@
+-<?php
+-/**
+- * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License").
+- * You may not use this file except in compliance with the License.
+- * A copy of the License is located at
+- *
+- *  http://aws.amazon.com/apache2.0
+- *
+- * or in the "license" file accompanying this file. This file is distributed
+- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+- * express or implied. See the License for the specific language governing
+- * permissions and limitations under the License.
+- */
+-
+-namespace Amazon\Payment\Gateway\Validator;
+-
+-use Magento\Payment\Gateway\Validator\AbstractValidator;
+-use Magento\Payment\Gateway\ConfigInterface;
+-use Magento\Payment\Gateway\Validator\ResultInterfaceFactory;
+-use Amazon\Core\Helper\Data;
+-
+-/**
+- * Class CurrencyValidator
+- * Validates allowable currencies for Amazon Pay
+- */
+-class CurrencyValidator extends AbstractValidator
+-{
+-
+-    /**
+-     * @var \Magento\Payment\Gateway\ConfigInterface
+-     */
+-    private $config;
+-
+-    /**
+-     * @var Data
+-     */
+-    private $coreHelper;
+-
+-    /**
+-     * CurrencyValidator constructor.
+-     *
+-     * @param ResultInterfaceFactory $resultFactory
+-     * @param ConfigInterface        $config
+-     * @param Data                   $coreHelper
+-     */
+-    public function __construct(
+-        ResultInterfaceFactory $resultFactory,
+-        ConfigInterface $config,
+-        Data $coreHelper
+-    ) {
+-        $this->coreHelper = $coreHelper;
+-        $this->config = $config;
+-        parent::__construct($resultFactory);
+-    }
+-
+-    /**
+-     * @param array $validationSubject
+-     * @return \Magento\Payment\Gateway\Validator\ResultInterface
+-     */
+-    public function validate(array $validationSubject)
+-    {
+-
+-        $allowedCurrency = $this->coreHelper->getCurrencyCode('store', $validationSubject['storeId']);
+-
+-        if ($allowedCurrency == $validationSubject['currency']) {
+-            return $this->createResult(
+-                true,
+-                ['status' => 200]
+-            );
+-        }
+-
+-        return $this->createResult(
+-            false,
+-            [__('The currency selected is not supported by Amazon Pay.')]
+-        );
+-    }
+-}
+
+--- a/Helper/Address.php
++++ b/Helper/Address.php
+@@ -79,6 +79,9 @@ class Address
+         $address->setTelephone($amazonAddress->getTelephone());
+         $address->setCountryId($this->getCountryId($amazonAddress));
+ 
++        $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
++        $address->setCompany($company);
++
+         /*
+          * The number of lines in a street address is configurable via 'customer/address/street_lines'.
+          * To avoid discarding information, we'll concatenate additional lines so that they fit within the configured
+@@ -95,9 +98,6 @@ class Address
+         }
+         $address->setStreet(array_values($lines));
+ 
+-        $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
+-        $address->setCompany($company);
+-
+         if ($amazonAddress->getState()) {
+             $address->setRegion($this->getRegionData($amazonAddress, $address->getCountryId()));
+         }
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -24,8 +24,6 @@ use Amazon\Payment\Domain\AmazonAuthorizationResponseFactory;
+ use Amazon\Payment\Domain\AmazonCaptureResponseFactory;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+-use Amazon\Payment\Api\Data\PendingAuthorizationInterfaceFactory;
+-use Amazon\Payment\Api\Data\PendingCaptureInterfaceFactory;
+ use Magento\Framework\UrlInterface;
+ use Magento\Sales\Model\OrderRepository;
+ use Magento\Framework\App\ObjectManager;
+@@ -39,6 +37,8 @@ class AmazonPaymentAdapter
+ {
+     const SUCCESS_CODES = ['Open', 'Closed', 'Completed'];
+ 
++    const PENDING_CODE = 'Pending';
++
+     /**
+      * @var Logger
+      */
+@@ -74,16 +74,6 @@ class AmazonPaymentAdapter
+      */
+     private $coreHelper;
+ 
+-    /**
+-     * @var PendingCaptureInterfaceFactory
+-     */
+-    private $pendingCaptureFactory;
+-
+-    /**
+-     * @var PendingAuthorizationInterfaceFactory
+-     */
+-    private $pendingAuthorizationFactory;
+-
+     /**
+      * @var UrlInterface
+      */
+@@ -105,8 +95,6 @@ class AmazonPaymentAdapter
+      * @param AmazonCaptureResponseFactory $amazonCaptureResponseFactory
+      * @param AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory
+      * @param AmazonAuthorizationResponseFactory $amazonAuthorizationResponseFactory
+-     * @param PendingCaptureInterfaceFactory $pendingCaptureFactory
+-     * @param PendingAuthorizationInterfaceFactory $pendingAuthorizationFactory
+      * @param SubjectReader $subjectReader
+      * @param Data $coreHelper
+      * @param Logger $logger
+@@ -119,8 +107,6 @@ class AmazonPaymentAdapter
+         AmazonCaptureResponseFactory $amazonCaptureResponseFactory,
+         AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory,
+         AmazonAuthorizationResponseFactory $amazonAuthorizationResponseFactory,
+-        PendingCaptureInterfaceFactory $pendingCaptureFactory,
+-        PendingAuthorizationInterfaceFactory $pendingAuthorizationFactory,
+         SubjectReader $subjectReader,
+         Data $coreHelper,
+         Logger $logger,
+@@ -135,8 +121,6 @@ class AmazonPaymentAdapter
+         $this->amazonAuthorizationResponseFactory = $amazonAuthorizationResponseFactory;
+         $this->subjectReader = $subjectReader;
+         $this->coreHelper = $coreHelper;
+-        $this->pendingCaptureFactory = $pendingCaptureFactory;
+-        $this->pendingAuthorizationFactory = $pendingAuthorizationFactory;
+         $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->get(UrlInterface::class);
+         $this->orderLinkFactory = $orderLinkFactory ?: ObjectManager::getInstance()->get(OrderLinkFactory::class);
+         $this->orderRepository = $orderRepository ?: ObjectManager::getInstance()->get(OrderRepository::class);
+@@ -241,7 +225,6 @@ class AmazonPaymentAdapter
+     public function authorize($data, $captureNow = false, $attempts = 0)
+     {
+         $response = [];
+-        $confirmResponse = null;
+         $order = $this->getOrderByReference($data['amazon_order_reference_id']);
+         if ($order) {
+             $storeId = $order->getStoreId();
+@@ -269,6 +252,10 @@ class AmazonPaymentAdapter
+             'transaction_timeout' => 0
+         ];
+ 
++        if (isset($data['seller_authorization_note'])) {
++            $authorizeData['seller_authorization_note'] = $data['seller_authorization_note'];
++        }
++
+         /** if first synchronous attempt failed, on second attempt try an asynchronous attempt. */
+         if ($authMode != 'synchronous' && $attempts) {
+             $authorizeData['transaction_timeout'] = 1440;
+@@ -280,56 +267,38 @@ class AmazonPaymentAdapter
+         $response['constraints'] = [];
+         $response['amazon_order_reference_id'] = $data['amazon_order_reference_id'];
+ 
+-        $confirmResponse = $this->confirmOrderReference($storeId, $data['amazon_order_reference_id']);
+-
+-        if ($confirmResponse->response['Status'] == 200) {
+-            $authorizeResponse = $this->getAuthorization($storeId, $authorizeData);
+-
+-            if ($authorizeResponse) {
+-                if ($authorizeResponse->getCaptureTransactionId() || $authorizeResponse->getAuthorizeTransactionId()) {
+-                    $response['authorize_transaction_id'] = $authorizeResponse->getAuthorizeTransactionId();
+-
+-                    if ($authorizeResponse->getStatus()->getState() == 'Pending' && $authMode == 'synchronous_possible') {
+-                        if ($captureNow) {
+-                            $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
+-                        }
+-                        $response['response_code'] = 'TransactionTimedOut';
+-                    } elseif (!in_array($authorizeResponse->getStatus()->getState(), self::SUCCESS_CODES)) {
+-                        $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
+-                        if ($authMode == 'synchronous' && $authorizeResponse->getStatus()->getReasonCode() == 'TransactionTimedOut') {
+-                            $cancelData = [
+-                                'store_id' => $storeId,
+-                                'amazon_order_reference_id' => $data['amazon_order_reference_id']
+-                            ];
+-                            $this->clientFactory->create($storeId)->cancelOrderReference($cancelData);
+-                        }
+-                    } else {
+-                        $response['status'] = true;
+-
+-                        if ($captureNow) {
+-                            $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
+-                        }
+-                    }
+-                } else {
+-                    $response['status'] = false;
+-                    $response['response_status'] = $authorizeResponse->getStatus()->getState();
+-                    $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
+-                    $log['error'] = $authorizeResponse->getStatus()->getState() . ': ' . $authorizeResponse->getStatus()->getReasonCode();
+-                    $this->logger->debug($log);
+-                }
+-            }
+-        } else {
+-            /** something went wrong, parse response body for use by authorization validator */
+-            $response['response_status'] = $confirmResponse->response['Status'];
++        $authorizeResponse = $this->getAuthorization($storeId, $authorizeData);
+ 
+-            $xml = simplexml_load_string($confirmResponse->response['ResponseBody']);
+-            $code = $xml->Error->Code[0];
+-            if ($code) {
+-                $response['response_code'] = (string)$code;
++        if ($authorizeResponse->getCaptureTransactionId() || $authorizeResponse->getAuthorizeTransactionId()) {
++            $response['authorize_transaction_id'] = $authorizeResponse->getAuthorizeTransactionId();
++
++            if ($authorizeResponse->getStatus()->getState() == self::PENDING_CODE && $authMode == 'synchronous_possible') {
++                if ($captureNow) {
++                    $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
++                }
++                $response['response_code'] = 'TransactionTimedOut';
++            } elseif (!in_array($authorizeResponse->getStatus()->getState(), self::SUCCESS_CODES)) {
++                $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
++                if ($authMode == 'synchronous' && $authorizeResponse->getStatus()->getReasonCode() == 'TransactionTimedOut') {
++                    $cancelData = [
++                        'store_id' => $storeId,
++                        'amazon_order_reference_id' => $data['amazon_order_reference_id']
++                    ];
++                    $this->clientFactory->create($storeId)->cancelOrderReference($cancelData);
++                }
+             } else {
+-                $log['error'] = __('AmazonPaymentAdapter: Improperly formatted XML response, no response code available.');
+-                $this->logger->debug($log);
++                $response['status'] = true;
++
++                if ($captureNow) {
++                    $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
++                }
+             }
++        } else {
++            $response['status'] = false;
++            $response['response_status'] = $authorizeResponse->getStatus()->getState();
++            $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
++            $log['error'] = $authorizeResponse->getStatus()->getState() . ': ' . $authorizeResponse->getStatus()->getReasonCode();
++            $this->logger->debug($log);
+         }
+ 
+         if ($additionalInformation) {
+@@ -340,8 +309,8 @@ class AmazonPaymentAdapter
+     }
+ 
+     /**
+-     * @param $data
+-     * @param $storeId
++     * @param array $data
++     * @param string $storeId
+      * @return array
+      */
+     public function completeCapture($data, $storeId)
+@@ -355,25 +324,14 @@ class AmazonPaymentAdapter
+             $captureResponse = $this->amazonCaptureResponseFactory->create(['response' => $responseParser]);
+             $capture = $captureResponse->getDetails();
+ 
+-            if (in_array($capture->getStatus()->getState(), self::SUCCESS_CODES)) {
++            $captureCode = $capture->getStatus()->getState();
++            $successCodes = array_merge(self::SUCCESS_CODES, [self::PENDING_CODE]);
++            if (in_array($captureCode, $successCodes)) {
+                 $response = [
+                     'status' => true,
+                     'transaction_id' => $capture->getTransactionId(),
+-                    'reauthorized' => false
++                    'pending' => $captureCode == self::PENDING_CODE,
+                 ];
+-            } elseif ($capture->getStatus()->getState() == 'Pending') {
+-                $order = $this->subjectReader->getOrder();
+-
+-                try {
+-                    $this->pendingCaptureFactory->create()
+-                        ->setCaptureId($capture->getTransactionId())
+-                        ->setOrderId($order->getId())
+-                        ->setPaymentId($order->getPayment()->getEntityId())
+-                        ->save();
+-                } catch (\Exception $e) {
+-                    $log['error'] = __('AmazonPaymentAdapter: Unable to capture pending information for capture.');
+-                    $this->logger->debug($log);
+-                }
+             } else {
+                 $response['response_code'] = $capture->getReasonCode();
+             }
+
+--- a/Model/AddressManagement.php
++++ b/Model/AddressManagement.php
+@@ -135,6 +135,9 @@ class AddressManagement implements AddressManagementInterface
+ 
+             if (isset($data['OrderReferenceDetails']['Destination']['PhysicalDestination'])) {
+                 $shippingAddress = $data['OrderReferenceDetails']['Destination']['PhysicalDestination'];
++                if (!isset($shippingAddress['Phone']) || empty($shippingAddress['Phone'])) {
++                    $shippingAddress['Phone'] = '000-000-0000';
++                }
+ 
+                 return $this->convertToMagentoAddress($shippingAddress, true);
+             }
+@@ -276,7 +279,6 @@ class AddressManagement implements AddressManagementInterface
+     {
+         $orderStatus = $data['OrderReferenceDetails']['OrderReferenceStatus'] ?? false;
+ 
+-        return ($orderStatus && $orderStatus['State'] == AmazonOrderStatus::STATE_SUSPENDED
+-            && $orderStatus['ReasonCode'] == AmazonAuthorizationStatus::REASON_INVALID_PAYMENT_METHOD);
++        return $orderStatus && $orderStatus['State'] == AmazonOrderStatus::STATE_SUSPENDED;
+     }
+ }
+
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -18,6 +18,7 @@ namespace Amazon\Payment\Model;
+ use Amazon\Core\Client\ClientFactoryInterface;
+ use Amazon\Core\Exception\AmazonServiceUnavailableException;
+ use Amazon\Core\Helper\Data as CoreHelper;
++use Amazon\Core\Model\AmazonConfig;
+ use Amazon\Payment\Gateway\Config\Config;
+ use Amazon\Payment\Api\Data\QuoteLinkInterfaceFactory;
+ use Amazon\Payment\Api\OrderInformationManagementInterface;
+@@ -25,7 +26,6 @@ use Amazon\Payment\Domain\AmazonSetOrderDetailsResponse;
+ use Amazon\Payment\Domain\AmazonSetOrderDetailsResponseFactory;
+ use Exception;
+ use Magento\Checkout\Model\Session;
+-use Magento\Framework\App\ProductMetadata;
+ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Framework\Exception\ValidatorException;
+ use Magento\Quote\Model\Quote;
+@@ -55,6 +55,11 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+      */
+     private $coreHelper;
+ 
++    /**
++     * @var AmazonConfig
++     */
++    private $amazonConfig;
++
+     /**
+      * @var AmazonSetOrderDetailsResponseFactory
+      */
+@@ -75,41 +80,36 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+      */
+     private $config;
+ 
+-    /**
+-     * @var ProductMetadata
+-     */
+-    private $productMetadata;
+-
+     /**
+      * OrderInformationManagement constructor.
+      * @param Session $session
+      * @param ClientFactoryInterface $clientFactory
+      * @param CoreHelper $coreHelper
++     * @param AmazonConfig $amazonConfig
+      * @param Config $config
+      * @param AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory
+      * @param QuoteLinkInterfaceFactory $quoteLinkFactory
+      * @param LoggerInterface $logger
+-     * @param ProductMetadata $productMetadata
+      */
+     public function __construct(
+         Session $session,
+         ClientFactoryInterface $clientFactory,
+         CoreHelper $coreHelper,
++        AmazonConfig $amazonConfig,
+         Config $config,
+         AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory,
+         QuoteLinkInterfaceFactory $quoteLinkFactory,
+         LoggerInterface $logger,
+-        ProductMetadata $productMetadata,
+         UrlInterface $urlBuilder = null
+     ) {
+         $this->session                              = $session;
+         $this->clientFactory                        = $clientFactory;
+         $this->coreHelper                           = $coreHelper;
++        $this->amazonConfig                         = $amazonConfig;
+         $this->config                               = $config;
+         $this->amazonSetOrderDetailsResponseFactory = $amazonSetOrderDetailsResponseFactory;
+         $this->quoteLinkFactory                     = $quoteLinkFactory;
+         $this->logger                               = $logger;
+-        $this->productMetadata                      = $productMetadata;
+         $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->get(UrlInterface::class);
+     }
+ 
+@@ -127,9 +127,6 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+             $this->setReservedOrderId($quote);
+ 
+             $storeName = $this->coreHelper->getStoreName(ScopeInterface::SCOPE_STORE, $storeId);
+-            if (!$storeName) {
+-                $storeName = $quote->getStore()->getName();
+-            }
+ 
+             $data = [
+                 'amazon_order_reference_id' => $amazonOrderReferenceId,
+@@ -137,7 +134,7 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+                 'currency_code'             => $quote->getQuoteCurrencyCode(),
+                 'store_name'                => $storeName,
+                 'custom_information'        =>
+-                    'Magento Version : ' . $this->productMetadata->getVersion() . ' ' .
++                    'Magento Version : 2, ' .
+                     'Plugin Version : ' . $this->coreHelper->getVersion()
+                 ,
+                 'platform_id'               => $this->config->getValue('platform_id')
+@@ -159,7 +156,7 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+ 
+     protected function validateCurrency($code)
+     {
+-        if ($this->coreHelper->getCurrencyCode() !== $code) {
++        if ($this->coreHelper->getCurrencyCode() !== $code && !$this->amazonConfig->canUseCurrency($code)) {
+             throw new LocalizedException(__('The currency selected is not supported by Amazon Pay'));
+         }
+     }
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -290,6 +290,9 @@ class Authorization extends AbstractOperation
+             }
+ 
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+             $message = __('Captured amount of %1 online', $formattedAmount);
+             $payment->setDataUsingMethod(
+                 'base_amount_paid_online',
+@@ -297,7 +300,10 @@ class Authorization extends AbstractOperation
+             );
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
+-            $message = __('Authorized amount of %1 online', $formattedAmount);
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
++            $message = __('Authorized amount of %1', $formattedAmount);
+         }
+ 
+         $transaction = ($newTransaction) ?: $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+@@ -366,8 +372,14 @@ class Authorization extends AbstractOperation
+             $invoice = $this->getInvoice($transactionId, $order);
+             $this->setPaymentReview($order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
+         }
+ 
+         $message = __('Declined amount of %1 online', $formattedAmount);
+@@ -409,9 +421,15 @@ class Authorization extends AbstractOperation
+         if ($capture) {
+             $invoice = $this->getInvoiceAndSetCancelled($transactionId, $order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+             $this->addCaptureDeclinedNotice($order);
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
+         }
+ 
+         $message = __('Declined amount of %1 online', $formattedAmount);
+
+--- a/Model/PaymentManagement/Capture.php
++++ b/Model/PaymentManagement/Capture.php
+@@ -221,6 +221,9 @@ class Capture extends AbstractOperation
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $invoice = $this->getInvoice($transactionId, $order);
+         $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++            $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++        }
+         $message = __('Captured amount of %1 online', $formattedAmount);
+ 
+         $this->getInvoiceAndSetPaid($transactionId, $order);
+@@ -242,6 +245,9 @@ class Capture extends AbstractOperation
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $invoice = $this->getInvoice($transactionId, $order);
+         $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++            $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++        }
+         $message = __('Declined amount of %1 online', $formattedAmount);
+ 
+         $this->getInvoiceAndSetCancelled($transactionId, $order);
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -103,7 +103,7 @@ class ConfirmOrderReference
+         if ($paymentMethod->getMethod() == GatewayConfig::CODE) {
+             $quote = $this->quoteRepository->get($cartId);
+             $quoteExtensionAttributes = $quote->getExtensionAttributes();
+-            if ($quoteExtensionAttributes) {
++            if ($quoteExtensionAttributes && $quoteExtensionAttributes->getAmazonOrderReferenceId()) {
+                 $amazonOrderReferenceId = $quoteExtensionAttributes
+                     ->getAmazonOrderReferenceId()
+                     ->getAmazonOrderReferenceId();
+
+--- /dev/null
++++ b/Plugin/OrderCurrencyComment.php
+@@ -0,0 +1,70 @@
++<?php
++/**
++ * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Plugin;
++
++use Magento\Framework\Phrase;
++use Magento\Sales\Model\Order\Payment;
++use Amazon\Payment\Gateway\Config\Config;
++
++/**
++ * Class OrderCurrencyComment
++ * @package Amazon\Payment\Plugin
++ */
++class OrderCurrencyComment
++{
++    /**
++     * @param Payment $subject
++     * @param $messagePrependTo
++     * @return array|null
++     */
++    public function beforePrependMessage(Payment $subject, $messagePrependTo)
++    {
++        if ($subject->getMethod() == Config::CODE) {
++            $order = $subject->getOrder();
++            if ($order->getBaseCurrencyCode() != $order->getOrderOrderCurrencyCode()) {
++                $messagePrependTo = __(
++                    $messagePrependTo->getText(),
++                    $order->getBaseCurrency()->formatTxt($order->getBaseGrandTotal()) .' ['. $order->formatPriceTxt($subject->getAmountOrdered()) .']'
++                );
++
++                return [$messagePrependTo];
++            }
++        }
++
++        return null;
++    }
++
++    /**
++     * @param Payment $subject
++     * @param $result
++     * @return string
++     */
++    public function afterFormatPrice(Payment $subject, $result)
++    {
++        if ($subject->getMethod() == Config::CODE) {
++            $order = $subject->getOrder();
++            if (($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()
++                && $subject->getMessage() instanceof Phrase
++                && $subject->getMessage()->getText() == 'Canceled order online')
++                || strpos($subject->getTransactionId(), '-void') !== FALSE
++            ) {
++                return $result .' ['. $order->formatPriceTxt($subject->getAmountOrdered()) .']';
++            }
++        }
++
++        return $result;
++    }
++}
+
+--- a/Plugin/ShippingInformationManagement.php
++++ b/Plugin/ShippingInformationManagement.php
+@@ -80,6 +80,10 @@ class ShippingInformationManagement
+             return $return;
+         }
+ 
++        if (!$quote->getExtensionAttributes()->getAmazonOrderReferenceId()) {
++            return $return;
++        }
++
+         $amazonOrderReferenceId = $quote->getExtensionAttributes()
+             ->getAmazonOrderReferenceId()
+             ->getAmazonOrderReferenceId();
+
+--- /dev/null
++++ b/Test/Mftf/Data/AmazonCountryData.xml
+@@ -0,0 +1,15 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
++    <entity name="SingleCountryAllowConfig" type="amazon_country_allow_config">
++        <requiredEntity type="allow">SingleCountryAllowValue</requiredEntity>
++    </entity>
++    <entity name="SingleCountryAllowValue" type="allow">
++        <data key="value">US</data>
++    </entity>
++    <entity name="DefaultCountryAllowConfig" type="default_amazon_country_allow_config">
++        <requiredEntity type="amazonCountryAllowFlagZero">DefaultCountryAllowFlagZero</requiredEntity>
++    </entity>
++    <entity name="DefaultCountryAllowFlagZero" type="amazonCountryAllowFlagZero">
++        <data key="value">1</data>
++    </entity>
++</entities>
+
+--- /dev/null
++++ b/Test/Mftf/Data/AmazonCurrencyData.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
++    <entity name="AmazonAllowCurrencyValue" type="allow">
++        <array key="value">
++            <item>USD</item>
++            <item>EUR</item>
++        </array>
++    </entity>
++    <entity name="MultiInvoiceAmazonCurrencyConfig" type="amazon_currency_config">
++        <requiredEntity type="base">MultiInvoiceAmazonBaseCurrencyValue</requiredEntity>
++        <requiredEntity type="default">MultiInvoiceAmazonDefaultCurrencyValue</requiredEntity>
++        <requiredEntity type="allow">AmazonAllowCurrencyValue</requiredEntity>
++    </entity>
++    <entity name="MultiInvoiceAmazonBaseCurrencyValue" type="base">
++        <data key="value">USD</data>
++    </entity>
++    <entity name="MultiInvoiceAmazonDefaultCurrencyValue" type="default">
++        <data key="value">USD</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonCurrencyConfig" type="amazon_currency_config">
++        <requiredEntity type="base">SingleInvoiceAmazonBaseCurrencyValue</requiredEntity>
++        <requiredEntity type="default">SingleInvoiceAmazonDefaultCurrencyValue</requiredEntity>
++        <requiredEntity type="allow">AmazonAllowCurrencyValue</requiredEntity>
++    </entity>
++    <entity name="SingleInvoiceAmazonBaseCurrencyValue" type="base">
++        <data key="value">EUR</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonDefaultCurrencyValue" type="default">
++        <data key="value">EUR</data>
++    </entity>
++    <entity name="DefaultAmazonCurrencyConfig" type="default_amazon_currency_config">
++        <requiredEntity type="amazonCurrencyBaseFlagZero">DefaultAmazonCurrencyBaseFlagZero</requiredEntity>
++        <requiredEntity type="amazonCurrencyDefaultFlagZero">DefaultAmazonCurrencyDefaultFlagZero</requiredEntity>
++        <requiredEntity type="amazonCurrencyAllowFlagZero">DefaultAmazonCurrencyAllowFlagZero</requiredEntity>
++    </entity>
++    <entity name="DefaultAmazonCurrencyBaseFlagZero" type="amazonCurrencyBaseFlagZero">
++        <data key="value">1</data>
++    </entity>
++    <entity name="DefaultAmazonCurrencyDefaultFlagZero" type="amazonCurrencyDefaultFlagZero">
++        <data key="value">1</data>
++    </entity>
++    <entity name="DefaultAmazonCurrencyAllowFlagZero" type="amazonCurrencyAllowFlagZero">
++        <data key="value">1</data>
++    </entity>
++</entities>
+
+--- a/Test/Mftf/Data/AmazonPaymentData.xml
++++ b/Test/Mftf/Data/AmazonPaymentData.xml
+@@ -47,6 +47,70 @@
+     <entity name="SampleAmazonLwaEnabled" type="lwa_enabled">
+         <data key="value">1</data>
+     </entity>
++    <!-- Partial capture support configuration -->
++    <entity name="MultiInvoiceAmazonPaymentConfig" type="amazon_payment_config_state">
++        <requiredEntity type="merchant_id">MultiInvoiceAmazonMerchantId</requiredEntity>
++        <requiredEntity type="access_key">MultiInvoiceAmazonAccessKey</requiredEntity>
++        <requiredEntity type="secret_key">MultiInvoiceAmazonSecretKey</requiredEntity>
++        <requiredEntity type="client_id">MultiInvoiceAmazonClientId</requiredEntity>
++        <requiredEntity type="client_secret">MultiInvoiceAmazonClientSecret</requiredEntity>
++        <requiredEntity type="payment_region">MultiInvoiceAmazonPaymentRegion</requiredEntity>
++        <requiredEntity type="sandbox">SampleAmazonSandbox</requiredEntity>
++        <requiredEntity type="payment_action">SampleAmazonPaymentAction</requiredEntity>
++        <requiredEntity type="authorization_mode">SampleAmazonAuthorizationMode</requiredEntity>
++        <requiredEntity type="amazon_pay_active">SampleAmazonPayActive</requiredEntity>
++        <requiredEntity type="lwa_enabled">DefaultAmazonLwaEnabled</requiredEntity>
++    </entity>
++    <entity name="MultiInvoiceAmazonMerchantId" type="merchant_id">
++        <data key="value">{{_CREDS.amazon/v1_multi_invoice_merchant_id}}</data>
++    </entity>
++    <entity name="MultiInvoiceAmazonAccessKey" type="access_key">
++        <data key="value">{{_CREDS.amazon/v1_multi_invoice_access_key}}</data>
++    </entity>
++    <entity name="MultiInvoiceAmazonSecretKey" type="secret_key">
++        <data key="value">{{_CREDS.amazon/v1_multi_invoice_secret_key}}</data>
++    </entity>
++    <entity name="MultiInvoiceAmazonClientId" type="client_id">
++        <data key="value">{{_CREDS.amazon/v1_multi_invoice_client_id}}</data>
++    </entity>
++    <entity name="MultiInvoiceAmazonClientSecret" type="client_secret">
++        <data key="value">{{_CREDS.amazon/v1_multi_invoice_client_secret}}</data>
++    </entity>
++    <entity name="MultiInvoiceAmazonPaymentRegion" type="payment_region">
++        <data key="value">{{_CREDS.amazon/v1_multi_invoice_region}}</data>
++    </entity>
++    <!-- No partial capture support configuration -->
++    <entity name="SingleInvoiceAmazonPaymentConfig" type="amazon_payment_config_state">
++        <requiredEntity type="merchant_id">SingleInvoiceAmazonMerchantId</requiredEntity>
++        <requiredEntity type="access_key">SingleInvoiceAmazonAccessKey</requiredEntity>
++        <requiredEntity type="secret_key">SingleInvoiceAmazonSecretKey</requiredEntity>
++        <requiredEntity type="client_id">SingleInvoiceAmazonClientId</requiredEntity>
++        <requiredEntity type="client_secret">SingleInvoiceAmazonClientSecret</requiredEntity>
++        <requiredEntity type="payment_region">SingleInvoiceAmazonPaymentRegion</requiredEntity>
++        <requiredEntity type="sandbox">SampleAmazonSandbox</requiredEntity>
++        <requiredEntity type="payment_action">SampleAmazonPaymentAction</requiredEntity>
++        <requiredEntity type="authorization_mode">SampleAmazonAuthorizationMode</requiredEntity>
++        <requiredEntity type="amazon_pay_active">SampleAmazonPayActive</requiredEntity>
++        <requiredEntity type="lwa_enabled">DefaultAmazonLwaEnabled</requiredEntity>
++    </entity>
++    <entity name="SingleInvoiceAmazonMerchantId" type="merchant_id">
++        <data key="value">{{_CREDS.amazon/v1_single_invoice_merchant_id}}</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonAccessKey" type="access_key">
++        <data key="value">{{_CREDS.amazon/v1_single_invoice_access_key}}</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonSecretKey" type="secret_key">
++        <data key="value">{{_CREDS.amazon/v1_single_invoice_secret_key}}</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonClientId" type="client_id">
++        <data key="value">{{_CREDS.amazon/v1_single_invoice_client_id}}</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonClientSecret" type="client_secret">
++        <data key="value">{{_CREDS.amazon/v1_single_invoice_client_secret}}</data>
++    </entity>
++    <entity name="SingleInvoiceAmazonPaymentRegion" type="payment_region">
++        <data key="value">{{_CREDS.amazon/v1_single_invoice_region}}</data>
++    </entity>
+     <!-- default configuration used to restore Magento config -->
+     <entity name="DefaultAmazonPaymentConfig" type="amazon_payment_config_state">
+         <requiredEntity type="merchant_id">DefaultAmazonMerchantId</requiredEntity>
+
+--- /dev/null
++++ b/Test/Mftf/Metadata/amazon_country_config-meta.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<operations xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataOperation.xsd">
++    <operation name="AmazonCountryAllowConfig" dataType="amazon_country_allow_config" type="create" auth="adminFormKey" url="/admin/system_config/save/section/general/" method="POST">
++        <object key="groups" dataType="amazon_country_allow_config">
++            <object key="country" dataType="amazon_country_allow_config">
++                <object key="fields" dataType="amazon_country_allow_config">
++                    <object key="allow" dataType="allow">
++                        <field key="value">string</field>
++                    </object>
++                </object>
++            </object>
++        </object>
++    </operation>
++    <operation name="DefaultAmazonCountryAllowConfig" dataType="default_amazon_country_allow_config" type="create" auth="adminFormKey" url="/admin/system_config/save/section/general/" method="POST">
++        <object key="groups" dataType="default_amazon_country_allow_config">
++            <object key="country" dataType="default_amazon_country_allow_config">
++                <object key="fields" dataType="default_amazon_country_allow_config">
++                    <object key="allow" dataType="default_amazon_country_allow_config">
++                        <object key="inherit" dataType="amazonCountryAllowFlagZero">
++                            <field key="value">integer</field>
++                        </object>
++                    </object>
++                </object>
++            </object>
++        </object>
++    </operation>
++</operations>
+
+--- /dev/null
++++ b/Test/Mftf/Metadata/amazon_currency_config-meta.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<operations xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataOperation.xsd">
++    <operation name="AmazonCurrencyConfig" dataType="amazon_currency_config" type="create" auth="adminFormKey" url="/admin/system_config/save/section/currency/" method="POST">
++        <object key="groups" dataType="amazon_currency_config">
++            <object key="options" dataType="amazon_currency_config">
++                <object key="fields" dataType="amazon_currency_config">
++                    <object key="base" dataType="base">
++                        <field key="value">string</field>
++                    </object>
++                    <object key="default" dataType="default">
++                        <field key="value">string</field>
++                    </object>
++                    <object key="allow" dataType="allow">
++                        <array key="value">
++                            <value>string</value>
++                        </array>
++                    </object>
++                </object>
++            </object>
++        </object>
++    </operation>
++    <operation name="DefaultAmazonCurrencyConfig" dataType="default_amazon_currency_config" type="create" auth="adminFormKey" url="/admin/system_config/save/section/currency/" method="POST">
++        <object key="groups" dataType="default_amazon_currency_config">
++            <object key="options" dataType="default_amazon_currency_config">
++                <object key="fields" dataType="default_amazon_currency_config">
++                    <object key="base" dataType="default_amazon_currency_config">
++                        <object key="inherit" dataType="amazonCurrencyBaseFlagZero">
++                            <field key="value">integer</field>
++                        </object>
++                    </object>
++                    <object key="default" dataType="default_amazon_currency_config">
++                        <object key="inherit" dataType="amazonCurrencyDefaultFlagZero">
++                            <field key="value">integer</field>
++                        </object>
++                    </object>
++                    <object key="allow" dataType="default_amazon_currency_config">
++                        <object key="inherit" dataType="amazonCurrencyAllowFlagZero">
++                            <field key="value">integer</field>
++                        </object>
++                    </object>
++                </object>
++            </object>
++        </object>
++    </operation>
++</operations>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest.xml
+@@ -241,11 +241,13 @@
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SingleCountryAllowConfig" stepKey="SingleCountryAllowConfig"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
++            <createData entity="DefaultCountryAllowConfig" stepKey="DefaultCountryAllowConfig"/>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest.xml
+@@ -449,4 +449,61 @@
+         <!--Place order-->
+         <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
++    <test name="AmazonCheckoutSuccessAfterDeclined" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Amazon Pay Success After being Declined by InvalidPaymentMethod error"/>
++            <title value="Amazon Pay Success After being Declined by InvalidPaymentMethod error"/>
++            <description value="Test user ability to placed order with different CC after being declined"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="3434"/>
++        </actionGroup>
++        <!--Decline Error Message-->
++        <waitForText userInput="There has been a problem with the selected payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Place order again with normal CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
++        <waitForText selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
++    </test>
++    <test name="AmazonCheckoutSuccessAfterSCAAbandoned" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Amazon SCA Success After Abandoned"/>
++            <title value="(SCA) Amazon SCA Success After Abandoned"/>
++            <description value="Perform checkout from cart page and ensure SCA can succeed after being Abandoned."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++        </annotations>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with SCA Abandoned CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="4440"/>
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="Something's wrong with your payment method." selector=".message" stepKey="waitForText"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad2"/>
++
++        <!--Placing order again with normal CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
++        <waitForText selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
++    </test>
+ </tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonInvoiceTest.xml
+@@ -0,0 +1,147 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonMultiInvoice">
++        <annotations>
++            <stories value="Amazon Pay Invoice"/>
++            <title value="Admin user must be able to split invoices when configuration allows"/>
++            <description value="Admin user must be able to split invoices when configuration allows"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_invoice"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct1"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct2"/>
++            <createData entity="MultiInvoiceAmazonPaymentConfig" stepKey="MultiInvoiceAmazonPaymentConfig"/>
++            <createData entity="MultiInvoiceAmazonCurrencyConfig" stepKey="MultiInvoiceAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Go to product 1 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct1StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct1.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct1ToCart"/>
++
++        <!-- Go to product 2 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct2StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct2.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct2ToCart"/>
++
++        <!-- Click on mini cart -->
++        <actionGroup ref="StorefrontClickOnMiniCartActionGroup" stepKey="clickOnMiniCart"/>
++
++        <!-- Login (redirect) -->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
++
++        <!-- Place order -->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
++
++        <!-- Login as admin -->
++        <actionGroup ref="LoginAsAdmin" stepKey="loginAsAdmin"/>
++
++        <!-- Open created order in backend -->
++        <amOnPage url="{{AdminOrdersPage.url}}" stepKey="goToOrders"/>
++        <waitForPageLoad stepKey="waitForOrdersPageLoad"/>
++        <actionGroup ref="OpenOrderById" stepKey="filterOrderGridById">
++            <argument name="orderId" value="$grabOrderNumber"/>
++        </actionGroup>
++
++        <!-- Create Invoice 1 -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice1"/>
++        <waitForPageLoad stepKey="waitForInvoicePage1"/>
++        <fillField stepKey="fillQty" userInput="1" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('1')}}"/>
++        <fillField stepKey="fillNoQty" userInput="0" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('2')}}"/>
++        <click selector="{{AdminInvoiceItemsSection.updateQty}}" stepKey="updateQty"/>
++        <waitForPageLoad stepKey="waitPageToBeLoaded"/>
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice1"/>
++        <waitForPageLoad stepKey="waitForLoadPage1"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage1"/>
++
++        <!-- Create Invoice 2 -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice2"/>
++        <waitForPageLoad stepKey="waitForInvoicePage2"/>
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice2"/>
++        <waitForPageLoad stepKey="waitForLoadPage2"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage2"/>
++    </test>
++    <test name="AmazonSingleInvoice">
++        <annotations>
++            <stories value="Amazon Pay Invoice"/>
++            <title value="Admin user must be unable to split invoices when configuration disallows"/>
++            <description value="Admin user must be unable to split invoices when configuration disallows"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_invoice"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct1"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct2"/>
++            <createData entity="SingleInvoiceAmazonPaymentConfig" stepKey="SingleInvoiceAmazonPaymentConfig"/>
++            <createData entity="SingleInvoiceAmazonCurrencyConfig" stepKey="SingleInvoiceAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Go to product 1 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct1StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct1.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct1ToCart"/>
++
++        <!-- Go to product 2 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct2StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct2.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct2ToCart"/>
++
++        <!-- Click on mini cart -->
++        <actionGroup ref="StorefrontClickOnMiniCartActionGroup" stepKey="clickOnMiniCart"/>
++
++        <!-- Login (redirect) -->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
++
++        <!-- Place order -->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
++
++        <!-- Login as admin -->
++        <actionGroup ref="LoginAsAdmin" stepKey="loginAsAdmin"/>
++
++        <!-- Open created order in backend -->
++        <amOnPage url="{{AdminOrdersPage.url}}" stepKey="goToOrders"/>
++        <waitForPageLoad stepKey="waitForOrdersPageLoad"/>
++        <actionGroup ref="OpenOrderById" stepKey="filterOrderGridById">
++            <argument name="orderId" value="$grabOrderNumber"/>
++        </actionGroup>
++
++        <!-- Create Invoice -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice"/>
++        <waitForPageLoad stepKey="waitForInvoicePage"/>
++
++        <!-- Verify invoice item qtys cannot be changed -->
++        <dontSeeElement stepKey="dontSeeItemQtyToInvoice1" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('1')}}"/>
++        <dontSeeElement stepKey="dontSeeItemQtyToInvoice2" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('2')}}"/>
++        <dontSeeElement stepKey="dontSeeUpdateQty" selector="{{AdminInvoiceItemsSection.updateQty}}"/>
++
++        <!-- Submit and verify the invoice created -->
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice"/>
++        <waitForPageLoad stepKey="waitForLoadPage"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage"/>
++    </test>
++</tests>
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.4.1-p3",
++  "version": "3.7.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p3",
+-    "amzn/login-with-amazon-module": "^3.4.1-p3",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.7.0",
++    "amzn/login-with-amazon-module": "^3.7.0",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- /dev/null
++++ b/etc/csp_whitelist.xml
+@@ -0,0 +1,110 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<csp_whitelist xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Csp:etc/csp_whitelist.xsd">
++    <policies>
++        <policy id="connect-src">
++            <values>
++                <value id="amazon_com" type="host">*.amazon.com</value>
++                <value id="amazon_co_uk" type="host">*.amazon.co.uk</value>
++                <value id="amazon_co_jp" type="host">*.amazon.co.jp</value>
++                <value id="amazon_jp" type="host">*.amazon.jp</value>
++                <value id="amazon_it" type="host">*.amazon.it</value>
++                <value id="amazon_fr" type="host">*.amazon.fr</value>
++                <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazonpay_com" type="host">*.amazonpay.com</value>
++                <value id="amazonpay_co_uk" type="host">*.amazonpay.co.uk</value>
++                <value id="amazonpay_co_jp" type="host">*.amazonpay.co.jp</value>
++                <value id="amazonpay_jp" type="host">*.amazonpay.jp</value>
++                <value id="amazonpay_it" type="host">*.amazonpay.it</value>
++                <value id="amazonpay_fr" type="host">*.amazonpay.fr</value>
++                <value id="amazonpay_es" type="host">*.amazonpay.es</value>
++                <value id="amazonservices_com" type="host">mws.amazonservices.com</value>
++                <value id="amazonservices_co_uk" type="host">mws.amazonservices.co.uk</value>
++                <value id="amazonservices_co_jp" type="host">mws.amazonservices.co.jp</value>
++                <value id="amazonservices_jp" type="host">mws.amazonservices.jp</value>
++                <value id="amazonservices_it" type="host">mws.amazonservices.it</value>
++                <value id="amazonservices_fr" type="host">mws.amazonservices.fr</value>
++                <value id="amazonservices_es" type="host">mws.amazonservices.es</value>
++            </values>
++        </policy>
++        <policy id="script-src">
++            <values>
++                <value id="amazon_payment_widget_com" type="host">*.payments-amazon.com</value>
++                <value id="amazon_payment_widget_co_uk" type="host">*.payments-amazon.co.uk</value>
++                <value id="amazon_payment_widget_co_jp" type="host">*.payments-amazon.co.jp</value>
++                <value id="amazon_payment_widget_jp" type="host">*.payments-amazon.jp</value>
++                <value id="amazon_payment_widget_it" type="host">*.payments-amazon.it</value>
++                <value id="amazon_payment_widget_fr" type="host">*.payments-amazon.fr</value>
++                <value id="amazon_payment_widget_es" type="host">*.payments-amazon.es</value>
++            </values>
++        </policy>
++        <policy id="img-src">
++            <values>
++                <value id="amazon_cloudfront01" type="host">d3sbl0c71oxeok.cloudfront.net</value>
++                <value id="amazon_cloudfront02" type="host">dhkkzdfmpzvap.cloudfront.net</value>
++                <value id="amazon_cloudfront03" type="host">d2bpzs5y44q6e0.cloudfront.net</value>
++                <value id="amazon_cloudfront04" type="host">d37shgu97oizpd.cloudfront.net</value>
++                <value id="amazon_cloudfront05" type="host">d1zlqll3enr74n.cloudfront.net</value>
++                <value id="amazon_cloudfront06" type="host">d1jynp0fpwn93a.cloudfront.net</value>
++                <value id="amazon_cloudfront07" type="host">d2cb3tokgpwh3v.cloudfront.net</value>
++                <value id="amazon_cloudfront08" type="host">d1re8bfxx3pw6e.cloudfront.net</value>
++                <value id="amazon_cloudfront09" type="host">d35u8xwkxs8vpe.cloudfront.net</value>
++                <value id="amazon_cloudfront10" type="host">d13s9xffygp5o.cloudfront.net</value>
++                <value id="amazon_cloudfront11" type="host">d388nbw0dwi1jm.cloudfront.net</value>
++                <value id="amazon_cloudfront12" type="host">d11p2vtu3dppaw.cloudfront.net</value>
++                <value id="amazon_cloudfront13" type="host">d3r89hiip86hka.cloudfront.net</value>
++                <value id="amazon_cloudfront14" type="host">dc7snq0c8ipyk.cloudfront.net</value>
++                <value id="amazon_cloudfront15" type="host">d5c7kvljggzso.cloudfront.net</value>
++                <value id="amazon_cloudfront16" type="host">d2h8yg3ypfzua1.cloudfront.net</value>
++                <value id="amazon_cloudfront17" type="host">d1b556x7apj5fb.cloudfront.net</value>
++                <value id="amazon_cloudfront18" type="host">draz1ib3z71v2.cloudfront.net</value>
++                <value id="amazon_cloudfront19" type="host">dr6hdp4s5yzfc.cloudfront.net</value>
++                <value id="amazon_cloudfront20" type="host">d2bomicxw8p7ii.cloudfront.net</value>
++                <value id="amazon_cloudfront21" type="host">d3aypcdgvjnnam.cloudfront.net</value>
++                <value id="amazon_cloudfront22" type="host">d2a3iuf10348gy.cloudfront.net</value>
++                <value id="ssl_images_amazon_com" type="host">*.ssl-images-amazon.com</value>
++                <value id="ssl_images_amazon_co_uk" type="host">*.ssl-images-amazon.co.uk</value>
++                <value id="ssl_images_amazon_co_jp" type="host">*.ssl-images-amazon.co.jp</value>
++                <value id="ssl_images_amazon_jp" type="host">*.ssl-images-amazon.jp</value>
++                <value id="ssl_images_amazon_it" type="host">*.ssl-images-amazon.it</value>
++                <value id="ssl_images_amazon_fr" type="host">*.ssl-images-amazon.fr</value>
++                <value id="ssl_images_amazon_es" type="host">*.ssl-images-amazon.es</value>
++                <value id="media_amazon_com" type="host">*.media-amazon.com</value>
++                <value id="media_amazon_co_uk" type="host">*.media-amazon.co.uk</value>
++                <value id="media_amazon_co_jp" type="host">*.media-amazon.co.jp</value>
++                <value id="media_amazon_jp" type="host">*.media-amazon.jp</value>
++                <value id="media_amazon_it" type="host">*.media-amazon.it</value>
++                <value id="media_amazon_fr" type="host">*.media-amazon.fr</value>
++                <value id="media_amazon_es" type="host">*.media-amazon.es</value>
++            </values>
++        </policy>
++        <policy id="form-action">
++            <values>
++                <value id="amazon_com" type="host">*.amazon.com</value>
++                <value id="amazon_co_uk" type="host">*.amazon.co.uk</value>
++                <value id="amazon_co_jp" type="host">*.amazon.co.jp</value>
++                <value id="amazon_jp" type="host">*.amazon.jp</value>
++                <value id="amazon_it" type="host">*.amazon.it</value>
++                <value id="amazon_fr" type="host">*.amazon.fr</value>
++                <value id="amazon_es" type="host">*.amazon.es</value>
++            </values>
++        </policy>
++        <policy id="frame-src">
++            <values>
++                <value id="amazon_com" type="host">*.amazon.com</value>
++                <value id="amazon_co_uk" type="host">*.amazon.co.uk</value>
++                <value id="amazon_co_jp" type="host">*.amazon.co.jp</value>
++                <value id="amazon_jp" type="host">*.amazon.jp</value>
++                <value id="amazon_it" type="host">*.amazon.it</value>
++                <value id="amazon_fr" type="host">*.amazon.fr</value>
++                <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_payment_widget_com" type="host">*.payments-amazon.com</value>
++                <value id="amazon_payment_widget_co_uk" type="host">*.payments-amazon.co.uk</value>
++                <value id="amazon_payment_widget_co_jp" type="host">*.payments-amazon.co.jp</value>
++                <value id="amazon_payment_widget_jp" type="host">*.payments-amazon.jp</value>
++                <value id="amazon_payment_widget_it" type="host">*.payments-amazon.it</value>
++                <value id="amazon_payment_widget_fr" type="host">*.payments-amazon.fr</value>
++                <value id="amazon_payment_widget_es" type="host">*.payments-amazon.es</value>
++            </values>
++        </policy>
++    </policies>
++</csp_whitelist>
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -34,16 +34,10 @@
+             <argument name="config" xsi:type="object">Amazon\Payment\Gateway\Config\Config</argument>
+         </arguments>
+     </virtualType>
+-    <virtualType name="AmazonCurrencyValidator" type="Amazon\Payment\Gateway\Validator\CurrencyValidator">
+-        <arguments>
+-            <argument name="config" xsi:type="object">Amazon\Payment\Gateway\Config\Config</argument>
+-        </arguments>
+-    </virtualType>
+     <virtualType name="AmazonValidatorPool" type="Magento\Payment\Gateway\Validator\ValidatorPool">
+         <arguments>
+             <argument name="validators" xsi:type="array">
+                 <item name="country" xsi:type="string">AmazonCountryValidator</item>
+-                <item name="currency" xsi:type="string">AmazonCurrencyValidator</item>
+             </argument>
+         </arguments>
+     </virtualType>
+@@ -95,9 +89,6 @@
+ 
+     <!-- Configuration reader -->
+     <virtualType name="AmazonGatewayConfig" type="Amazon\Payment\Gateway\Config\Config">
+-        <arguments>
+-            <argument name="methodCode" xsi:type="const">Amazon\Payment\Gateway\Config\Config::CODE</argument>
+-        </arguments>
+     </virtualType>
+ 
+     <virtualType name="AmazonCommandManager" type="Magento\Payment\Gateway\Command\CommandManager">
+@@ -327,4 +318,9 @@
+             <argument name="connectionName" xsi:type="string">sales</argument>
+         </arguments>
+     </type>
++    
++    <!-- Order comments for currency differences  -->
++    <type name="Magento\Sales\Model\Order\Payment">
++        <plugin name="amazon_pay_order_payment" type="Amazon\Payment\Plugin\OrderCurrencyComment" />
++    </type>
+ </config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.4.1-p3" >
++    <module name="Amazon_Payment" setup_version="3.7.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Unerwarteter Status für Amazon Pay-Capture. Status: %1; Ursachencode: %2"
+ "Amazon refund invalid state : %1 with reason %2","Unerwarteter Status für die Amazon Pay-Erstattung. Status: %1; Ursachencode: %2"
+ "the country for your address is not allowed for this store","Das mit Ihrer Adresse verknüpfte Land ist für diese Website nicht zulässig."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Leider können Sie ""Amazon Pay"" für diese Bestellung nicht verwenden. Wählen Sie eine andere Zahlungsweise aus."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Leider können Sie ""Amazon Pay"" für diese Bestellung nicht verwenden. Wählen Sie eine andere Zahlungsweise aus."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Leider ist bei der ausgewählten Zahlungsweise ein Problem in Ihrem Amazon-Kundenkonto aufgetreten. Wählen Sie eine andere Zahlungsweise aus."
+ "The currency selected is not supported by Amazon Pay","Die ausgewählte Währung wird von Amazon Pay auf dieser Website nicht unterstützt."
+ "Captured amount of %1 online","Online erfasster Betrag ist %1."
+@@ -22,3 +22,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
++"The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Unerwarteter Status für Amazon Pay-Capture. Status: %1; Ursachencode: %2"
+ "Amazon refund invalid state : %1 with reason %2","Unerwarteter Status für die Amazon Pay-Erstattung. Status: %1; Ursachencode: %2"
+ "the country for your address is not allowed for this store","Das mit Ihrer Adresse verknüpfte Land ist für diese Website nicht zulässig."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Leider können Sie ""Amazon Pay"" für diese Bestellung nicht verwenden. Wählen Sie eine andere Zahlungsweise aus."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Leider können Sie ""Amazon Pay"" für diese Bestellung nicht verwenden. Wählen Sie eine andere Zahlungsweise aus."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Leider ist bei der ausgewählten Zahlungsweise ein Problem in Ihrem Amazon-Kundenkonto aufgetreten. Wählen Sie eine andere Zahlungsweise aus."
+ "The currency selected is not supported by Amazon Pay","Die ausgewählte Währung wird von Amazon Pay auf dieser Website nicht unterstützt."
+ "Captured amount of %1 online","Online erfasster Betrag ist %1."
+@@ -22,3 +22,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
++"The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Unerwarteter Status für Amazon Pay-Capture. Status: %1; Ursachencode: %2"
+ "Amazon refund invalid state : %1 with reason %2","Unerwarteter Status für die Amazon Pay-Erstattung. Status: %1; Ursachencode: %2"
+ "the country for your address is not allowed for this store","Das mit Ihrer Adresse verknüpfte Land ist für diese Website nicht zulässig."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Leider können Sie ""Amazon Pay"" für diese Bestellung nicht verwenden. Wählen Sie eine andere Zahlungsweise aus."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Leider können Sie ""Amazon Pay"" für diese Bestellung nicht verwenden. Wählen Sie eine andere Zahlungsweise aus."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Leider ist bei der ausgewählten Zahlungsweise ein Problem in Ihrem Amazon-Kundenkonto aufgetreten. Wählen Sie eine andere Zahlungsweise aus."
+ "The currency selected is not supported by Amazon Pay","Die ausgewählte Währung wird von Amazon Pay auf dieser Website nicht unterstützt."
+ "Captured amount of %1 online","Online erfasster Betrag ist %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
++"The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -3,7 +3,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Unexpected state for the Amazon Pay capture. State: %1, Reason code: %2"
+ "Amazon refund invalid state : %1 with reason %2","Unexpected state for the Amazon Pay refund. State: %1, Reason code: %2"
+ "the country for your address is not allowed for this store","The country associated with your address is not allowed for this store."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "Captured amount of %1 online","Captured amount of %1 online."
+@@ -20,3 +20,6 @@
+ "Return to standard checkout","Return to standard checkout"
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
++"The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+@@ -120,3 +120,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Something's wrong with your payment method. To place your order, try another."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
++"The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Estado inesperado de la captura de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Estado inesperado del reembolso de Amazon Pay. Estado: %1; Código de motivo: %2"
+ "the country for your address is not allowed for this store","Este sitio web no admite el país asociado a tu dirección."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Lo sentimos, no es posible utilizar Amazon Pay para este pedido. Elige otro método de pago."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Lo sentimos, se ha producido un problema con el método de pago seleccionado en tu cuenta de Amazon. Elige otro método de pago."
+ "The currency selected is not supported by Amazon Pay","Amazon Pay no admite la divisa seleccionada en este sitio web."
+ "Captured amount of %1 online","Importe capturado por Internet de %1."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
++"The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","État imprévu pour la saisie d'Amazon Pay. État : %1 ; code du motif : %2"
+ "Amazon refund invalid state : %1 with reason %2","État imprévu pour le remboursement d'Amazon Pay. État : %1 ; code du motif : %2"
+ "the country for your address is not allowed for this store","Le pays associé à votre adresse n'est pas autorisé pour ce site."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Nous sommes désolés, mais vous ne pouvez pas utiliser Amazon Pay pour cette commande. Sélectionnez un autre mode paiement."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Nous sommes désolés, mais vous ne pouvez pas utiliser Amazon Pay pour cette commande. Sélectionnez un autre mode paiement."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Nous sommes désolés, mais un problème s'est produit avec le mode de paiement sélectionné sur votre compte Amazon. Sélectionnez un autre mode paiement."
+ "The currency selected is not supported by Amazon Pay","La devise sélectionnée n'est pas prise en charge par Amazon Pay sur ce site."
+ "Captured amount of %1 online","Montant de %1 saisi en ligne."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Votre transaction avec Amazon Pay est en cours de validation. Vous serez informe prochainement de son suivi."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Pour réinitialiser votre mot de passe, veuillez-vous <a href=""%1"">Déconnexion</a> et cliquer sur “Mot de passe oublié?” depuis la page de connexion"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
++"The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","État imprévu pour la saisie d'Amazon Pay. État : %1 ; code du motif : %2"
+ "Amazon refund invalid state : %1 with reason %2","État imprévu pour le remboursement d'Amazon Pay. État : %1 ; code du motif : %2"
+ "the country for your address is not allowed for this store","Le pays associé à votre adresse n'est pas autorisé pour ce site."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Nous sommes désolés, mais vous ne pouvez pas utiliser Amazon Pay pour cette commande. Sélectionnez un autre mode paiement."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Nous sommes désolés, mais vous ne pouvez pas utiliser Amazon Pay pour cette commande. Sélectionnez un autre mode paiement."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Nous sommes désolés, mais un problème s'est produit avec le mode de paiement sélectionné sur votre compte Amazon. Sélectionnez un autre mode paiement."
+ "The currency selected is not supported by Amazon Pay","La devise sélectionnée n'est pas prise en charge par Amazon Pay sur ce site."
+ "Captured amount of %1 online","Montant de %1 saisi en ligne."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Votre transaction avec Amazon Pay est en cours de validation. Vous serez informe prochainement de son suivi."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Pour réinitialiser votre mot de passe, veuillez-vous <a href=""%1"">Déconnexion</a> et cliquer sur “Mot de passe oublié?” depuis la page de connexion"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
++"The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Stato imprevisto per l'acquisizione Amazon Pay. Stato: %1; Codice motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Stato imprevisto per il rimborso Amazon Pay. Stato: %1; Codice motivo: %2"
+ "the country for your address is not allowed for this store","Il paese associato al tuo indirizzo non è supportato su questo sito."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Non è possibile utilizzare Amazon Pay per questo ordine. Seleziona un altro metodo di pagamento."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Non è possibile utilizzare Amazon Pay per questo ordine. Seleziona un altro metodo di pagamento."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Si è verificato un problema con il metodo di pagamento selezionato sul tuo account Amazon. Seleziona un altro metodo di pagamento."
+ "The currency selected is not supported by Amazon Pay","La valuta selezionata non è supportata da Amazon Pay su questo sito."
+ "Captured amount of %1 online","Importo acquisito di %1 online."
+@@ -22,3 +22,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","La vostra transazione con Amazon Pay e in fase di validazione. Vi informeremo del risultato della transazione a breve."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Per resettare la tua password, per favore <a href=""%1"">Esci</a> dal tuo account e seleziona “Hai dimenticato la password?" dalla pagina di Accesso"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
++"The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -4,7 +4,7 @@
+ "Amazon capture invalid state : %1 with reason %2","Stato imprevisto per l'acquisizione Amazon Pay. Stato: %1; Codice motivo: %2"
+ "Amazon refund invalid state : %1 with reason %2","Stato imprevisto per il rimborso Amazon Pay. Stato: %1; Codice motivo: %2"
+ "the country for your address is not allowed for this store","Il paese associato al tuo indirizzo non è supportato su questo sito."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Non è possibile utilizzare Amazon Pay per questo ordine. Seleziona un altro metodo di pagamento."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Non è possibile utilizzare Amazon Pay per questo ordine. Seleziona un altro metodo di pagamento."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","Si è verificato un problema con il metodo di pagamento selezionato sul tuo account Amazon. Seleziona un altro metodo di pagamento."
+ "The currency selected is not supported by Amazon Pay","La valuta selezionata non è supportata da Amazon Pay su questo sito."
+ "Captured amount of %1 online","Importo acquisito di %1 online."
+@@ -23,3 +23,6 @@
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","La vostra transazione con Amazon Pay e in fase di validazione. Vi informeremo del risultato della transazione a breve."
+ "In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Per resettare la tua password, per favore <a href=""%1"">Esci</a> dal tuo account e seleziona “Hai dimenticato la password?" dalla pagina di Accesso"
++"The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
++"No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
++"The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
+
+--- a/view/frontend/requirejs-config.js
++++ b/view/frontend/requirejs-config.js
+@@ -27,6 +27,9 @@ var config = {
+         mixins: {
+             'Amazon_Payment/js/action/place-order': {
+                 'Amazon_Payment/js/model/place-order-mixin': true
++            },
++            'Magento_Tax/js/view/checkout/summary/grand-total': {
++                'Amazon_Payment/js/view/checkout/summary/grand-total-mixin': true
+             }
+         }
+     }
+
+--- a/view/frontend/web/js/messages.js
++++ b/view/frontend/web/js/messages.js
+@@ -44,6 +44,14 @@ define(
+                         }
+                     });
+                 }
++            },
++
++            addMessage: function (type, messageText) {
++                var messageComponent = messagesFactory();
++
++                if (type === 'error') {
++                    messageList.addErrorMessage({message: $.mage.__($("<textarea/>").html(messageText).text())});
++                }
+             }
+         }
+     }
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -50,7 +50,8 @@ define(
+             isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash'),
+             amazonCustomerEmail = ko.computed(function () {
+                 // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+-                if (window.checkoutConfig.hasOwnProperty('amazonLogin') &&
++                if (window.hasOwnProperty('checkoutConfig') &&
++                    window.checkoutConfig.hasOwnProperty('amazonLogin') &&
+                     typeof window.checkoutConfig.amazonLogin.amazon_customer_email === 'string'
+                 ) {
+                     return window.checkoutConfig.amazonLogin.amazon_customer_email;
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -164,6 +164,8 @@ define(
+                             addressConverter.quoteAddressToFormAddressData(addressData)
+                         );
+                         checkoutDataResolver.resolveEstimationAddress();
++
++                        amazonStorage.isAmazonShippingAddressSelected(true);
+                     }
+                 ).fail(
+                     function (response) {
+
+--- /dev/null
++++ b/view/frontend/web/js/view/checkout/summary/grand-total-mixin.js
+@@ -0,0 +1,22 @@
++/*global define*/
++
++define([
++    'Amazon_Payment/js/model/storage'
++], function (amazonStorage) {
++    'use strict';
++
++    return function (GrandTotal) {
++        return GrandTotal.extend({
++            /**
++             * @return {Boolean}
++             */
++            isBaseGrandTotalDisplayNeeded: function () {
++                if (!amazonStorage.isAmazonAccountLoggedIn()) {
++                    return this._super();
++                }
++
++                return false;
++            }
++        });
++    }
++});
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -4,17 +4,20 @@ define(
+         'jquery',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
+-        'Amazon_Payment/js/model/storage'
++        'Amazon_Payment/js/model/storage',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+         Component,
+         customer,
+-        amazonStorage
++        amazonStorage,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+         return Component.extend({
++            noShippingAddressSelectedMsg: 'No shipping address has been selected for this order, please try to refresh the page or add a new shipping address in the Address Book widget.',
+ 
+             /**
+              * Initialize shipping
+@@ -51,7 +54,19 @@ define(
+                 }
+ 
+                 if (!customer.isLoggedIn()) {
+-                    return this.validateGuestEmail();
++                    if (!(amazonStorage.isAmazonShippingAddressSelected() && this.validateGuestEmail())) {
++                        amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                        amazonMessages.displayMessages();
++
++                        return false;
++                    }
++                }
++
++                if (!(amazonStorage.isAmazonShippingAddressSelected())) {
++                    amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                    amazonMessages.displayMessages();
++
++                    return false;
+                 }
+ 
+                 return true;
+
+--- a/view/frontend/web/template/form/element/email.html
++++ b/view/frontend/web/template/form/element/email.html
+@@ -53,7 +53,7 @@
+                 </label>
+                 <div class="control">
+                     <input class="input-text"
+-                           placeholder="optional"
++                           placeholder="Password"
+                            type="password"
+                            name="password"
+                            id="customer-password"
+

@@ -1,0 +1,468 @@
+--- a/Gateway/Config/Config.php
++++ b/Gateway/Config/Config.php
+@@ -11,6 +11,42 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     
+     const KEY_ACTIVE = 'active';
+ 
++    /**
++     * @var \Amazon\Core\Model\AmazonConfig
++     */
++    protected $amazonConfig;
++
++    /**
++     * @param \Amazon\Core\Model\AmazonConfig $amazonConfig
++     * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     */
++    public function __construct(
++        \Amazon\Core\Model\AmazonConfig $amazonConfig,
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++    ) {
++        $this->amazonConfig = $amazonConfig;
++        parent::__construct($scopeConfig, self::CODE);
++    }
++
++    /**
++     * @param int|null $storeId
++     * @return boolean
++     */
++    protected function canCapturePartial($storeId = null)
++    {
++        $region = $this->amazonConfig->getPaymentRegion(\Magento\Store\Model\ScopeInterface::SCOPE_STORE, $storeId);
++        switch ($region) {
++            case 'de':
++            case 'uk':
++                $result = false;
++                break;
++            default:
++                $result = parent::getValue('can_capture_partial', $storeId);
++                break;
++        }
++        return $result;
++    }
++
+     /**
+      * Gets Payment configuration status.
+      *
+@@ -21,4 +57,22 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     {
+         return (bool) $this->getValue(self::KEY_ACTIVE, $storeId);
+     }
++
++    /**
++     * @param string $field
++     * @param int|null $storeId
++     * @return mixed
++     */
++    public function getValue($field, $storeId = null)
++    {
++        switch ($field) {
++            case 'can_capture_partial':
++                $result = $this->canCapturePartial($storeId);
++                break;
++            default:
++                $result = parent::getValue($field, $storeId);
++                break;
++        }
++        return $result;
++    }
+ }
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -18,7 +18,6 @@ namespace Amazon\Payment\Gateway\Request;
+ 
+ use Magento\Payment\Gateway\ConfigInterface;
+ use Magento\Payment\Gateway\Request\BuilderInterface;
+-use Magento\Framework\App\ProductMetadata;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Core\Model\AmazonConfig;
+@@ -34,11 +33,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+      */
+     private $config;
+ 
+-    /**
+-     * @var ProductMetadata
+-     */
+-    private $productMetaData;
+-
+     /**
+      * @var SubjectReader
+      */
+@@ -68,7 +62,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+      * AuthorizationRequestBuilder constructor.
+      *
+      * @param ConfigInterface $config
+-     * @param ProductMetadata $productMetadata
+      * @param SubjectReader $subjectReader
+      * @param Data $coreHelper
+      * @param AmazonConfig $amazonConfig
+@@ -77,7 +70,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+      */
+     public function __construct(
+         ConfigInterface $config,
+-        ProductMetaData $productMetadata,
+         SubjectReader $subjectReader,
+         Data $coreHelper,
+         AmazonConfig $amazonConfig,
+@@ -87,7 +79,6 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         $this->config = $config;
+         $this->coreHelper = $coreHelper;
+         $this->amazonConfig = $amazonConfig;
+-        $this->productMetaData = $productMetadata;
+         $this->subjectReader = $subjectReader;
+         $this->eventManager = $eventManager;
+         $this->categoryExclusion = $categoryExclusion;
+@@ -152,7 +143,7 @@ class AuthorizationRequestBuilder implements BuilderInterface
+                     'currency_code' => $currencyCode,
+                     'store_name' => $storeName,
+                     'custom_information' =>
+-                        'Magento Version : ' . $this->productMetaData->getVersion() . ' ' .
++                        'Magento Version : 2, ' .
+                         'Plugin Version : ' . $this->coreHelper->getVersion(),
+                     'platform_id' => $this->config->getValue('platform_id'),
+                     'request_payment_authorization' => true
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -18,7 +18,6 @@ namespace Amazon\Payment\Gateway\Request;
+ 
+ use Amazon\Payment\Gateway\Config\Config;
+ use Magento\Payment\Gateway\Request\BuilderInterface;
+-use Magento\Framework\App\ProductMetadata;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Magento\Payment\Model\Method\Logger;
+@@ -37,11 +36,6 @@ class SettlementRequestBuilder implements BuilderInterface
+      */
+     private $logger;
+ 
+-    /**
+-     * @var ProductMetadata
+-     */
+-    private $productMetaData;
+-
+     /**
+      * @var SubjectReader
+      */
+@@ -66,7 +60,6 @@ class SettlementRequestBuilder implements BuilderInterface
+      * SettlementRequestBuilder constructor.
+      *
+      * @param Config $config
+-     * @param ProductMetadata $productMetadata
+      * @param OrderRepositoryInterface $orderRepository
+      * @param CartRepositoryInterface $quoteRepository
+      * @param SubjectReader $subjectReader
+@@ -75,7 +68,6 @@ class SettlementRequestBuilder implements BuilderInterface
+      */
+     public function __construct(
+         Config $config,
+-        ProductMetaData $productMetadata,
+         OrderRepositoryInterface $orderRepository,
+         CartRepositoryInterface $quoteRepository,
+         SubjectReader $subjectReader,
+@@ -86,7 +78,6 @@ class SettlementRequestBuilder implements BuilderInterface
+         $this->orderRepository = $orderRepository;
+         $this->quoteRepository = $quoteRepository;
+         $this->coreHelper = $coreHelper;
+-        $this->productMetaData = $productMetadata;
+         $this->subjectReader = $subjectReader;
+         $this->logger = $logger;
+     }
+@@ -123,7 +114,7 @@ class SettlementRequestBuilder implements BuilderInterface
+                     'store_id' => $buildSubject['multicurrency']['store_id'],
+                     'store_name' => $buildSubject['multicurrency']['store_name'],
+                     'custom_information' =>
+-                        'Magento Version : ' . $this->productMetaData->getVersion() . ' ' .
++                        'Magento Version : 2, ' .
+                         'Plugin Version : ' . $this->coreHelper->getVersion(),
+                     'platform_id' => $this->config->getValue('platform_id'),
+                     'request_payment_authorization' => false
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -241,7 +241,6 @@ class AmazonPaymentAdapter
+     public function authorize($data, $captureNow = false, $attempts = 0)
+     {
+         $response = [];
+-        $confirmResponse = null;
+         $order = $this->getOrderByReference($data['amazon_order_reference_id']);
+         if ($order) {
+             $storeId = $order->getStoreId();
+@@ -280,56 +279,38 @@ class AmazonPaymentAdapter
+         $response['constraints'] = [];
+         $response['amazon_order_reference_id'] = $data['amazon_order_reference_id'];
+ 
+-        $confirmResponse = $this->confirmOrderReference($storeId, $data['amazon_order_reference_id']);
+-
+-        if ($confirmResponse->response['Status'] == 200) {
+-            $authorizeResponse = $this->getAuthorization($storeId, $authorizeData);
+-
+-            if ($authorizeResponse) {
+-                if ($authorizeResponse->getCaptureTransactionId() || $authorizeResponse->getAuthorizeTransactionId()) {
+-                    $response['authorize_transaction_id'] = $authorizeResponse->getAuthorizeTransactionId();
+-
+-                    if ($authorizeResponse->getStatus()->getState() == 'Pending' && $authMode == 'synchronous_possible') {
+-                        if ($captureNow) {
+-                            $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
+-                        }
+-                        $response['response_code'] = 'TransactionTimedOut';
+-                    } elseif (!in_array($authorizeResponse->getStatus()->getState(), self::SUCCESS_CODES)) {
+-                        $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
+-                        if ($authMode == 'synchronous' && $authorizeResponse->getStatus()->getReasonCode() == 'TransactionTimedOut') {
+-                            $cancelData = [
+-                                'store_id' => $storeId,
+-                                'amazon_order_reference_id' => $data['amazon_order_reference_id']
+-                            ];
+-                            $this->clientFactory->create($storeId)->cancelOrderReference($cancelData);
+-                        }
+-                    } else {
+-                        $response['status'] = true;
+-
+-                        if ($captureNow) {
+-                            $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
+-                        }
+-                    }
+-                } else {
+-                    $response['status'] = false;
+-                    $response['response_status'] = $authorizeResponse->getStatus()->getState();
+-                    $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
+-                    $log['error'] = $authorizeResponse->getStatus()->getState() . ': ' . $authorizeResponse->getStatus()->getReasonCode();
+-                    $this->logger->debug($log);
+-                }
+-            }
+-        } else {
+-            /** something went wrong, parse response body for use by authorization validator */
+-            $response['response_status'] = $confirmResponse->response['Status'];
++        $authorizeResponse = $this->getAuthorization($storeId, $authorizeData);
++
++        if ($authorizeResponse->getCaptureTransactionId() || $authorizeResponse->getAuthorizeTransactionId()) {
++            $response['authorize_transaction_id'] = $authorizeResponse->getAuthorizeTransactionId();
+ 
+-            $xml = simplexml_load_string($confirmResponse->response['ResponseBody']);
+-            $code = $xml->Error->Code[0];
+-            if ($code) {
+-                $response['response_code'] = (string)$code;
++            if ($authorizeResponse->getStatus()->getState() == 'Pending' && $authMode == 'synchronous_possible') {
++                if ($captureNow) {
++                    $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
++                }
++                $response['response_code'] = 'TransactionTimedOut';
++            } elseif (!in_array($authorizeResponse->getStatus()->getState(), self::SUCCESS_CODES)) {
++                $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
++                if ($authMode == 'synchronous' && $authorizeResponse->getStatus()->getReasonCode() == 'TransactionTimedOut') {
++                    $cancelData = [
++                        'store_id' => $storeId,
++                        'amazon_order_reference_id' => $data['amazon_order_reference_id']
++                    ];
++                    $this->clientFactory->create($storeId)->cancelOrderReference($cancelData);
++                }
+             } else {
+-                $log['error'] = __('AmazonPaymentAdapter: Improperly formatted XML response, no response code available.');
+-                $this->logger->debug($log);
++                $response['status'] = true;
++
++                if ($captureNow) {
++                    $response['capture_transaction_id'] = $authorizeResponse->getCaptureTransactionId();
++                }
+             }
++        } else {
++            $response['status'] = false;
++            $response['response_status'] = $authorizeResponse->getStatus()->getState();
++            $response['response_code'] = $authorizeResponse->getStatus()->getReasonCode();
++            $log['error'] = $authorizeResponse->getStatus()->getState() . ': ' . $authorizeResponse->getStatus()->getReasonCode();
++            $this->logger->debug($log);
+         }
+ 
+         if ($additionalInformation) {
+
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -25,7 +25,6 @@ use Amazon\Payment\Domain\AmazonSetOrderDetailsResponse;
+ use Amazon\Payment\Domain\AmazonSetOrderDetailsResponseFactory;
+ use Exception;
+ use Magento\Checkout\Model\Session;
+-use Magento\Framework\App\ProductMetadata;
+ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Framework\Exception\ValidatorException;
+ use Magento\Quote\Model\Quote;
+@@ -75,11 +74,6 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+      */
+     private $config;
+ 
+-    /**
+-     * @var ProductMetadata
+-     */
+-    private $productMetadata;
+-
+     /**
+      * OrderInformationManagement constructor.
+      * @param Session $session
+@@ -89,7 +83,6 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+      * @param AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory
+      * @param QuoteLinkInterfaceFactory $quoteLinkFactory
+      * @param LoggerInterface $logger
+-     * @param ProductMetadata $productMetadata
+      */
+     public function __construct(
+         Session $session,
+@@ -99,7 +92,6 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+         AmazonSetOrderDetailsResponseFactory $amazonSetOrderDetailsResponseFactory,
+         QuoteLinkInterfaceFactory $quoteLinkFactory,
+         LoggerInterface $logger,
+-        ProductMetadata $productMetadata,
+         UrlInterface $urlBuilder = null
+     ) {
+         $this->session                              = $session;
+@@ -109,7 +101,6 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+         $this->amazonSetOrderDetailsResponseFactory = $amazonSetOrderDetailsResponseFactory;
+         $this->quoteLinkFactory                     = $quoteLinkFactory;
+         $this->logger                               = $logger;
+-        $this->productMetadata                      = $productMetadata;
+         $this->urlBuilder = $urlBuilder ?: ObjectManager::getInstance()->get(UrlInterface::class);
+     }
+ 
+@@ -137,7 +128,7 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+                 'currency_code'             => $quote->getQuoteCurrencyCode(),
+                 'store_name'                => $storeName,
+                 'custom_information'        =>
+-                    'Magento Version : ' . $this->productMetadata->getVersion() . ' ' .
++                    'Magento Version : 2, ' .
+                     'Plugin Version : ' . $this->coreHelper->getVersion()
+                 ,
+                 'platform_id'               => $this->config->getValue('platform_id')
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.4.1-p3",
++  "version": "3.5.0",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p3",
+-    "amzn/login-with-amazon-module": "^3.4.1-p3",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.5.0",
++    "amzn/login-with-amazon-module": "^3.5.0",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -95,9 +95,6 @@
+ 
+     <!-- Configuration reader -->
+     <virtualType name="AmazonGatewayConfig" type="Amazon\Payment\Gateway\Config\Config">
+-        <arguments>
+-            <argument name="methodCode" xsi:type="const">Amazon\Payment\Gateway\Config\Config::CODE</argument>
+-        </arguments>
+     </virtualType>
+ 
+     <virtualType name="AmazonCommandManager" type="Magento\Payment\Gateway\Command\CommandManager">
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.4.1-p3" >
++    <module name="Amazon_Payment" setup_version="3.5.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/view/frontend/web/js/model/storage.js
++++ b/view/frontend/web/js/model/storage.js
+@@ -50,7 +50,8 @@ define(
+             isLoginRedirectPage = $('body').hasClass('amazon-login-login-processauthhash'),
+             amazonCustomerEmail = ko.computed(function () {
+                 // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+-                if (window.checkoutConfig.hasOwnProperty('amazonLogin') &&
++                if (window.hasOwnProperty('checkoutConfig') &&
++                    window.checkoutConfig.hasOwnProperty('amazonLogin') &&
+                     typeof window.checkoutConfig.amazonLogin.amazon_customer_email === 'string'
+                 ) {
+                     return window.checkoutConfig.amazonLogin.amazon_customer_email;
+
+--- a/view/frontend/web/js/view/payment/list.js
++++ b/view/frontend/web/js/view/payment/list.js
+@@ -35,12 +35,6 @@ define([
+         initialize: function () {
+ 
+             self = this;
+-            amazonStorage.isAmazonAccountLoggedIn.subscribe(function (value) {
+-                if (!value) {
+-                    this._reloadPaymentMethods();
+-                }
+-            }, this);
+-
+             this._hidePaymentMethodsOnLoad(); //hide methods on load
+ 
+             //subscribe to payment methods to remove other payment methods from render list
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -2,14 +2,22 @@
+ define(
+     [
+         'jquery',
++        'underscore',
++        'ko',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
++        'Magento_Checkout/js/action/set-shipping-information',
++        'Magento_Checkout/js/model/step-navigator',
+         'Amazon_Payment/js/model/storage'
+     ],
+     function (
+         $,
++        _,
++        ko,
+         Component,
+         customer,
++        setShippingInformationAction,
++        stepNavigator,
+         amazonStorage
+     ) {
+         'use strict';
+@@ -41,20 +49,20 @@ define(
+             },
+ 
+             /**
+-             * Overridden validateShippingInformation for Amazon Pay to bypass validation
+-             *
+-             * @inheritDoc
++             * New setShipping Action for Amazon Pay to bypass validation
+              */
+-            validateShippingInformation: function () {
+-                if (!amazonStorage.isAmazonAccountLoggedIn()) {
+-                    return this._super();
++            setShippingInformation: function () {
++                if (amazonStorage.isAmazonAccountLoggedIn()) {
++                    if (customer.isLoggedIn() || this.validateGuestEmail()) {
++                        setShippingInformationAction().done(
++                            function () {
++                                stepNavigator.next();
++                            }
++                        );
++                    }
++                } else {
++                    this._super();
+                 }
+-
+-                if (!customer.isLoggedIn()) {
+-                    return this.validateGuestEmail();
+-                }
+-
+-                return true;
+             }
+         });
+     }
+

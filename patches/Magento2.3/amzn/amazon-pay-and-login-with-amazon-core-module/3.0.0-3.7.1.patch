@@ -1,0 +1,1515 @@
+--- a/Api/Data/AmazonAddressInterface.php
++++ b/Api/Data/AmazonAddressInterface.php
+@@ -59,6 +59,14 @@ interface AmazonAddressInterface
+      */
+     public function getLine($lineNumber);
+ 
++    /**
++     * Shifts address lines
++     *
++     * @param int $times
++     * @return null|string
++     */
++    public function shiftLines($times);
++
+     /**
+      * Get city
+      *
+@@ -100,4 +108,12 @@ interface AmazonAddressInterface
+      * @return string
+      */
+     public function getCompany();
++
++    /**
++     * Set company name
++     *
++     * @param string $company
++     * @return string
++     */
++    public function setCompany($company);
+ }
+
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -30,21 +30,13 @@ class IpnUrl extends BaseField
+      */
+     protected function _renderValue(AbstractElement $element)
+     {
+-        $stores = $this->_storeManager->getStores();
++        $store = $this->_storeManager->getDefaultStoreView();
+         $valueReturn = '';
+-        $urlArray = [];
+ 
+-        foreach ($stores as $store) {
+-            $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
+-            if ($baseUrl) {
+-                $value      = $baseUrl . 'amazonpayments/payment/ipn/';
+-                $urlArray[] = "<div>".$this->escapeHtml($value)."</div>";
+-            }
+-        }
+-
+-        $urlArray = array_unique($urlArray);
+-        foreach ($urlArray as $uniqueUrl) {
+-            $valueReturn .= "<div>".$uniqueUrl."</div>";
++        $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true);
++        if ($baseUrl) {
++            $value       = $baseUrl . 'amazonpayments/payment/ipn/';
++            $valueReturn = "<div>".$this->escapeHtml($value)."</div>";
+         }
+ 
+         return '<td class="value">' . $valueReturn . '</td>';
+
+--- a/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
++++ b/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
+@@ -55,8 +55,7 @@ class DeveloperLogs extends \Magento\Config\Block\System\Config\Form\Field
+         DirectoryList $directoryList,
+         UrlInterface $urlBuilder,
+         $data = []
+-    )
+-    {
++    ) {
+         $this->directoryList = $directoryList;
+         $this->urlBuilder = $urlBuilder;
+         parent::__construct($context, $data);
+
+--- a/Block/Adminhtml/System/Config/Form/SimplepathConfig.php
++++ b/Block/Adminhtml/System/Config/Form/SimplepathConfig.php
+@@ -35,6 +35,6 @@ class SimplepathConfig extends \Magento\Config\Block\System\Config\Form\Field
+             ->setCacheable(false)
+             ->toHtml();
+ 
+-        return $html;
++        return '<div id="row_' . $element->getHtmlId() . '">' . $html . '</div>';
+     }
+ }
+
+--- a/Block/Adminhtml/System/Config/Form/Version.php
++++ b/Block/Adminhtml/System/Config/Form/Version.php
+@@ -56,6 +56,6 @@ class Version extends \Magento\Config\Block\System\Config\Form\Field
+         $output = '<div style="background-color:#eee;padding:1em;border:1px solid #ddd;">';
+         $output .= __('Module version') . ': ' . $version;
+         $output .= "</div>";
+-        return $output;
++        return '<div id="row_' . $element->getHtmlId() . '">' . $output . '</div>';
+     }
+ }
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -17,6 +17,7 @@ namespace Amazon\Core\Block;
+ 
+ use Amazon\Core\Helper\CategoryExclusion;
+ use Amazon\Core\Helper\Data;
++use Amazon\Core\Model\AmazonConfig;
+ use Magento\Customer\Model\Url;
+ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+@@ -45,14 +46,29 @@ class Config extends Template
+      */
+     private $categoryExclusionHelper;
+ 
++    /**
++     * @var AmazonConfig
++     */
++    private $config;
++
++    /**
++     * Config constructor.
++     * @param Context $context
++     * @param Data $coreHelper
++     * @param AmazonConfig $config
++     * @param Url $url
++     * @param CategoryExclusion $categoryExclusionHelper
++     */
+     public function __construct(
+         Context $context,
+         Data $coreHelper,
++        AmazonConfig $config,
+         Url $url,
+         CategoryExclusion $categoryExclusionHelper
+     ) {
+         parent::__construct($context);
+         $this->coreHelper = $coreHelper;
++        $this->config = $config;
+         $this->url = $url;
+         $this->categoryExclusionHelper = $categoryExclusionHelper;
+     }
+@@ -83,15 +99,22 @@ class Config extends Template
+             'loginScope'               => $this->coreHelper->getLoginScope(),
+             'allowAmLoginLoading'      => $this->coreHelper->allowAmLoginLoading(),
+             'isEuPaymentRegion'        => $this->coreHelper->isEuPaymentRegion(),
++            'presentmentCurrency'      => $this->config->getPresentmentCurrency(),
+             'oAuthHashRedirectUrl'     => $this->coreHelper->getOAuthRedirectUrl(),
+             'isQuoteDirty'             => $this->categoryExclusionHelper->isQuoteDirty(),
+-            'region'                   => $this->coreHelper->getRegion()
++            'region'                   => $this->coreHelper->getRegion(),
++            'useMultiCurrency'         => $this->config->useMultiCurrency(),
++            'scaRegions'               => $this->coreHelper->getScaRegions()
+         ];
+ 
+         if ($this->coreHelper->isSandboxEnabled()) {
+             $config['sandboxSimulationOptions'] = $this->transformSandboxSimulationOptions();
+         }
+ 
++        if ($orderReferenceId = $this->getRequest()->getParam('orderReferenceId')) {
++            $config['orderReferenceId'] = preg_replace('/[^A-Z0-9-]/', '', $orderReferenceId);
++        }
++
+         return $config;
+     }
+ 
+@@ -108,7 +131,7 @@ class Config extends Template
+      */
+     public function isExtensionEnabled()
+     {
+-	    return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
++        return ($this->coreHelper->isPwaEnabled() || $this->coreHelper->isLwaEnabled());
+     }
+ 
+     /**
+
+--- a/Controller/Adminhtml/Download/ClientLog.php
++++ b/Controller/Adminhtml/Download/ClientLog.php
+@@ -40,8 +40,7 @@ class ClientLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+
+--- a/Controller/Adminhtml/Download/IpnLog.php
++++ b/Controller/Adminhtml/Download/IpnLog.php
+@@ -40,8 +40,7 @@ class IpnLog extends System
+     public function __construct(
+         Context $context,
+         FileFactory $fileFactory
+-    )
+-    {
++    ) {
+         $this->fileFactory = $fileFactory;
+ 
+         parent::__construct($context);
+
+--- a/Controller/Adminhtml/Simplepath/Poll.php
++++ b/Controller/Adminhtml/Simplepath/Poll.php
+@@ -17,6 +17,8 @@ namespace Amazon\Core\Controller\Adminhtml\Simplepath;
+ 
+ use Magento\Backend\App\Action\Context;
+ use Magento\Backend\Controller\Adminhtml\System;
++use Magento\Framework\App\ObjectManager;
++use Amazon\Core\Logger\ExceptionLogger;
+ 
+ class Poll extends System
+ {
+@@ -36,16 +38,23 @@ class Poll extends System
+      */
+     private $jsonResultFactory;
+ 
++    /**
++     * @var \Amazon\Core\Logger\ExceptionLogger
++     */
++    private $exceptionLogger;
++
+     public function __construct(
+         Context $context,
+         \Amazon\Core\Model\Config\SimplePath $simplePath,
+         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+-        \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory
++        \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
++        \Amazon\Core\Logger\ExceptionLogger $exceptionLogger = null
+     ) {
+         parent::__construct($context);
+         $this->simplePath = $simplePath;
+         $this->scopeConfig = $scopeConfig;
+         $this->jsonResultFactory = $jsonResultFactory;
++        $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
+     }
+ 
+     /**
+@@ -53,19 +62,24 @@ class Poll extends System
+      */
+     public function execute()
+     {
+-        // Keypair is destroyed when credentials are saved
+-        $shouldRefresh = !($this->scopeConfig->getValue(
+-            \Amazon\Core\Model\Config\SimplePath::CONFIG_XML_PATH_PUBLIC_KEY,
+-            'default',
+-            0
+-        ));
++        try {
++            // Keypair is destroyed when credentials are saved
++            $shouldRefresh = !($this->scopeConfig->getValue(
++                \Amazon\Core\Model\Config\SimplePath::CONFIG_XML_PATH_PUBLIC_KEY,
++                'default',
++                0
++            ));
+ 
+-        if ($shouldRefresh) {
+-            $this->simplePath->autoEnable();
+-        }
++            if ($shouldRefresh) {
++                $this->simplePath->autoEnable();
++            }
+ 
+-        $result = $this->jsonResultFactory->create();
+-        $result->setData((int)$shouldRefresh);
+-        return $result;
++            $result = $this->jsonResultFactory->create();
++            $result->setData((int)$shouldRefresh);
++            return $result;
++        } catch (\Exception $e) {
++            $this->exceptionLogger->logException($e);
++            throw $e;
++        }
+     }
+ }
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -16,11 +16,17 @@
+ 
+ namespace Amazon\Core\Controller\Simplepath;
+ 
++use Amazon\Core\Logger\ExceptionLogger;
++use Magento\Framework\App\CsrfAwareActionInterface;
++use Magento\Framework\App\Request\InvalidRequestException;
++use Magento\Framework\App\RequestInterface;
++use Magento\Framework\App\ObjectManager;
++
+ /**
+  * Class Listener
+  * Retrieves entered keys from Amazon Pay popup
+  */
+-class Listener extends \Magento\Framework\App\Action\Action
++class Listener extends \Magento\Framework\App\Action\Action implements CsrfAwareActionInterface
+ {
+ 
+     // @var \Magento\Framework\Controller\Result\JsonFactory
+@@ -29,23 +35,28 @@ class Listener extends \Magento\Framework\App\Action\Action
+     // @var \Amazon\Core\Model\Config\SimplePath
+     private $simplepath;
+ 
++    // @var \Amazon\Core\Logger\ExceptionLogger
++    private $exceptionLogger;
++
+     /**
+      * Listener constructor.
+      * @param \Magento\Framework\App\Action\Context $context
+      * @param \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory
+      * @param \Amazon\Core\Model\Config\SimplePath $simplepath
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     * @param \Amazon\Core\Logger\ExceptionLogger $exceptionLogger
+      */
+     public function __construct(
+         \Magento\Framework\App\Action\Context $context,
+         \Magento\Framework\Controller\Result\JsonFactory $jsonResultFactory,
+         \Amazon\Core\Model\Config\SimplePath $simplepath,
+-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
+-    )
+-    {
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
++        ExceptionLogger $exceptionLogger = null
++    ) {
+         $this->simplepath = $simplepath;
+         $this->jsonResultFactory = $jsonResultFactory;
+         $this->scopeConfig = $scopeConfig;
++        $this->exceptionLogger = $exceptionLogger ?: ObjectManager::getInstance()->get(ExceptionLogger::class);
+         parent::__construct($context);
+     }
+ 
+@@ -54,41 +65,48 @@ class Listener extends \Magento\Framework\App\Action\Action
+      */
+     public function execute()
+     {
+-        $url = parse_url($this->simplepath->getEndpointRegister());
+-        $host = trim(preg_replace("/\r|\n/", "", $url['host']));
+-        $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
+-        $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+-        $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++        try {
++            $host = parse_url($this->getRequest()->getHeader('Origin'))['host'];
++            if (in_array($host, $this->simplepath->getListenerOrigins())) {
++                $this->getResponse()->setHeader('Access-Control-Allow-Origin', 'https://' . $host);
++            }
++            $this->getResponse()->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
++            $this->getResponse()->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
++            $this->getResponse()->setHeader('Vary', 'Origin');
+ 
+-        $payload = $this->_request->getParam('payload');
++            $payload = $this->_request->getParam('payload');
+ 
+-        $result = $this->jsonResultFactory->create();
++            $result = $this->jsonResultFactory->create();
+ 
+-        $return = ['result' => 'error', 'message' => 'Empty payload'];
++            $return = ['result' => 'error', 'message' => 'Empty payload'];
+ 
+-        try {
+-            if (strpos($payload, 'encryptedKey') === false) {
+-                $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
+-            } else if ($payload) {
+-                $json = $this->simplepath->decryptPayload($payload, false);
++            try {
++                if (strpos($payload, 'encryptedKey') === false) {
++                    $return = ['result' => 'error', 'message' => 'Invalid payload: ' . $payload];
++                } elseif ($payload) {
++                    $json = $this->simplepath->decryptPayload($payload, false);
+ 
+-                if ($json) {
+-                    $return = ['result' => 'success'];
++                    if ($json) {
++                        $return = ['result' => 'success'];
++                    }
++                } else {
++                    $return = ['result' => 'error', 'message' => 'payload parameter not found.'];
+                 }
+-            } else {
+-                $return = ['result' => 'error', 'message' => 'payload parameter not found.'];
++            } catch (\Exception $e) {
++                $return = ['result' => 'error', 'message' => $e->getMessage()];
+             }
+-        } catch (\Exception $e) {
+-            $return = ['result' => 'error', 'message' => $e->getMessage()];
+-        }
+ 
+-        if ($this->_request->isPost() && (empty($return['result']) || $return['result'] == 'error')) {
+-            $result->setHttpResponseCode(\Magento\Framework\Webapi\Exception::HTTP_BAD_REQUEST);
+-        }
++            if ($this->_request->isPost() && (empty($return['result']) || $return['result'] == 'error')) {
++                $result->setHttpResponseCode(\Magento\Framework\Webapi\Exception::HTTP_BAD_REQUEST);
++            }
+ 
+-        $result->setData($return);
++            $result->setData($return);
+ 
+-        return $result;
++            return $result;
++        } catch (\Exception $e) {
++            $this->exceptionLogger->logException($e);
++            throw $e;
++        }
+     }
+ 
+     /**
+@@ -125,4 +143,23 @@ class Listener extends \Magento\Framework\App\Action\Action
+         }
+         return true;
+     }
++
++    /**
++     * @inheritDoc
++     */
++    public function createCsrfValidationException(
++        RequestInterface $request
++    ): ?InvalidRequestException {
++        return null;
++    }
++
++    /**
++     * Disable Magento's CSRF validation.
++     *
++     * @inheritDoc
++     */
++    public function validateForCsrf(RequestInterface $request): ?bool
++    {
++        return true;
++    }
+ }
+
+--- a/Domain/AmazonAddress.php
++++ b/Domain/AmazonAddress.php
+@@ -54,6 +54,24 @@ class AmazonAddress extends \Magento\Framework\DataObject implements AmazonAddre
+         return null;
+     }
+ 
++    /**
++     * {@inheritdoc}
++     */
++    public function shiftLines($times = 1)
++    {
++        while ($times > 0) {
++            $lines = $this->getData(AmazonAddressInterface::LINES);
++            for ($i = 1; $i <= count($lines); $i++) {
++                $lines[$i] = isset($lines[$i + 1]) ? $lines[$i + 1] : '';
++            }
++            $this->setData(AmazonAddressInterface::LINES, $lines);
++
++            $times--;
++        }
++
++        return $this->getLines();
++    }
++
+     /**
+      * {@inheritdoc}
+      */
+@@ -101,4 +119,14 @@ class AmazonAddress extends \Magento\Framework\DataObject implements AmazonAddre
+     {
+         return $this->getData(AmazonAddressInterface::COMPANY);
+     }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function setCompany($company)
++    {
++        $this->setData(AmazonAddressInterface::COMPANY, $company);
++
++        return $this->getCompany();
++    }
+ }
+
+--- a/Domain/AmazonAddressDecoratorDe.php
++++ b/Domain/AmazonAddressDecoratorDe.php
+@@ -79,11 +79,15 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+                 $firstTwoLines = $line1 . ' ' . $line2;
+                 if (!$this->isPOBox($line1, $firstTwoLines)) {
+                     $company = $firstTwoLines;
++                    $this->amazonAddress->setCompany($company);
++                    $this->amazonAddress->shiftLines(2);
+                 }
+                 break;
+             case !empty($line2):
+                 if (!$this->isPOBox($line1, $line1)) {
+                     $company = $line1;
++                    $this->amazonAddress->setCompany($company);
++                    $this->amazonAddress->shiftLines();
+                 }
+                 break;
+         }
+@@ -178,6 +182,22 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+      */
+     public function getLine($lineNumber)
+     {
+-        $this->amazonAddress->getLine($lineNumber);
++        return $this->amazonAddress->getLine($lineNumber);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function shiftLines($times)
++    {
++        return $this->amazonAddress->shiftLines($times);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function setCompany($company)
++    {
++        return $this->amazonAddress->setCompany($company);
+     }
+ }
+
+--- a/Domain/AmazonAddressDecoratorJp.php
++++ b/Domain/AmazonAddressDecoratorJp.php
+@@ -27,8 +27,9 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+     /**
+      * @param AmazonAddressInterface $amazonAddress
+      */
+-    public function __construct(AmazonAddressInterface $amazonAddress)
+-    {
++    public function __construct(
++        AmazonAddressInterface $amazonAddress
++    ) {
+         $this->amazonAddress = $amazonAddress;
+     }
+ 
+@@ -37,20 +38,7 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getLines()
+     {
+-        $line1 = (string) $this->amazonAddress->getLine(1);
+-        $line2 = (string) $this->amazonAddress->getLine(2);
+-        $line3 = (string) $this->amazonAddress->getLine(3);
+-        $city = (string) $this->amazonAddress->getCity();
+-
+-        $lines = [];
+-        if (empty($city)) {
+-            $lines[] = trim($line1 . ' ' . $line2);
+-        } else {
+-            $lines[] = $line2;
+-        }
+-        $lines[] = $line3;
+-
+-        return $lines;
++        return $this->amazonAddress->getLines();
+     }
+ 
+     /**
+@@ -82,7 +70,7 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getCity()
+     {
+-        return $this->amazonAddress->getCity() ?? $this->amazonAddress->getLine(1);
++        return $this->amazonAddress->getCity() ?? '-';
+     }
+ 
+     /**
+@@ -122,6 +110,26 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getLine($lineNumber)
+     {
+-        $this->amazonAddress->getLine($lineNumber);
++        $lines = $this->getLines();
++        if (isset($lines[$lineNumber-1])) {
++            return $lines[$lineNumber-1];
++        }
++        return null;
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function shiftLines($times)
++    {
++        return $this->amazonAddress->shiftLines($times);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function setCompany($company)
++    {
++        return $this->amazonAddress->setCompany($company);
+     }
+ }
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -23,10 +23,6 @@ use Magento\Framework\Escaper;
+ 
+ class AmazonAddressFactory
+ {
+-    /**
+-     * @var Escaper
+-     */
+-    private $escaper;
+ 
+     /**
+      * @var ObjectManagerInterface
+@@ -48,7 +44,7 @@ class AmazonAddressFactory
+      *
+      * @param ObjectManagerInterface $objectManager
+      * @param AmazonNameFactory $amazonNameFactory
+-     * @param Escaper $escaper
++     * @param null $escaper Deprecated, do not remove for backward compatibility
+      * @param array $addressDecoratorPool Per-country custom decorators of incoming address data.
+      *                                         The key as an "ISO 3166-1 alpha-2" country code and
+      *                                         the value as an FQCN of a child of AmazonAddress.
+@@ -56,12 +52,11 @@ class AmazonAddressFactory
+     public function __construct(
+         ObjectManagerInterface $objectManager,
+         AmazonNameFactory $amazonNameFactory,
+-        Escaper $escaper,
++        $escaper = null,
+         array $addressDecoratorPool = []
+     ) {
+         $this->objectManager = $objectManager;
+         $this->amazonNameFactory = $amazonNameFactory;
+-        $this->escaper = $escaper;
+         $this->addressDecoratorPool = $addressDecoratorPool;
+     }
+ 
+@@ -76,21 +71,24 @@ class AmazonAddressFactory
+         $address = $responseData['address'];
+         $amazonName = $this->amazonNameFactory->create(
+             [
+-                'name' => $this->escaper->escapeHtml($address['Name']),
+-                'country' => $this->escaper->escapeHtml($address['CountryCode'])]
++                'name' => $address['Name'],
++                'country' => $address['CountryCode']]
+         );
+ 
+         $data = [
+-            AmazonAddressInterface::CITY => isset($address['City']) ? $this->escaper->escapeHtml($address['City']) : '',
+-            AmazonAddressInterface::POSTAL_CODE => isset($address['PostalCode']) ? $this->escaper->escapeHtml($address['PostalCode']) : '',
+-            AmazonAddressInterface::COUNTRY_CODE => $this->escaper->escapeHtml($address['CountryCode']),
+-            AmazonAddressInterface::TELEPHONE => isset($address['Phone']) ? $this->escaper->escapeHtml($address['Phone']) : '',
+-            AmazonAddressInterface::STATE_OR_REGION => isset($address['StateOrRegion']) ? $this->escaper->escapeHtml($address['StateOrRegion']) : '',
+-            AmazonAddressInterface::FIRST_NAME => $this->escaper->escapeHtml($amazonName->getFirstName()),
+-            AmazonAddressInterface::LAST_NAME => $this->escaper->escapeHtml($amazonName->getLastName()),
++            AmazonAddressInterface::POSTAL_CODE => isset($address['PostalCode']) ? $address['PostalCode'] : '',
++            AmazonAddressInterface::COUNTRY_CODE => $address['CountryCode'],
++            AmazonAddressInterface::TELEPHONE => isset($address['Phone']) ? $address['Phone'] : '',
++            AmazonAddressInterface::STATE_OR_REGION => isset($address['StateOrRegion']) ? $address['StateOrRegion'] : '',
++            AmazonAddressInterface::FIRST_NAME => $amazonName->getFirstName(),
++            AmazonAddressInterface::LAST_NAME => $amazonName->getLastName(),
+             AmazonAddressInterface::LINES => $this->getLines($address)
+         ];
+ 
++        if (isset($address['City'])) {
++            $data[AmazonAddressInterface::CITY] = $address['City'];
++        }
++
+         $amazonAddress = $this->objectManager->create(AmazonAddress::class, ['data' => $data]);
+ 
+         $countryCode = strtoupper($address['CountryCode']);
+@@ -128,7 +126,7 @@ class AmazonAddressFactory
+         $lines = [];
+         for ($i = 1; $i <= 3; $i++) {
+             if (isset($responseData['AddressLine' . $i]) && $responseData['AddressLine' . $i]) {
+-                $lines[$i] = $this->escaper->escapeHtml($responseData['AddressLine' . $i]);
++                $lines[$i] = $responseData['AddressLine' . $i];
+             }
+         }
+ 
+
+--- a/Exception/AmazonServiceUnavailableException.php
++++ b/Exception/AmazonServiceUnavailableException.php
+@@ -15,14 +15,59 @@
+  */
+ namespace Amazon\Core\Exception;
+ 
+-use Magento\Framework\Exception\RemoteServiceUnavailableException;
++use Magento\Framework\Exception\LocalizedException;
+ 
+-class AmazonServiceUnavailableException extends RemoteServiceUnavailableException
++class AmazonServiceUnavailableException extends LocalizedException
+ {
+     const ERROR_MESSAGE = 'Amazon could not process your request.';
+ 
+-    public function __construct()
++    /**
++     * @var string
++     */
++    private $apiErrorType;
++
++    /**
++     * @var string
++     */
++    private $apiErrorCode;
++
++    /**
++     * @var string
++     */
++    private $apiErrorMessage;
++
++    /**
++     * AmazonServiceUnavailableException constructor.
++     * @param string $apiErrorType
++     * @param string $apiErrorCode
++     * @param string $apiErrorMessage
++     */
++    public function __construct($apiErrorType = '', $apiErrorCode = '', $apiErrorMessage = '')
+     {
++        $this->apiErrorType = $apiErrorType;
++        $this->apiErrorCode = $apiErrorCode;
++        $this->apiErrorMessage = $apiErrorMessage;
+         parent::__construct(__('Amazon could not process your request.'));
+     }
++
++    /**
++     * @return string
++     */
++    public function getApiErrorType() {
++        return $this->apiErrorType;
++    }
++
++    /**
++     * @return string
++     */
++    public function getApiErrorCode() {
++        return $this->apiErrorCode;
++    }
++
++    /**
++     * @return string
++     */
++    public function getApiErrorMessage() {
++        return $this->apiErrorMessage;
++    }
+ }
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -23,6 +23,7 @@ use Magento\Store\Model\ScopeInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Module\ModuleListInterface;
+ use Magento\Framework\Module\StatusFactory;
++use Amazon\Core\Model\AmazonConfig;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
+@@ -57,6 +58,11 @@ class Data extends AbstractHelper
+      */
+     private $moduleStatusFactory;
+ 
++    /**
++     * @var AmazonConfig
++     */
++    private $config;
++
+     /**
+      * Data constructor.
+      *
+@@ -66,6 +72,7 @@ class Data extends AbstractHelper
+      * @param StoreManagerInterface $storeManager
+      * @param ClientIp $clientIpHelper
+      * @param StatusFactory $moduleStatusFactory
++     * @param AmazonConfig $config
+      */
+     public function __construct(
+         ModuleListInterface $moduleList,
+@@ -73,15 +80,16 @@ class Data extends AbstractHelper
+         EncryptorInterface $encryptor,
+         StoreManagerInterface $storeManager,
+         ClientIp $clientIpHelper,
+-        StatusFactory $moduleStatusFactory
+-    )
+-    {
++        StatusFactory $moduleStatusFactory,
++        AmazonConfig $config
++    ) {
+         parent::__construct($context);
+         $this->moduleList = $moduleList;
+         $this->encryptor = $encryptor;
+         $this->storeManager = $storeManager;
+         $this->clientIpHelper = $clientIpHelper;
+         $this->moduleStatusFactory = $moduleStatusFactory;
++        $this->config = $config;
+     }
+ 
+     /*
+@@ -152,6 +160,8 @@ class Data extends AbstractHelper
+ 
+     /*
+      * @return string
++     *
++     * @deprecated - use \Amazon\Core\Model\AmazonConfig::getPaymentRegion() instead
+      */
+     public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+@@ -187,6 +197,20 @@ class Data extends AbstractHelper
+         return array_key_exists($paymentRegion, $currencyCodeMap) ? $currencyCodeMap[$paymentRegion] : '';
+     }
+ 
++    /**
++     * @return array
++     */
++    public function getScaRegions($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $regionList = $this->scopeConfig->getValue(
++            'payment/amazon_payment/sca_regions',
++            $scope,
++            $scopeCode
++        );
++        $regions = explode(',', $regionList);
++        return is_array($regions) ? $regions : [];
++    }
++
+     /*
+      * @return string
+      */
+@@ -587,15 +611,9 @@ class Data extends AbstractHelper
+      */
+     public function isCurrentCurrencySupportedByAmazon()
+     {
+-        return $this->getCurrentCurrencyCode() == $this->getCurrencyCode();
+-    }
+-
+-    /**
+-     * @return mixed
+-     */
+-    protected function getCurrentCurrencyCode()
+-    {
+-        return $this->storeManager->getStore()->getCurrentCurrency()->getCode();
++        $regionCurrency = $this->getCurrencyCode();
++        $currentCurrency = $this->config->getPresentmentCurrency();
++        return $currentCurrency === $regionCurrency || $this->config->canUseCurrency($currentCurrency);
+     }
+ 
+     /**
+
+--- /dev/null
++++ b/Logger/ExceptionLogger.php
+@@ -0,0 +1,33 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Core\Logger;
++
++use Psr\Log\LoggerInterface;
++
++class ExceptionLogger
++{
++    private $logger;
++
++    public function __construct(LoggerInterface $logger)
++    {
++        $this->logger = $logger;
++    }
++    public function logException(\Exception $e)
++    {
++        $message = (string) $e;
++        $this->logger->addError($message);
++    }
++}
+
+--- /dev/null
++++ b/Model/AmazonConfig.php
+@@ -0,0 +1,193 @@
++<?php
++/**
++ * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++namespace Amazon\Core\Model;
++
++use Magento\Store\Model\ScopeInterface;
++use Magento\Framework\App\Config\ScopeConfigInterface;
++use Magento\Store\Model\StoreManagerInterface;
++
++class AmazonConfig
++{
++    /**
++     * @var \Magento\Framework\App\Config\ScopeConfigInterface
++     */
++    protected $scopeConfig;
++
++    /**
++     * @var StoreManagerInterface
++     */
++    private $storeManager;
++
++    /**
++     * Config constructor.
++     *
++     * @param StoreManagerInterface $storeManager
++     * @param ScopeConfigInterface $scopeConfig
++     */
++    public function __construct(
++        StoreManagerInterface $storeManager,
++        ScopeConfigInterface $scopeConfig
++    ) {
++        $this->storeManager = $storeManager;
++        $this->scopeConfig = $scopeConfig;
++    }
++
++    /**
++     * Gets customer's current currency
++     *
++     * @param null $store
++     * @return mixed
++     * @throws \Magento\Framework\Exception\NoSuchEntityException
++     */
++    protected function getCurrentCurrencyCode($store = null)
++    {
++        return $this->storeManager->getStore()->getCurrentCurrency()->getCode();
++    }
++
++    /**
++     * @param string $scope
++     * @param null $scopeCode
++     *
++     * @return mixed
++     */
++    public function getPaymentRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return $this->scopeConfig->getValue(
++            'payment/amazon_payment/payment_region',
++            $scope,
++            $scopeCode
++        );
++    }
++
++    /**
++     * Checks to see if store's selected region is a multicurrency region.
++     * @param string $scope
++     * @param null $scopeCode
++     * @return bool
++     */
++    public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $mcRegions = $this->scopeConfig->getValue(
++            'multicurrency/regions',
++            $scope,
++            $scopeCode
++        );
++
++        if ($mcRegions) {
++            $allowedRegions = explode(',', $mcRegions);
++
++            if (in_array($this->getPaymentRegion($scope, $scopeCode), $allowedRegions)) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    /**
++     * Check to see if multicurrency is enabled and if it's available for given endpoint/region
++     *
++     * @param string $scope
++     * @param null $scopeCode
++     *
++     * @return bool
++     */
++    public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $enabled = $this->scopeConfig->getValue(
++            'payment/amazon_payment/multicurrency',
++            $scope,
++            $scopeCode
++        );
++
++        if ($enabled) {
++            return $this->isMulticurrencyRegion($scope, $scopeCode);
++        }
++
++        return false;
++    }
++
++    /**
++     * @param string $scope
++     * @param string $scopeCode
++     * @return array
++     */
++    public function getValidCurrencies($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return explode(',', $this->scopeConfig->getValue('multicurrency/currencies', $scope, $scopeCode));
++    }
++
++    /**
++     * @param string $currencyCode
++     * @param string $scope
++     * @param string $scopeCode
++     * @return boolean
++     */
++    public function canUseCurrency($currencyCode, $scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $result = false;
++        if ($this->multiCurrencyEnabled($scope, $scopeCode)) {
++            $result = in_array($currencyCode, $this->getValidCurrencies($scope, $scopeCode));
++        }
++        return $result;
++    }
++
++    /**
++     * Only certain currency codes are allowed to be used with multi-currency
++     *
++     * @param null $store
++     * @return bool
++     */
++    public function useMultiCurrency($store = null)
++    {
++        return $this->canUseCurrency($this->getCurrentCurrencyCode(), ScopeInterface::SCOPE_STORE, $store);
++    }
++
++    /*
++     * @return string
++    */
++    public function getPresentmentCurrency()
++    {
++        return $this->getCurrentCurrencyCode();
++    }
++
++    /**
++     * Retrieves the base currency of the store.
++     *
++     * @param null $store
++     * @return mixed
++     */
++    public function getBaseCurrencyCode($store = null)
++    {
++        return $this->scopeConfig->getValue(
++            'currency/options/base',
++            ScopeInterface::SCOPE_STORE,
++            $store
++        );
++    }
++
++    /**
++     * Is AmazonWebapiException code a soft decline error?
++     *
++     * @param $errorCode
++     * @return bool
++     */
++    public function isSoftDecline($errorCode)
++    {
++        return $errorCode == $this->scopeConfig->getValue('payment/amazon_payment/soft_decline_code');
++    }
++}
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -17,6 +17,7 @@
+ namespace Amazon\Core\Model\Config;
+ 
+ use Amazon\Core\Helper\Data as CoreHelper;
++use Amazon\Core\Model\AmazonConfig;
+ use Magento\Framework\App\State;
+ use Magento\Framework\App\Cache\Type\Config as CacheTypeConfig;
+ use Magento\Backend\Model\UrlInterface;
+@@ -31,6 +32,7 @@ class SimplePath
+ {
+ 
+     const CONFIG_XML_PATH_PRIVATE_KEY = 'payment/amazon_payments/simplepath/privatekey';
++
+     const CONFIG_XML_PATH_PUBLIC_KEY  = 'payment/amazon_payments/simplepath/publickey';
+ 
+     private $_spIds = [
+@@ -47,16 +49,40 @@ class SimplePath
+         'JPY' => 'ja',
+     ];
+ 
++    /**
++     * @var
++     */
+     private $_storeId;
++
++    /**
++     * @var
++     */
+     private $_websiteId;
++
++    /**
++     * @var string
++     */
+     private $_scope;
++
++    /**
++     * @var int
++     */
+     private $_scopeId;
+ 
++    /**
++     * @var CoreHelper
++     */
+     private $coreHelper;
+ 
++    /**
++     * @var AmazonConfig
++     */
++    private $amazonConfig;
++
+     /**
+      * SimplePath constructor.
+      * @param CoreHelper $coreHelper
++     * @param AmazonConfig $amazonConfig
+      * @param \Magento\Framework\App\Config\ConfigResource\ConfigInterface $config
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
+      * @param \Magento\Framework\App\ProductMetadataInterface $productMeta
+@@ -75,6 +101,7 @@ class SimplePath
+      */
+     public function __construct(
+         CoreHelper $coreHelper,
++        AmazonConfig $amazonConfig,
+         \Magento\Framework\App\Config\ConfigResource\ConfigInterface $config,
+         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+         \Magento\Framework\App\ProductMetadataInterface $productMeta,
+@@ -90,6 +117,7 @@ class SimplePath
+         \Psr\Log\LoggerInterface $logger
+     ) {
+         $this->coreHelper    = $coreHelper;
++        $this->amazonConfig  = $amazonConfig;
+         $this->config        = $config;
+         $this->scopeConfig   = $scopeConfig;
+         $this->productMeta   = $productMeta;
+@@ -166,6 +194,19 @@ class SimplePath
+         return $this->getEndpointDomain() . 'register/getpublickey';
+     }
+ 
++    /**
++     * Return listener origins
++     */
++    public function getListenerOrigins()
++    {
++        return [
++            'payments.amazon.com',
++            'payments-eu.amazon.com',
++            'sellercentral.amazon.com',
++            'sellercentral-europe.amazon.com'
++        ];
++    }
++
+     /**
+      * Generate and save RSA keys
+      */
+@@ -199,7 +240,9 @@ class SimplePath
+     /**
+      * Return RSA public key
+      *
+-     * @param bool $pemformat Return key in PEM format
++     * @param bool $pemformat
++     * @param bool $reset
++     * @return mixed|string|string[]|null
+      */
+     public function getPublicKey($pemformat = false, $reset = false)
+     {
+@@ -274,7 +317,8 @@ class SimplePath
+             // Retrieve Amazon public key to verify signature
+             try {
+                 $client = new \Zend_Http_Client(
+-                    $this->getEndpointPubkey(), [
++                    $this->getEndpointPubkey(),
++                    [
+                         'maxredirects' => 2,
+                         'timeout'      => 30,
+                     ]
+@@ -308,23 +352,12 @@ class SimplePath
+                     OPENSSL_PKCS1_OAEP_PADDING
+                 );
+ 
+-                // Decrypt final payload (AES 128-bit CBC)
+-                if (function_exists('mcrypt_decrypt')) {
+-                    $finalPayload = @mcrypt_decrypt(
+-                        MCRYPT_RIJNDAEL_128,
+-                        $decryptedKey,
+-                        base64_decode($payload->encryptedPayload),
+-                        MCRYPT_MODE_CBC,
+-                        base64_decode($payload->iv)
+-                    );
+-                } else {
+-                    // This library uses openssl_decrypt, which may have issues
+-                    $aes = new AES();
+-                    $aes->setKey($decryptedKey);
+-                    $aes->setIV(base64_decode($payload->iv, true));
+-                    $aes->setKeyLength(128);
+-                    $finalPayload = $aes->decrypt($payload->encryptedPayload);
+-                }
++                // Decrypt final payload (AES 256-bit CBC)
++                $aes = new AES();
++                $aes->setKey($decryptedKey);
++                $aes->setIV(base64_decode($payload->iv, true));
++                $aes->setKeyLength(256);
++                $finalPayload = $aes->decrypt(base64_decode($payload->encryptedPayload));
+ 
+                 // Remove binary characters
+                 $finalPayload = preg_replace('/[\x00-\x1F\x80-\xFF]/', '', $finalPayload);
+@@ -346,7 +379,8 @@ class SimplePath
+             $this->messageManager->addError(
+                 __(
+                     "If you're experiencing consistent errors with transferring keys, " .
+-                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.", $link
++                    "click <a href=\"%1\" target=\"_blank\">Manual Transfer Instructions</a> to learn more.",
++                    $link
+                 )
+             );
+         }
+@@ -357,7 +391,9 @@ class SimplePath
+     /**
+      * Save values to Mage config
+      *
+-     * @param string $json
++     * @param $json
++     * @param bool $autoEnable
++     * @return bool
+      */
+     public function saveToConfig($json, $autoEnable = true)
+     {
+@@ -503,9 +539,14 @@ class SimplePath
+      */
+     public function getRegion()
+     {
+-        $currency = $this->getConfig('currency/options/default');
++        $currency = $this->getCurrency();
++
++        $region = null;
++        if ($currency) {
++            $region = isset($this->_mapCurrencyRegion[$currency]) ? strtoupper($this->_mapCurrencyRegion[$currency]) : 'DE';
++        }
++
+ 
+-        $region = isset($this->_mapCurrencyRegion[$currency]) ? strtoupper($this->_mapCurrencyRegion[$currency]) : '';
+         if ($region == 'DE') {
+             $region = 'Euro Region';
+         }
+@@ -519,7 +560,15 @@ class SimplePath
+     public function getCurrency()
+     {
+         $currency = $this->getConfig('currency/options/default');
+-        return (isset($this->_mapCurrencyRegion[$currency])) ? $currency : null;
++        $isCurrencyValid = isset($this->_mapCurrencyRegion[$currency]);
++        if (!$isCurrencyValid) {
++            if ($this->getConfig(CoreHelper::AMAZON_ACTIVE, $this->_scope, $this->_scopeId)) {
++                $isCurrencyValid = $this->amazonConfig->canUseCurrency($currency, $this->_scope, $this->_scopeId);
++            } else {
++                $isCurrencyValid = in_array($currency, $this->amazonConfig->getValidCurrencies($this->_scope, $this->_scopeId));
++            }
++        }
++        return $isCurrencyValid ? $currency : null;
+     }
+ 
+     /**
+@@ -545,6 +594,7 @@ class SimplePath
+             'isSecure'      => (int) ($this->request->isSecure()),
+             'hasOpenssl'    => (int) (extension_loaded('openssl')),
+             'formParams'    => $this->getFormParams(),
++            'isMultiCurrencyRegion' => (int) $this->amazonConfig->isMulticurrencyRegion($this->_scope, $this->_scopeId),
+         ];
+     }
+ }
+
+--- a/Observer/PaymentConfigSaveAfter.php
++++ b/Observer/PaymentConfigSaveAfter.php
+@@ -60,11 +60,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+      */
+     private $request;
+ 
+-    /**
+-     * @var WriterInterface
+-     */
+-    private $configWriter;
+-
+     /**
+      * PaymentConfigSaveAfter constructor.
+      *
+@@ -74,7 +69,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+      * @param Data $amazonCoreHelper
+      * @param ReinitableConfigInterface $config
+      * @param RequestInterface $request
+-     * @param WriterInterface $configWriter
+      */
+     public function __construct(
+         ApiCredentialsValidatorFactory $apiCredentialsValidatorFactory,
+@@ -82,8 +76,7 @@ class PaymentConfigSaveAfter implements ObserverInterface
+         Json $jsonCredentials,
+         Data $amazonCoreHelper,
+         ReinitableConfigInterface $config,
+-        RequestInterface $request,
+-        WriterInterface $configWriter
++        RequestInterface $request
+     ) {
+         $this->apiCredentialsValidatorFactory = $apiCredentialsValidatorFactory;
+         $this->messageManager                 = $messageManager;
+@@ -91,7 +84,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+         $this->jsonCredentials                = $jsonCredentials;
+         $this->appConfig                      = $config;
+         $this->request                        = $request;
+-        $this->configWriter                   = $configWriter;
+     }
+ 
+     /**
+@@ -99,9 +91,6 @@ class PaymentConfigSaveAfter implements ObserverInterface
+      */
+     public function execute(Observer $observer)
+     {
+-        // Make sure address captures 3 lines to be compatible with AP
+-        $this->configWriter->save('customer/address/street_lines', 3);
+-
+         if (!$this->request->getParam('amazon_test_creds')) {
+             return;
+         }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,12 +2,12 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.0.0",
++  "version": "3.7.1",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
+     "magento/framework": "*",
+     "magento/module-sales": "*",
+     "magento/module-config": "*",
+@@ -20,6 +20,7 @@
+     "magento/module-backend": "*",
+     "magento/module-payment": "*",
+     "magento/module-paypal": "*",
++    "magento/module-eav": "*",
+     "amzn/amazon-pay-sdk-php": "^3.2.0"
+   },
+   "autoload": {
+
+--- a/etc/adminhtml/system.xml
++++ b/etc/adminhtml/system.xml
+@@ -152,6 +152,12 @@
+                             <label>Store Name</label>
+                             <config_path>payment/amazon_payment/storename</config_path>
+                         </field>
++                        <field id="multicurrency" translate="label" type="select" sortOrder="10" showInDefault="0" showInWebsite="0" showInStore="1">
++                            <label>Use Multi-currency</label>
++                            <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
++                            <config_path>payment/amazon_payment/multicurrency</config_path>
++                            <comment><![CDATA[Amazon Pay currently supports multi-currency only for UK and EU endpoints. Currencies supported include: AUD, GBP, DKK, EUR, HKD, JPY, NZD, NOK, ZAR, SEK, CHF USD.]]></comment>
++                        </field>
+                     </group>
+                     <group id="extra_options" translate="label" type="text" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                         <label>Developer Options</label>
+
+--- a/etc/config.xml
++++ b/etc/config.xml
+@@ -25,6 +25,10 @@
+                 <jp>https://payments.amazon.co.jp/overview</jp>
+             </country>
+         </region>
++        <multicurrency>
++            <regions>uk,de</regions>
++            <currencies>AUD,GBP,DKK,EUR,HKD,JPY,NZD,NOK,ZAR,SEK,CHF,USD</currencies>
++        </multicurrency>
+         <client>
+             <paths>
+                 <secretkey>secret_key</secretkey>
+@@ -50,5 +54,10 @@
+                 <jp>https://static-fe.payments-amazon.com/OffAmazonPayments/jp/sandbox/lpa/js/Widgets.js?nomin</jp>
+             </sandbox>
+         </widget>
++        <customer>
++            <address>
++                <street_lines>3</street_lines>
++            </address>
++        </customer>
+     </default>
+ </config>
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -82,4 +82,24 @@
+     <type name="Magento\Checkout\CustomerData\Cart">
+         <plugin name="amazon_core_cart_section" type="Amazon\Core\Plugin\CartSection" />
+     </type>
++    <type name="Magento\Config\Model\Config\TypePool">
++        <arguments>
++            <argument name="sensitive" xsi:type="array">
++                <item name="payment/amazon_payments/simplepath/privatekey" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/client_secret" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/secret_key" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/credentials_json" xsi:type="string">1</item>
++            </argument>
++            <argument name="environment" xsi:type="array">
++                <item name="payment/amazon_payments/simplepath/publickey" xsi:type="string">1</item>
++                <item name="payment/amazon_payments/simplepath/privatekey" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/merchant_id" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/client_id" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/client_secret" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/access_key" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/secret_key" xsi:type="string">1</item>
++                <item name="payment/amazon_payment/sandbox" xsi:type="string">1</item>
++            </argument>
++        </arguments>
++    </type>
+ </config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.0.0">
++    <module name="Amazon_Core" setup_version="3.7.1">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+
+--- a/view/adminhtml/templates/system/config/simplepath_admin.phtml
++++ b/view/adminhtml/templates/system/config/simplepath_admin.phtml
+@@ -1,4 +1,3 @@
+-<div id="amazon_simplepath">
+ <!--
+ /**
+  * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+@@ -17,7 +16,7 @@
+ -->
+ <br/>
+ <div data-mage-init='{
+-        "Amazon_Core/js/simplepath": <?php echo /* @noEscape */ $block->getJsonConfig() ?> }'
++        "Amazon_Core/js/simplepath": <?php echo $block->escapeHtml($block->getJsonConfig()) ?> }'
+     id="amazon_simplepath">
+ 
+     <?php if (!$block->getCurrency()) : // SimplePath not supported ?>
+
+--- a/view/adminhtml/web/js/simplepath.js
++++ b/view/adminhtml/web/js/simplepath.js
+@@ -37,6 +37,8 @@ define(
+                     $container: null,
+                     pollInterval: 1500,
+                     $form: null,
++                    apSimplePathSelector: '#amazon_simplepath',
++                    apSimplePathBackSelector: '#amazon_simplepath_back',
+                 },
+ 
+                 /**
+@@ -46,7 +48,7 @@ define(
+                 initObservable: function () {
+                     var self = this;
+ 
+-                    self.$amazonSimplepath = $('#amazon_simplepath');
++                    self.$amazonSimplepath = $(self.apSimplePathSelector);
+                     self.$amazonFields = $('#payment_' + self.getCountry() + '_' + self.selector + ' .form-list');
+                     self.$amazonCredentialsHeader = $('#payment_' + self.getCountry() + '_' + self.selector
+                         + '_credentials-head');
+@@ -54,9 +56,18 @@ define(
+                         + '_credentials_credentials_json');
+                     self.$amazonMerchantId = $('#payment_' + self.getCountry() + '_' + self.selector
+                         + '_credentials_merchant_id').val();
+-                    self.$amazonSpBack = $('#amazon_simplepath_back');
+-                    self.$container = $('#amazon_simplepath');
++                    self.$amazonSpBack = $(self.apSimplePathBackSelector);
++                    self.$container = $(self.apSimplePathSelector);
+ 
++                    if (this.isMultiCurrencyRegion) {
++                        $('#row_payment_' + self.getCountry() + '_amazon_payment_advanced_sales_options_multicurrency').show();
++                        $('#row_payment_other_amazon_payment_advanced_sales_options_multicurrency').show();
++                    }
++                    else {
++                        $('#row_payment_' + self.getCountry() + '_amazon_payment_advanced_sales_options_multicurrency').hide();
++                        $('#row_payment_other_amazon_payment_advanced_sales_options_multicurrency').hide();
++                    }
++                    
+                     if (self.$amazonMerchantId) {
+                         self.hideAmazonConfig();
+                     }
+@@ -92,6 +103,13 @@ define(
+                     });
+ 
+                     $('#simplepath_form').on('submit', function () {
++                        // Remove the numeric indices added by Magento's form validation logic
++                        $('#simplepath_form :input').each(function() {
++                            if($(this).attr('orig-name')) {
++                                $(this).attr('name', $(this).attr('orig-name'));
++                                $(this).removeAttr('orig-name');
++                            }
++                        });
+                         self.setupWindowLaunch();
+                     });
+ 
+

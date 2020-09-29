@@ -97,6 +97,85 @@
 \ No newline at end of file
 
 --- /dev/null
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutBeginActionGroup.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <actionGroup name="AmazonCheckoutBeginActionGroup">
++        <waitForElement selector="{{CheckoutShippingMethodsSection.shippingMethodRow}}" time="20" stepKey="apWaitForShipping"/>
++        <waitForPageLoad stepKey="apWaitPageLoadShipping"/>
++
++        <click selector="{{CheckoutShippingMethodsSection.firstShippingMethod}}" stepKey="clickShippingMethod"/>
++        <waitForPageLoad stepKey="waitForPageLoadPayment1"/>
++        <waitForLoadingMaskToDisappear stepKey="waitForLoadingMaskToDisappear1"/>
++
++        <click selector="{{CheckoutShippingMethodsSection.next}}" stepKey="clickContinueButton"/>
++        <waitForPageLoad stepKey="waitForPageLoadPayment2"/>
++        <waitForLoadingMaskToDisappear stepKey="waitForLoadingMaskToDisappear2"/>
++    </actionGroup>
++</actionGroups>
+
+--- /dev/null
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutCcActionGroup.xml
+@@ -0,0 +1,28 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <actionGroup name="AmazonCheckoutCcActionGroup">
++        <arguments>
++            <argument name="cc" defaultValue="1111" type="string"/>
++        </arguments>
++        <executeJS function="return window.name;" stepKey="topName"/>
++        <!--Get wallet iframe name (dynamic)-->
++        <executeJS function="return jQuery('#walletWidgetDiv iframe').attr('name');" stepKey="iframeName"/>
++        <!--Expand Wallet Widget to expose all CC# (and avoid JS paging)-->
++        <executeJS function="jQuery('#walletWidgetDiv').css('height', '450px');" stepKey="executeJsHeight"/>
++        <!--Select CC#-->
++        <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFrameWidget"/>
++        <executeJS function="$('.card-number:contains({{cc}})').closest('a').click();" stepKey="executeJsCc"/>
++        <!--Place order-->
++        <switchToWindow userInput="{$topName}" stepKey="switchToWindowTop"/>
++        <waitForPageLoad stepKey="waitForPageLoadPayment1"/>
++        <click selector="{{CheckoutPaymentSection.placeOrder}}" stepKey="clickPlaceOrder"/>
++        <waitForPageLoad stepKey="waitForPageLoadPayment2"/>
++    </actionGroup>
++</actionGroups>
+
+--- /dev/null
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutSubmitActionGroup.xml
+@@ -0,0 +1,17 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <actionGroup name="AmazonCheckoutSubmitActionGroup" extends="AmazonCheckoutBeginActionGroup">
++        <!--Click Place Order button-->
++        <click selector="{{CheckoutPaymentSection.placeOrder}}" stepKey="clickPlaceOrder"/>
++
++        <!--See success messages-->
++        <see selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
++    </actionGroup>
++</actionGroups>
+
+--- /dev/null
 +++ b/Test/Mftf/ActionGroup/AmazonCheckoutBeginActionGroup.xml
 @@ -0,0 +1,16 @@
 +<?xml version="1.0" encoding="UTF-8"?>
@@ -186,26 +265,25 @@
 -</actionGroups>
 
 --- a/Test/Mftf/ActionGroup/AmazonLoginActionGroup.xml
-+++ b/Test/Mftf/ActionGroup/AmazonLoginPopupActionGroup.xml
-@@ -1,13 +1,5 @@
- <?xml version="1.0" encoding="UTF-8"?>
--<!--
-- /**
--  * Copyright © Magento, Inc. All rights reserved.
--  * See COPYING.txt for license details.
--  */
---->
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginPopupActionGroup.xml
+@@ -5,10 +5,8 @@
+   * See COPYING.txt for license details.
+   */
+ -->
 -
--<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ <actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 -              xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
-+<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
-     <!--Open login popup and complete form-->
+-    <!--Open login popup and complete form-->
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
      <actionGroup name="AmazonLoginPopupActionGroup">
          <!--Save opener window name since popup auto-closes-->
-@@ -25,14 +17,4 @@
+         <executeJS function="return window.name;" stepKey="openerName"/>
+@@ -23,16 +21,6 @@
+         <click selector="{{AmazonLoginSection.apSignin}}" stepKey="clickSigninButton"/>
+ 
          <!--Prevent "NoSuchWindowException: window was already closed"-->
-         <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener" />
-     </actionGroup>
+-        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener" />
+-    </actionGroup>
 -
 -    <!--Fill in login from redirect form and submit-->
 -    <actionGroup name="AmazonLoginRedirectActionGroup">
@@ -215,8 +293,55 @@
 -        <click selector="{{AmazonLoginSection.apSignin}}" stepKey="clickSigninButton"/>
 -        <waitForPageLoad stepKey="waitForPageLoadLogin"/>
 -        <conditionalClick selector="{{AmazonLoginSection.apConsent}}" dependentSelector="{{AmazonLoginSection.apConsent}}" visible="true" stepKey="clickLoginConsent"/>
--    </actionGroup>
++        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener"/>
+     </actionGroup>
  </actionGroups>
+
+--- /dev/null
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginRedirectActionGroup.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <actionGroup name="AmazonLoginRedirectActionGroup">
++        <waitForElement selector="{{AmazonLoginSection.apEmail}}" time="10" stepKey="apWaitForLogin"/>
++        <fillField selector="{{AmazonLoginSection.apEmail}}" userInput="{{AmazonLogin.email}}" stepKey="apEnterEmail"/>
++        <fillField selector="{{AmazonLoginSection.apPassword}}" userInput="{{AmazonLogin.password}}" stepKey="apEnterPassword"/>
++        <click selector="{{AmazonLoginSection.apSignin}}" stepKey="clickSigninButton"/>
++        <waitForPageLoad stepKey="waitForPageLoadLogin"/>
++        <conditionalClick selector="{{AmazonLoginSection.apConsent}}" dependentSelector="{{AmazonLoginSection.apConsent}}" visible="true" stepKey="clickLoginConsent"/>
++    </actionGroup>
++</actionGroups>
+
+--- /dev/null
++++ b/Test/Mftf/ActionGroup/AmazonLoginPopupActionGroup.xml
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <!--Open login popup and complete form-->
++    <actionGroup name="AmazonLoginPopupActionGroup">
++        <!--Save opener window name since popup auto-closes-->
++        <executeJS function="return window.name;" stepKey="openerName"/>
++
++        <switchToWindow userInput="amazonloginpopup" stepKey="switchToWindowLoginpopup"/>
++        <waitForPageLoad stepKey="waitForPageLoadPopup"/>
++
++        <!-- Fill in login form -->
++        <waitForElement selector="{{AmazonLoginSection.apEmail}}" time="30" stepKey="apWaitForLogin"/>
++        <fillField selector="{{AmazonLoginSection.apEmail}}" userInput="{{AmazonLogin.email}}" stepKey="apEnterEmail"/>
++        <fillField selector="{{AmazonLoginSection.apPassword}}" userInput="{{AmazonLogin.password}}" stepKey="apEnterPassword"/>
++        <click selector="{{AmazonLoginSection.apSignin}}" stepKey="clickSigninButton"/>
++
++        <!--Prevent "NoSuchWindowException: window was already closed"-->
++        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener" />
++    </actionGroup>
++</actionGroups>
 
 --- /dev/null
 +++ b/Test/Mftf/ActionGroup/AmazonLoginRedirectActionGroup.xml
@@ -290,6 +415,17 @@
 +        <data key="value">1</data>
 +    </entity>
 +</entities>
+
+--- a/Test/Mftf/Data/AmazonLoginData.xml
++++ b/Test/Mftf/Data/AmazonLoginData.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-          xsi:noNamespaceSchemaLocation="../../../../../../../../dev/tests/acceptance/vendor/magento/magento2-functional-testing-framework/src/Magento/FunctionalTestingFramework/DataGenerator/etc/dataProfileSchema.xsd">
++          xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
+     <entity name="AmazonLogin" type="amazon_login">
+         <data key="email">{{_CREDS.amazon/test_account_eu_email}}</data>
+         <data key="password">{{_CREDS.amazon/test_account_eu_password}}</data>
 
 --- a/Test/Mftf/Data/AmazonPaymentData.xml
 +++ b/Test/Mftf/Data/AmazonPaymentData.xml
@@ -442,6 +578,42 @@
 
 --- a/Test/Mftf/Metadata/amazon_payment_config-meta.xml
 +++ b/Test/Mftf/Metadata/AmazonPaymentConfigMeta.xml
+
+--- a/Test/Mftf/Section/AmazonAddressSection.xml
++++ b/Test/Mftf/Section/AmazonAddressSection.xml
+@@ -7,7 +7,7 @@
+ -->
+ 
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+     <!--Amazon New Address Widget-->
+     <section name="AmazonAddressSection">
+         <element name="country" type="select" selector="address-ui-widgets-countryCode-dropdown-nativeId"/>
+
+--- a/Test/Mftf/Section/AmazonCheckoutSection.xml
++++ b/Test/Mftf/Section/AmazonCheckoutSection.xml
+@@ -7,7 +7,7 @@
+ -->
+ 
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+     <section name="AmazonCheckoutSection">
+         <element name="cartPayButton" type="button" selector="#PayWithAmazon-checkout-cart-shortcut-buttons img"/>
+         <element name="miniCartPayButton" type="button" selector="#minicart-amazon-pay-button img"/>
+
+--- a/Test/Mftf/Section/AmazonLoginSection.xml
++++ b/Test/Mftf/Section/AmazonLoginSection.xml
+@@ -7,7 +7,7 @@
+ -->
+ 
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+     <section name="AmazonLoginSection">
+         <element name="apEmail" type="input" selector="#ap_email"/>
+         <element name="apPassword" type="input" selector="#ap_password"/>
 
 --- /dev/null
 +++ b/Test/Mftf/Test/AmazonCheckoutAddProductDetailTest.xml
@@ -1172,6 +1344,387 @@
 -        <waitForText userInput="The country associated with your address is not allowed" selector=".message" stepKey="waitForText"/>
 -    </test>
 -</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutAddressFailure.xml
+@@ -0,0 +1,57 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutAddressFailure" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test new shipping address validation"/>
++            <title value="Amazon Pay Invalid Shipping Address"/>
++            <description value="Adds an invalid address to Amazon Address widget to test Magento shipping address validation"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SingleCountryAllowConfig" stepKey="SingleCountryAllowConfig"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultCountryAllowConfig" stepKey="DefaultCountryAllowConfig"/>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Save opener window name since popup auto-closes-->
++        <executeJS function="return window.name;" stepKey="openerName"/>
++        <!--Get address widget iframe name (dynamic)-->
++        <executeJS function="return jQuery('#addressBookWidgetDiv iframe').attr('name');" stepKey="iframeName"/>
++        <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFrameWidget"/>
++        <!--Open new address pop-up-->
++        <click selector="{{AmazonCheckoutSection.addNewAddress}}" stepKey="clickAddNew"/>
++        <waitForPageLoad stepKey="waitForPageLoadPopup"/>
++        <executeJS function="return document.getElementById('addShippingAddressForm').target;" stepKey="windowAddressName"/>
++        <switchToWindow userInput="{$windowAddressName}" stepKey="switchToWindowAddress"/>
++        <waitForElement selector="{{AmazonAddressSection.name}}" time="10" stepKey="apWait"/>
++        <!--Add new address-->
++        <!--Select is hidden, so must change with JS-->
++        <executeJS function="document.getElementById('{{AmazonAddressSection.country}}').value = '{{AmazonAddressFail.country}}'" stepKey="apcountry"/>
++        <fillField selector="{{AmazonAddressSection.name}}" userInput="{{AmazonAddressFail.name}}" stepKey="enterName"/>
++        <fillField selector="{{AmazonAddressSection.address}}" userInput="{{AmazonAddressFail.address}}" stepKey="enterAddress"/>
++        <fillField selector="{{AmazonAddressSection.city}}" userInput="{{AmazonAddressFail.city}}" stepKey="enterCity"/>
++        <fillField selector="{{AmazonAddressSection.region}}" userInput="{{AmazonAddressFail.region}}" stepKey="enterRegion"/>
++        <fillField selector="{{AmazonAddressSection.postal}}" userInput="{{AmazonAddressFail.postal}}" stepKey="enterPostal"/>
++        <fillField selector="{{AmazonAddressSection.phone}}" userInput="{{AmazonAddressFail.phone}}" stepKey="enterPhone"/>
++        <click selector="{{AmazonAddressSection.submit}}" stepKey="clickAddAddressButton"/>
++        <!--Switch back to Magento and detect error from new address-->
++        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener"/>
++        <waitForText userInput="The country associated with your address is not allowed" selector=".message" stepKey="waitForText"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineAmazonRejected.xml
+@@ -0,0 +1,40 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutDeclineAmazonRejected" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
++            <title value="Amazon Pay Decline AmazonRejected"/>
++            <description value="Test CC decline message, logout, and redirect to cart with Amazon Pay"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="2323"/>
++        </actionGroup>
++        <!--Decline Error Message-->
++        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>        <!--Verify iframe wallet message-->
++        <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineInvalidPaymentMethod.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutDeclineInvalidPaymentMethod" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
++            <title value="Amazon Pay Decline InvalidPaymentMethod"/>
++            <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="3434"/>
++        </actionGroup>
++        <!--Decline Error Message-->
++        <waitForText userInput="There has been a problem with the selected payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclinePaymentMethod.xml
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutDeclinePaymentMethod" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
++            <title value="Amazon Pay Decline PaymentMethodNotAllowed"/>
++            <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="4545"/>
++        </actionGroup>
++        <!--Decline Error Message-->
++        <waitForText userInput="Please select a payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <!--Use default CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
++        <!--See success message-->
++        <see selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutAutomatic.xml
+@@ -0,0 +1,41 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutDeclineTransactionTimedOutAutomatic" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
++            <title value="Amazon Pay Decline TransactionTimedOut with Automatic Authorization)"/>
++            <description value="Test CC timeout message with Amazon Pay"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++
++        <before>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="5656"/>
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="Transaction has been declined" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutInstant.xml
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutDeclineTransactionTimedOutInstant" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
++            <title value="Amazon Pay Decline TransactionTimedOut with Instant Authorization"/>
++            <description value="Test CC timeout message with Amazon Pay"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_decline"/>
++        </annotations>
++
++        <before>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="5656"/>
++        </actionGroup>
++        <!--Timeout Error Message-->
++        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <!--Wait for redirect to cart-->
++        <wait time="5" stepKey="waitRedirect"/>
++        <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAAbandoned.xml
+@@ -0,0 +1,49 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutSCAAbandoned" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Amazon SCA Abandoned"/>
++            <title value="(SCA) Amazon SCA Abandoned"/>
++            <description value="Perform checkout from cart page and ensure SCA Abandoned page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with SCA Abandoned CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="4440"/>
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="Something's wrong with your payment method." selector=".message" stepKey="waitForText"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAFailure.xml
+@@ -0,0 +1,49 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutSCAFailure" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Amazon SCA Failed"/>
++            <title value="(SCA) Amazon SCA Failed"/>
++            <description value="Perform checkout from cart page and ensure SCA Failure page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with SCA Failure CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="8320"/>
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="There was a problem with your payment." selector=".message" stepKey="waitForText"/>
++    </test>
++</tests>
 
 --- /dev/null
 +++ b/Test/Mftf/Test/AmazonCheckoutDeclineTransactionTimedOutAutomaticTest.xml
@@ -2079,6 +2632,615 @@
 -</tests>
 
 --- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProduct.xml
+@@ -0,0 +1,40 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Prepares product to be checked out"/>
++            <title value="Amazon Pay Add Product to Cart"/>
++            <description value="Adds product to cart."/>
++            <severity value="BLOCKER"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to product page-->
++        <amOnPage url="$$createSimpleProduct.custom_attributes[url_key]$$.html" stepKey="navigateToSimpleProductPage"/>
++        <waitForPageLoad stepKey="waitForPageLoadCatalog"/>
++
++        <!--Add Product to Shopping Cart-->
++        <actionGroup ref="AddToCartFromStorefrontProductPageActionGroup" stepKey="addToCartFromStorefrontProductPage">
++            <argument name="productName" value="$$createSimpleProduct.name$$"/>
++        </actionGroup>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProductDetail.xml
+@@ -0,0 +1,44 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Prepares product to be checked out"/>
++            <title value="Amazon Pay Add Product to Cart from Detail Page"/>
++            <description value="Creates and loads simple product and adds it to cart using Amazon Pay button on product detail page."/>
++            <severity value="BLOCKER"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to product page-->
++        <amOnPage url="$$createSimpleProduct.custom_attributes[url_key]$$.html" stepKey="navigateToSimpleProductPage"/>
++        <waitForPageLoad stepKey="waitForPageLoadCatalog" time="30"/>
++
++        <!--Add to cart via Amazon Pay button on product page-->
++        <waitForElement selector="{{AmazonCheckoutSection.productPayButton}}" time="30" stepKey="apWaitForPayButton"/>
++        <waitForElement selector="#OffAmazonPaymentsWidgets0" time="30" stepKey="apWaitForPayButton2"/>
++        <waitForJS function="return document.getElementById('{{AmazonCheckoutSection.productPayButton}}'.substr(1)).clientHeight &gt; 10;" stepKey="waitForPayButtonClickable"/>
++        <click selector="{{AmazonCheckoutSection.productPayButton}}" stepKey="clickProductPayButton"/>
++
++        <!--Login (redirect)-->
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCart.xml
+@@ -0,0 +1,32 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutCart" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="Amazon Pay Checkout from Cart"/>
++            <description value="Perform checkout from cart page and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutConfigurableProduct.xml
+@@ -0,0 +1,143 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutConfigurableProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with configurable product"/>
++            <title value="Amazon Pay Checkout Configurable Product"/>
++            <description value="Perform checkout with configurable product and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <!-- Create Default Category -->
++            <createData entity="_defaultCategory" stepKey="createCategory"/>
++
++            <!-- Create an attribute with three options to be used in the first child product -->
++            <createData entity="productAttributeWithTwoOptions" stepKey="createConfigProductAttribute"/>
++            <createData entity="productAttributeOption1" stepKey="createConfigProductAttributeOption1">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++            <createData entity="productAttributeOption2" stepKey="createConfigProductAttributeOption2">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++            <createData entity="productAttributeOption3" stepKey="createConfigProductAttributeOption3">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++
++            <!-- Add the attribute just created to default attribute set -->
++            <createData entity="AddToDefaultSet" stepKey="createConfigAddToAttributeSet">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </createData>
++
++            <!-- Get the first option of the attribute created -->
++            <getData entity="ProductAttributeOptionGetter" index="1" stepKey="getConfigAttributeOption1">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </getData>
++
++            <!-- Get the second option of the attribute created -->
++            <getData entity="ProductAttributeOptionGetter" index="2" stepKey="getConfigAttributeOption2">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </getData>
++
++            <!-- Get the third option of the attribute created -->
++            <getData entity="ProductAttributeOptionGetter" index="3" stepKey="getConfigAttributeOption3">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++            </getData>
++
++            <!-- Create Configurable product -->
++            <createData entity="BaseConfigurableProduct" stepKey="createConfigProduct">
++                <requiredEntity createDataKey="createCategory"/>
++            </createData>
++
++            <!-- Create a simple product and give it the attribute with the first option -->
++            <createData entity="ApiSimpleOne" stepKey="createConfigChildProduct1">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption1"/>
++                <field key="price">10.00</field>
++            </createData>
++
++            <!--Create a simple product and give it the attribute with the second option -->
++            <createData entity="ApiSimpleTwo" stepKey="createConfigChildProduct2">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption2"/>
++                <field key="price">20.00</field>
++            </createData>
++
++            <!--Create a simple product and give it the attribute with the Third option -->
++            <createData entity="ApiSimpleTwo" stepKey="createConfigChildProduct3">
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption3"/>
++                <field key="price">30.00</field>
++            </createData>
++
++            <!-- Create the configurable product -->
++            <createData entity="ConfigurableProductThreeOptions" stepKey="createConfigProductOption">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigProductAttribute"/>
++                <requiredEntity createDataKey="getConfigAttributeOption1"/>
++                <requiredEntity createDataKey="getConfigAttributeOption2"/>
++                <requiredEntity createDataKey="getConfigAttributeOption3"/>
++            </createData>
++
++            <!-- Add the first simple product to the configurable product -->
++            <createData entity="ConfigurableProductAddChild" stepKey="createConfigProductAddChild1">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigChildProduct1"/>
++            </createData>
++
++            <!-- Add the second simple product to the configurable product -->
++            <createData entity="ConfigurableProductAddChild" stepKey="createConfigProductAddChild2">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigChildProduct2"/>
++            </createData>
++
++            <!-- Add the third simple product to the configurable product -->
++            <createData entity="ConfigurableProductAddChild" stepKey="createConfigProductAddChild3">
++                <requiredEntity createDataKey="createConfigProduct"/>
++                <requiredEntity createDataKey="createConfigChildProduct3"/>
++            </createData>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++            <magentoCLI command="indexer:reindex" stepKey="reindex"/>
++        </before>
++
++        <after>
++            <deleteData createDataKey="createConfigChildProduct1" stepKey="deleteSimpleProduct1"/>
++            <deleteData createDataKey="createConfigChildProduct2" stepKey="deleteSimpleProduct2"/>
++            <deleteData createDataKey="createConfigChildProduct3" stepKey="deleteSimpleProduct3"/>
++            <deleteData createDataKey="createConfigProduct" stepKey="deleteProduct"/>
++            <deleteData createDataKey="createCategory" stepKey="deleteCategory"/>
++            <deleteData createDataKey="createConfigProductAttribute" stepKey="deleteProductAttribute"/>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++        </after>
++
++        <!-- Add Configurable Product to the cart -->
++        <actionGroup ref="StorefrontAddConfigurableProductToTheCartActionGroup" stepKey="addConfigurableProductToCart">
++            <argument name="urlKey" value="$$createConfigProduct.custom_attributes[url_key]$$"/>
++            <argument name="productAttribute" value="$$createConfigProductAttribute.default_value$$"/>
++            <argument name="productOption" value="$$getConfigAttributeOption2.label$$"/>
++            <argument name="qty" value="2"/>
++        </actionGroup>
++
++        <!--Open minicart-->
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart"/>
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink"/>
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart"/>
++
++        <!--Login (redirect)-->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCustomer.xml
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutCustomer" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="Amazon Pay Checkout from Customer Account page"/>
++            <description value="Perform checkout after logging in from customer account page and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <!--Go to Customer page-->
++        <amOnPage url="/customer/account/" stepKey="goToMyAccountPage"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.loginButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutDisplayLanguage.xml
+@@ -0,0 +1,36 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutDisplayLanguage" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with non-default display language setting"/>
++            <title value="Amazon Pay Checkout Display Language"/>
++            <description value="Perform checkout with non-default display language and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <magentoCLI command="config:set payment/amazon_payment/button_display_language de_DE" stepKey="setDeDisplayLanguage"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="config:set payment/amazon_payment/button_display_language ''" stepKey="setDeDisplayLanguage"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutFreeShipping.xml
+@@ -0,0 +1,36 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutFreeShipping" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with free shipping"/>
++            <title value="Amazon Pay Checkout Free Shipping"/>
++            <description value="Perform checkout with free shipping"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <magentoCLI command="config:set carriers/freeshipping/active 1" stepKey="enableFreeShipping"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <magentoCLI command="config:set carriers/freeshipping/active 0" stepKey="disableFreeShipping"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutGroupedProduct.xml
+@@ -0,0 +1,81 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutGroupedProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Complete checkout with bundled product"/>
++            <title value="Amazon Pay Checkout Bundled Product"/>
++            <description value="Perform checkout with bundled product and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <before>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <!--Create Grouped product with three simple product -->
++            <createData entity="ApiProductWithDescription" stepKey="simple1" before="simple2">
++                <field key="price">100.00</field>
++            </createData>
++            <createData entity="ApiProductWithDescription" stepKey="simple2" before="simple3">
++                <field key="price">200.00</field>
++            </createData>
++            <createData entity="ApiProductWithDescription" stepKey="simple3" before="product">
++                <field key="price">300.00</field>
++            </createData>
++            <createData entity="ApiGroupedProduct" stepKey="product"/>
++            <createData entity="OneSimpleProductLink" stepKey="addProductOne">
++                <requiredEntity createDataKey="product"/>
++                <requiredEntity createDataKey="simple1"/>
++            </createData>
++            <updateData entity="OneMoreSimpleProductLink" createDataKey="addProductOne" stepKey="addProductTwo">
++                <requiredEntity createDataKey="product"/>
++                <requiredEntity createDataKey="simple2"/>
++            </updateData>
++            <updateData entity="OneMoreSimpleProductLink" createDataKey="addProductOne" stepKey="addProductThree">
++                <requiredEntity createDataKey="product"/>
++                <requiredEntity createDataKey="simple3"/>
++            </updateData>
++            <magentoCLI command="indexer:reindex" stepKey="reindex"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <deleteData createDataKey="simple1" stepKey="deleteProduct1"/>
++            <deleteData createDataKey="simple2" stepKey="deleteProduct2"/>
++            <deleteData createDataKey="simple3" stepKey="deleteProduct3"/>
++            <deleteData createDataKey="product" stepKey="deleteGroupProduct"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Fill Quantity and add Product to the cart -->
++        <actionGroup ref="StorefrontAddThreeGroupedProductToTheCartActionGroup" stepKey="addGropedProductsToTheCart">
++            <argument name="urlKey" value="$$product.custom_attributes[url_key]$$"/>
++            <argument name="product1" value="$$simple1.name$$"/>
++            <argument name="product2" value="$$simple2.name$$"/>
++            <argument name="product3" value="$$simple3.name$$"/>
++            <argument name="qty1" value="1"/>
++            <argument name="qty2" value="2"/>
++            <argument name="qty3" value="3"/>
++        </actionGroup>
++
++        <!--Open minicart-->
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart"/>
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink"/>
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart"/>
++
++        <!--Login (redirect)-->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutMiniCart.xml
+@@ -0,0 +1,32 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutMiniCart" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="Amazon Pay Checkout from Minicart"/>
++            <description value="Perform checkout from minicart and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <!--Open minicart-->
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart"/>
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink"/>
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart"/>
++
++        <!--Login (redirect)-->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutPage.xml
+@@ -0,0 +1,32 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutPage" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="Amazon Pay Checkout from Checkout page"/>
++            <description value="Perform checkout from checkout page and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <!--Go to Checkout-->
++        <actionGroup ref="GoToCheckoutFromMinicartActionGroup" stepKey="goToCheckoutFromMinicart"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.checkoutPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutProductDetail.xml
+@@ -0,0 +1,23 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutProductDetail" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="Amazon Pay Checkout from Product Details"/>
++            <description value="Perform checkout from product details page and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++        </annotations>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSCASuccess.xml
+@@ -0,0 +1,32 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutSCASuccess" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Success page elements are presented for placed order with Amazon Pay"/>
++            <title value="(SCA) Amazon Pay Checkout from Cart"/>
++            <description value="Perform checkout from cart page and ensure Success page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++        </annotations>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++
++        <!--Place order-->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++    </test>
++</tests>
+
+--- /dev/null
 +++ b/Test/Mftf/Test/AmazonInvoiceSingleTest.xml
 @@ -0,0 +1,74 @@
 +<?xml version="1.0" encoding="UTF-8"?>
@@ -2086,8 +3248,8 @@
 +    <test name="AmazonInvoiceSingle">
 +        <annotations>
 +            <stories value="Amazon Pay Invoice"/>
-+            <title value="Admin user must be unable to split invoices when configuration disallows"/>
-+            <description value="Admin user must be unable to split invoices when configuration disallows"/>
++            <title value="Admin user must be unable to split invoices when configuration disallows EU"/>
++            <description value="Admin user must be unable to split invoices when configuration disallows EU"/>
 +            <severity value="CRITICAL"/>
 +            <group value="amazon_invoice"/>
 +            <group value="amazon_payment"/>
@@ -2233,6 +3395,178 @@
 +        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice2"/>
 +        <waitForPageLoad stepKey="waitForLoadPage2"/>
 +        <see userInput="The invoice has been created." stepKey="seeMessage2"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonInvoiceTest/AmazonMultiInvoice.xml
+@@ -0,0 +1,84 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonMultiInvoice">
++        <annotations>
++            <stories value="Amazon Pay Invoice"/>
++            <title value="Admin user must be able to split invoices when configuration allows with Currency Config"/>
++            <description value="Admin user must be able to split invoices when configuration allows with Currency Config"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_invoice"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct1"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct2"/>
++            <createData entity="MultiInvoiceAmazonPaymentConfig" stepKey="MultiInvoiceAmazonPaymentConfig"/>
++            <createData entity="MultiInvoiceAmazonCurrencyConfig" stepKey="MultiInvoiceAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Go to product 1 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct1StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct1.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct1ToCart"/>
++
++        <!-- Go to product 2 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct2StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct2.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct2ToCart"/>
++
++        <!-- Click on mini cart -->
++        <actionGroup ref="StorefrontClickOnMiniCartActionGroup" stepKey="clickOnMiniCart"/>
++
++        <!-- Login (redirect) -->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++
++        <!-- Place order -->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
++
++        <!-- Login as admin -->
++        <actionGroup ref="AdminLoginActionGroup" stepKey="loginAsAdmin"/>
++
++        <!-- Open created order in backend -->
++        <amOnPage url="{{AdminOrdersPage.url}}" stepKey="goToOrders"/>
++        <waitForPageLoad stepKey="waitForOrdersPageLoad"/>
++        <actionGroup ref="OpenOrderByIdActionGroup" stepKey="filterOrderGridById">
++            <argument name="orderId" value="$grabOrderNumber"/>
++        </actionGroup>
++
++        <!-- Create Invoice 1 -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice1"/>
++        <waitForPageLoad stepKey="waitForInvoicePage1"/>
++        <fillField stepKey="fillQty" userInput="1" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('1')}}"/>
++        <fillField stepKey="fillNoQty" userInput="0" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('2')}}"/>
++        <click selector="{{AdminInvoiceItemsSection.updateQty}}" stepKey="updateQty"/>
++        <waitForPageLoad stepKey="waitPageToBeLoaded"/>
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice1"/>
++        <waitForPageLoad stepKey="waitForLoadPage1"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage1"/>
++
++        <!-- Create Invoice 2 -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice2"/>
++        <waitForPageLoad stepKey="waitForInvoicePage2"/>
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice2"/>
++        <waitForPageLoad stepKey="waitForLoadPage2"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage2"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonInvoiceTest/AmazonSingleInvoice.xml
+@@ -0,0 +1,80 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonSingleInvoice">
++        <annotations>
++            <stories value="Amazon Pay Invoice"/>
++            <title value="Admin user must be unable to split invoices when configuration disallows"/>
++            <description value="Admin user must be unable to split invoices when configuration disallows"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_invoice"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct1"/>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct2"/>
++            <createData entity="SingleInvoiceAmazonPaymentConfig" stepKey="SingleInvoiceAmazonPaymentConfig"/>
++            <createData entity="SingleInvoiceAmazonCurrencyConfig" stepKey="SingleInvoiceAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Go to product 1 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct1StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct1.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct1ToCart"/>
++
++        <!-- Go to product 2 page and add to cart -->
++        <actionGroup ref="StorefrontOpenProductPageActionGroup" stepKey="openProduct2StoreFront">
++            <argument name="productUrl" value="$$createSimpleProduct2.custom_attributes[url_key]$$"/>
++        </actionGroup>
++        <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProduct2ToCart"/>
++
++        <!-- Click on mini cart -->
++        <actionGroup ref="StorefrontClickOnMiniCartActionGroup" stepKey="clickOnMiniCart"/>
++
++        <!-- Login (redirect) -->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++
++        <!-- Place order -->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
++
++        <!-- Login as admin -->
++        <actionGroup ref="AdminLoginActionGroup" stepKey="loginAsAdmin"/>
++
++        <!-- Open created order in backend -->
++        <amOnPage url="{{AdminOrdersPage.url}}" stepKey="goToOrders"/>
++        <waitForPageLoad stepKey="waitForOrdersPageLoad"/>
++        <actionGroup ref="OpenOrderByIdActionGroup" stepKey="filterOrderGridById">
++            <argument name="orderId" value="$grabOrderNumber"/>
++        </actionGroup>
++
++        <!-- Create Invoice -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice"/>
++        <waitForPageLoad stepKey="waitForInvoicePage"/>
++
++        <!-- Verify invoice item qtys cannot be changed -->
++        <dontSeeElement stepKey="dontSeeItemQtyToInvoice1" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('1')}}"/>
++        <dontSeeElement stepKey="dontSeeItemQtyToInvoice2" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('2')}}"/>
++        <dontSeeElement stepKey="dontSeeUpdateQty" selector="{{AdminInvoiceItemsSection.updateQty}}"/>
++
++        <!-- Submit and verify the invoice created -->
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice"/>
++        <waitForPageLoad stepKey="waitForLoadPage"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage"/>
 +    </test>
 +</tests>
 

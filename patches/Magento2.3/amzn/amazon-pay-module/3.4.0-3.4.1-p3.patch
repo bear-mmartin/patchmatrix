@@ -1,0 +1,583 @@
+--- a/Block/Widget/ResetPassword.php
++++ b/Block/Widget/ResetPassword.php
+@@ -10,7 +10,7 @@ namespace Amazon\Payment\Block\Widget;
+ 
+ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+-use Magento\Framework\UrlFactory;
++use Magento\Customer\Model\Url;
+ use Magento\Customer\Model\Session;
+ use Amazon\Login\Api\CustomerLinkRepositoryInterface;
+ 
+@@ -28,13 +28,13 @@ class ResetPassword extends Template
+ 
+     public function __construct(
+         Context $context,
+-        UrlFactory $urlFactory,
++        Url $urlModel,
+         Session $session,
+         CustomerLinkRepositoryInterface $customerLink,
+         array $data = []
+     ) {
+         parent::__construct($context, $data);
+-        $this->urlModel = $urlFactory->create();
++        $this->urlModel = $urlModel;
+         $this->session = $session;
+         $this->customerLink = $customerLink;
+     }
+@@ -63,7 +63,7 @@ class ResetPassword extends Template
+ 
+     public function getLink()
+     {
+-        $url = $this->urlModel->getUrl('customer/account/forgotpassword');
++        $url = $this->urlModel->getLogoutUrl();
+ 
+         return $url;
+     }
+
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -162,6 +162,10 @@ class CompleteCheckout extends Action
+                         'The SCA challenge was not completed successfully.  '
+                         . 'Please try again, or use a different payment method.'
+                     ));
++                    return $this->_redirect('checkout', [
++                        '_query' => 'orderReferenceId=' . $this->getOrderReferenceId(),
++                        '_fragment' => 'payment',
++                    ]);
+             }
+ 
+             $orderReferenceId = $this->getOrderReferenceId();
+
+--- a/Domain/AmazonSetOrderDetailsResponse.php
++++ b/Domain/AmazonSetOrderDetailsResponse.php
+@@ -30,7 +30,11 @@ class AmazonSetOrderDetailsResponse
+         $data = $response->toArray();
+ 
+         if (200 != $data['ResponseStatus']) {
+-            throw new AmazonServiceUnavailableException();
++            throw new AmazonServiceUnavailableException(
++                $data['Error']['Type'],
++                $data['Error']['Code'],
++                $data['Error']['Message']
++            );
+         }
+ 
+         $details = $data['SetOrderReferenceDetailsResult']['OrderReferenceDetails'];
+
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -144,11 +144,9 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+             ];
+ 
+             $responseParser = $this->clientFactory->create($storeId)->setOrderReferenceDetails($data);
+-            $response       = $this->amazonSetOrderDetailsResponseFactory->create(
+-                [
++            $response = $this->amazonSetOrderDetailsResponseFactory->create([
+                 'response' => $responseParser
+-                ]
+-            );
++            ]);
+ 
+             $this->validateConstraints($response, $allowedConstraints);
+         } catch (LocalizedException $e) {
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -25,6 +25,7 @@ use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+ use Amazon\Payment\Model\OrderInformationManagement;
+ use Magento\Quote\Api\Data\PaymentInterface;
+ use Magento\Quote\Api\Data\AddressInterface;
++use Magento\Framework\Webapi\Rest\Request;
+ use Magento\Framework\Exception\LocalizedException;
+ use Amazon\Payment\Gateway\Config\Config as GatewayConfig;
+ use Magento\Quote\Api\CartRepositoryInterface;
+@@ -41,6 +42,11 @@ class ConfirmOrderReference
+      */
+     private $checkoutSession;
+ 
++    /**
++     * @var Request
++     */
++    private $request;
++
+     /**
+      * @var OrderInformationManagement
+      */
+@@ -54,19 +60,31 @@ class ConfirmOrderReference
+     /**
+      * ConfirmOrderReference constructor.
+      * @param Session $checkoutSession
++     * @param Request $request
+      * @param OrderInformationManagement $orderInformationManagement
+      * @param CartRepositoryInterface $quoteRepository
+      */
+     public function __construct(
+         Session $checkoutSession,
++        Request $request,
+         OrderInformationManagement $orderInformationManagement,
+         CartRepositoryInterface $quoteRepository
+     ) {
+         $this->checkoutSession = $checkoutSession;
++        $this->request = $request;
+         $this->orderInformationManagement = $orderInformationManagement;
+         $this->quoteRepository = $quoteRepository;
+     }
+ 
++    /**
++     * @return boolean
++     */
++    protected function canConfirmOrderReference()
++    {
++        $data = $this->request->getRequestData();
++        return !empty($data['confirmOrder']);
++    }
++
+     /**
+      * @param PaymentMethodManagementInterface $subject
+      * @param $result
+@@ -94,10 +112,12 @@ class ConfirmOrderReference
+                     $this->orderInformationManagement->saveOrderInformation($amazonOrderReferenceId);
+                 }
+ 
+-                $this->orderInformationManagement->confirmOrderReference(
+-                    $amazonOrderReferenceId,
+-                    $quote->getStoreId()
+-                );
++                if ($this->canConfirmOrderReference()) {
++                    $this->orderInformationManagement->confirmOrderReference(
++                        $amazonOrderReferenceId,
++                        $quote->getStoreId()
++                    );
++                }
+             }
+         }
+ 
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.4.0",
++  "version": "3.4.1-p3",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.0",
+-    "amzn/login-with-amazon-module": "^3.4.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p3",
++    "amzn/login-with-amazon-module": "^3.4.1-p3",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.4.0" >
++    <module name="Amazon_Payment" setup_version="3.4.1-p3" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -21,3 +21,4 @@
+ "Return to standard checkout","Zum Standard Checkout zurückkehren"
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -21,3 +21,4 @@
+ "Return to standard checkout","Zum Standard Checkout zurückkehren"
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Beim Zahlungsvorgang ist ein Problem aufgetreten. Ihre Bestellung wurde nicht aufgegeben und Ihr Konto nicht belastet."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Mit dieser Zahlungsart ist ein Problem aufgetreten. Um Ihre Bestellung abzuschließen, wählen Sie bitte eine andere aus."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Ihre Zahlung mit Amazon Pay ist derzeit noch in Prufung. Bitte beachten Sie, dass wir uns mit Ihnen in Kurze per Email in Verbindung setzen werden, falls noch Unklarheiten bestehen sollten."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Fall Sie ihr Passwort zurücksetzen möchten, <a href=""%1"">loggen Sie sich bitte aus</a> und klicken Sie auf der Anmeldeseite auf “Passwort vergessen”"
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -19,3 +19,4 @@
+ "Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
+ "Return to standard checkout","Return to standard checkout"
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page"
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -119,3 +119,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","There was a problem with your payment. Your order hasn't been placed, and you haven't been charged."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Something's wrong with your payment method. To place your order, try another."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page"
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Se ha producido un problema con el pago. Tu pedido no se ha confirmado y no se te ha cargado ningún importe."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Se ha producido un error con tu método de pago. Para confirmar tu pedido, prueba con otro método de pago."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Tu transaccion con Amazon Pay se esta verificando. Te informaremos tan pronto como sea posible."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Para restablecer tu contraseña, <a href=""%1"">cierra la sesión</a> y pulsa “¿Has olvidado tu contraseña?” en la pagina de acceso."
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Un problème s’est produit avec votre paiement. Votre commande n'a pas été passée et vous n'avez pas été débité."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Votre transaction avec Amazon Pay est en cours de validation. Vous serez informe prochainement de son suivi."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Pour réinitialiser votre mot de passe, veuillez-vous <a href=""%1"">Déconnexion</a> et cliquer sur “Mot de passe oublié?” depuis la page de connexion"
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Un problème s’est produit avec votre paiement. Votre commande n'a pas été passée et vous n'avez pas été débité."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Un problème est survenu avec votre moyen de paiement. Pour passer votre commande, essayez un autre moyen de paiement."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","Votre transaction avec Amazon Pay est en cours de validation. Vous serez informe prochainement de son suivi."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Pour réinitialiser votre mot de passe, veuillez-vous <a href=""%1"">Déconnexion</a> et cliquer sur “Mot de passe oublié?” depuis la page de connexion"
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -21,3 +21,4 @@
+ "Return to standard checkout","Ritorna al tuo checkout originale"
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","La vostra transazione con Amazon Pay e in fase di validazione. Vi informeremo del risultato della transazione a breve."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Per resettare la tua password, per favore <a href=""%1"">Esci</a> dal tuo account e seleziona “Hai dimenticato la password?" dalla pagina di Accesso"
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -22,3 +22,4 @@
+ "Amazon Pay was unable to authenticate the payment instrument.  Please try again, or use a different payment method.","Si è verificato un problema con il pagamento. L'ordine non è stato effettuato, pertanto non ti è stato addebitato alcun importo."
+ "The SCA challenge was not completed successfully.  Please try again, or use a different payment method.","Si è verificato un problema con il metodo di pagamento. Per effettuare l'ordine, prova con un altro metodo di pagamento."
+ "Your transaction with Amazon Pay is currently being validated. Please be aware that we will inform you shortly as needed.","La vostra transazione con Amazon Pay e in fase di validazione. Vi informeremo del risultato della transazione a breve."
++"In order to reset your password, please <a href=""%1"">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page","Per resettare la tua password, per favore <a href=""%1"">Esci</a> dal tuo account e seleziona “Hai dimenticato la password?" dalla pagina di Accesso"
+
+--- a/view/frontend/layout/checkout_index_index.xml
++++ b/view/frontend/layout/checkout_index_index.xml
+@@ -15,7 +15,7 @@
+  * permissions and limitations under the License.
+  */
+ -->
+-<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="checkout" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
++<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+     <body>
+         <referenceBlock name="minicart">
+             <arguments>
+
+--- a/view/frontend/templates/widget/resetpassword.phtml
++++ b/view/frontend/templates/widget/resetpassword.phtml
+@@ -6,9 +6,11 @@
+ 
+ // @codingStandardsIgnoreFile
+ 
+-/** @var \Magento\Customer\Block\Widget\Company $block */
++/** @var \Amazon\Payment\Block\Widget\ResetPassword $block */
+ ?>
+ <div class="field password-info">
+-    <p><?= $block->escapeHtml(__('If you created this account using Amazon Pay, you might not know your site password.')) ?>
+-        <a href="<?= $block->escapeHtml($block->getLink()); ?>"><?= $block->escapeHtml(__('Request a password to change your account password.')); ?></a></p>
++    <p>
++        <?= $block->escapeHtml(__('If you created this account using Amazon Pay, you might not know your site password.')) ?><br />
++        <?= __('In order to reset your password, please <a href="%1">Sign Out</a> and click on “Forgot Your Password?” from the Sign In page', $block->getLink()) ?>
++    </p>
+ </div>
+
+--- a/view/frontend/web/js/action/place-order.js
++++ b/view/frontend/web/js/action/place-order.js
+@@ -40,6 +40,7 @@ define(
+                     quoteId: quote.getQuoteId()
+                 });
+                 payload = {
++                    confirmOrder: true,
+                     cartId: quote.getQuoteId(),
+                     email: quote.guestEmail,
+                     paymentMethod: paymentData,
+@@ -48,6 +49,7 @@ define(
+             } else {
+                 serviceUrl = urlBuilder.createUrl('/carts/mine/set-payment-information', {});
+                 payload = {
++                    confirmOrder: true,
+                     cartId: quote.getQuoteId(),
+                     paymentMethod: paymentData,
+                     billingAddress: quote.billingAddress()
+
+--- /dev/null
++++ b/view/frontend/web/js/messages.js
+@@ -0,0 +1,50 @@
++/**
++ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++define(
++    [
++        'jquery',
++        'Amazon_Payment/js/model/storage',
++        'Magento_Theme/js/view/messages',
++        'Magento_Ui/js/model/messageList'
++    ], function(
++        $,
++        amazonStorage,
++        messagesFactory,
++        messageList
++    ) {
++        'use strict';
++
++        return {
++            defaults: {},
++            isAmazonAccountLoggedIn: amazonStorage.isAmazonAccountLoggedIn,
++
++            /*
++             * Magento's core Checkout module removes the "messages" block from the layout,
++             *  so we display them on checkout using the messageList API.
++             */
++            displayMessages: function () {
++                if(this.isAmazonAccountLoggedIn()) {
++                    var messagesComponent = messagesFactory();
++                    messagesComponent.cookieMessages.forEach(function(message) {
++                        if(message.type == 'error') {
++                            messageList.addErrorMessage({message: $.mage.__($("<textarea/>").html(message.text).text())});
++                        }
++                    });
++                }
++            }
++        }
++    }
++);
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -20,7 +20,8 @@ define(
+         'Magento_Checkout/js/model/url-builder',
+         'Magento_Checkout/js/checkout-data',
+         'Magento_Checkout/js/model/checkout-data-resolver',
+-        'uiRegistry'
++        'uiRegistry',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+@@ -41,7 +42,8 @@ define(
+         urlBuilder,
+         checkoutData,
+         checkoutDataResolver,
+-        registry
++        registry,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+@@ -122,6 +124,7 @@ define(
+                      */
+                     onError: amazonCore.handleWidgetError
+                 }).bind(self.options.addressWidgetDOMId);
++                amazonMessages.displayMessages();
+             },
+ 
+             /**
+
+--- a/view/frontend/web/js/view/payment/list.js
++++ b/view/frontend/web/js/view/payment/list.js
+@@ -35,6 +35,12 @@ define([
+         initialize: function () {
+ 
+             self = this;
++            amazonStorage.isAmazonAccountLoggedIn.subscribe(function (value) {
++                if (!value) {
++                    this._reloadPaymentMethods();
++                }
++            }, this);
++
+             this._hidePaymentMethodsOnLoad(); //hide methods on load
+ 
+             //subscribe to payment methods to remove other payment methods from render list
+
+--- a/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
++++ b/view/frontend/web/js/view/payment/method-renderer/amazon-payment-widget.js
+@@ -18,7 +18,8 @@ define(
+         'Magento_Checkout/js/model/payment/additional-validators',
+         'Magento_Checkout/js/model/url-builder',
+         'amazonPaymentConfig',
+-        'uiRegistry'
++        'uiRegistry',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+@@ -39,7 +40,8 @@ define(
+         additionalValidators,
+         urlBuilder,
+         amazonPaymentConfig,
+-        registry
++        registry,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+@@ -124,6 +126,7 @@ define(
+                     $(this.presentmentDOMId).show();
+                 }
+                 widget.bind(this.paymentWidgetDOMId);
++                amazonMessages.displayMessages();
+             },
+ 
+             /**
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -2,22 +2,14 @@
+ define(
+     [
+         'jquery',
+-        'underscore',
+-        'ko',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
+-        'Magento_Checkout/js/action/set-shipping-information',
+-        'Magento_Checkout/js/model/step-navigator',
+         'Amazon_Payment/js/model/storage'
+     ],
+     function (
+         $,
+-        _,
+-        ko,
+         Component,
+         customer,
+-        setShippingInformationAction,
+-        stepNavigator,
+         amazonStorage
+     ) {
+         'use strict';
+@@ -49,32 +41,20 @@ define(
+             },
+ 
+             /**
+-             * New setShipping Action for Amazon Pay to bypass validation
++             * Overridden validateShippingInformation for Amazon Pay to bypass validation
++             *
++             * @inheritDoc
+              */
+-            setShippingInformation: function () {
+-
+-                /**
+-                 * Set Amazon shipping info
+-                 */
+-                function setShippingInformationAmazon() {
+-                    setShippingInformationAction().done(
+-                        function () {
+-                            stepNavigator.next();
+-                        }
+-                    );
++            validateShippingInformation: function () {
++                if (!amazonStorage.isAmazonAccountLoggedIn()) {
++                    return this._super();
+                 }
+ 
+-                if (amazonStorage.isAmazonAccountLoggedIn() && customer.isLoggedIn()) {
+-                    setShippingInformationAmazon();
+-                } else if (amazonStorage.isAmazonAccountLoggedIn() && !customer.isLoggedIn()) {
+-
+-                    if (this.validateGuestEmail()) {
+-                        setShippingInformationAmazon();
+-                    }
+-                    //if using guest checkout or guest checkout with amazon pay we need to use the main validation
+-                } else if (this.validateShippingInformation()) {
+-                    setShippingInformationAmazon();
++                if (!customer.isLoggedIn()) {
++                    return this.validateGuestEmail();
+                 }
++
++                return true;
+             }
+         });
+     }
+

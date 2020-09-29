@@ -1,0 +1,43 @@
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,13 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.4.1-p3",
++  "version": "3.6.2",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.4.1-p3",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.6.2",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-store": "^101",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.4.1-p3">
++    <module name="Amazon_Login" setup_version="3.6.2">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+
