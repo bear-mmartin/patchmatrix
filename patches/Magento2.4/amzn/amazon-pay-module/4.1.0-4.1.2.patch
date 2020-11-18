@@ -1,0 +1,896 @@
+--- a/Gateway/Config/Config.php
++++ b/Gateway/Config/Config.php
+@@ -5,10 +5,14 @@
+  */
+ namespace Amazon\Payment\Gateway\Config;
+ 
++/**
++ * Class Config
++ * @package Amazon\Payment\Gateway\Config
++ */
+ class Config extends \Magento\Payment\Gateway\Config\Config
+ {
+     const CODE = 'amazon_payment';
+-    
++
+     const KEY_ACTIVE = 'active';
+ 
+     /**
+@@ -17,14 +21,31 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     protected $amazonConfig;
+ 
+     /**
++     * @var \Magento\Framework\App\RequestInterface
++     */
++    protected $request;
++
++    /**
++     * @var \Magento\Sales\Api\OrderRepositoryInterface
++     */
++    protected $orderRepository;
++
++    /**
++     * Config constructor.
+      * @param \Amazon\Core\Model\AmazonConfig $amazonConfig
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     * @param \Magento\Framework\App\RequestInterface $request
++     * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+      */
+     public function __construct(
+         \Amazon\Core\Model\AmazonConfig $amazonConfig,
+-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
++        \Magento\Framework\App\RequestInterface $request,
++        \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+     ) {
+         $this->amazonConfig = $amazonConfig;
++        $this->request = $request;
++        $this->orderRepository = $orderRepository;
+         parent::__construct($scopeConfig, self::CODE);
+     }
+ 
+@@ -34,6 +55,15 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+      */
+     protected function canCapturePartial($storeId = null)
+     {
++        // get the order store id if not provided
++        if (empty($storeId)) {
++            $orderId = $this->request->getParam('order_id');
++            if ($orderId) {
++                $order = $this->orderRepository->get($orderId);
++                $storeId = $order->getStoreId();
++            }
++        }
++
+         $region = $this->amazonConfig->getPaymentRegion(\Magento\Store\Model\ScopeInterface::SCOPE_STORE, $storeId);
+         switch ($region) {
+             case 'de':
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -100,8 +100,13 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         $storeId = $orderDO->getStoreId();
+         $storeName = '';
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
++        if ($payment->getAmazonDisplayInvoiceAmount()) {
++            $total = $payment->getAmazonDisplayInvoiceAmount();
++        }
++        else {
++            $total = $payment->getAmountOrdered();
++        }
+ 
+         // capture sale or new auth/capture for partial capture
+         if (isset($buildSubject['multicurrency']) && $buildSubject['multicurrency']['multicurrency']) {
+
+--- a/Gateway/Request/RefundRequestBuilder.php
++++ b/Gateway/Request/RefundRequestBuilder.php
+@@ -91,8 +91,8 @@ class RefundRequestBuilder implements BuilderInterface
+ 
+         $orderDO = $paymentDO->getOrder();
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
++        $total = $payment->getCreditMemo()->getGrandTotal();
+         $storeId = $orderDO->getStoreId();
+ 
+         // The magento order adapter doesn't expose everything we need to send a request to the AP API so we
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -128,11 +128,17 @@ class SettlementRequestBuilder implements BuilderInterface
+         $data = [];
+ 
+         $paymentDO = $this->subjectReader->readPayment($buildSubject);
+-
+         $orderDO = $paymentDO->getOrder();
++        $order = $paymentDO->getPayment()->getOrder();
++        $payment = $paymentDO->getPayment();
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $order->getOrderCurrencyCode();
++        if ($payment->getAmazonDisplayInvoiceAmount()) {
++            $total = $payment->getAmazonDisplayInvoiceAmount();
++        }
++        else {
++            $total = $payment->getAmountOrdered();
++        }
+ 
+         if ($buildSubject['multicurrency']['multicurrency']) {
+             $currencyCode = $buildSubject['multicurrency']['order_currency'];
+
+--- a/Helper/Address.php
++++ b/Helper/Address.php
+@@ -79,6 +79,9 @@ class Address
+         $address->setTelephone($amazonAddress->getTelephone());
+         $address->setCountryId($this->getCountryId($amazonAddress));
+ 
++        $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
++        $address->setCompany($company);
++
+         /*
+          * The number of lines in a street address is configurable via 'customer/address/street_lines'.
+          * To avoid discarding information, we'll concatenate additional lines so that they fit within the configured
+@@ -95,9 +98,6 @@ class Address
+         }
+         $address->setStreet(array_values($lines));
+ 
+-        $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
+-        $address->setCompany($company);
+-
+         if ($amazonAddress->getState()) {
+             $address->setRegion($this->getRegionData($amazonAddress, $address->getCountryId()));
+         }
+
+--- a/Model/AddressManagement.php
++++ b/Model/AddressManagement.php
+@@ -135,6 +135,9 @@ class AddressManagement implements AddressManagementInterface
+ 
+             if (isset($data['OrderReferenceDetails']['Destination']['PhysicalDestination'])) {
+                 $shippingAddress = $data['OrderReferenceDetails']['Destination']['PhysicalDestination'];
++                if (!isset($shippingAddress['Phone']) || empty($shippingAddress['Phone'])) {
++                    $shippingAddress['Phone'] = '000-000-0000';
++                }
+ 
+                 return $this->convertToMagentoAddress($shippingAddress, true);
+             }
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -290,6 +290,9 @@ class Authorization extends AbstractOperation
+             }
+ 
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+             $message = __('Captured amount of %1 online', $formattedAmount);
+             $payment->setDataUsingMethod(
+                 'base_amount_paid_online',
+@@ -297,7 +300,10 @@ class Authorization extends AbstractOperation
+             );
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
+-            $message = __('Authorized amount of %1 online', $formattedAmount);
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
++            $message = __('Authorized amount of %1', $formattedAmount);
+         }
+ 
+         $transaction = ($newTransaction) ?: $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+@@ -366,8 +372,14 @@ class Authorization extends AbstractOperation
+             $invoice = $this->getInvoice($transactionId, $order);
+             $this->setPaymentReview($order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
+         }
+ 
+         $message = __('Declined amount of %1 online', $formattedAmount);
+@@ -409,9 +421,15 @@ class Authorization extends AbstractOperation
+         if ($capture) {
+             $invoice = $this->getInvoiceAndSetCancelled($transactionId, $order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+             $this->addCaptureDeclinedNotice($order);
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
+         }
+ 
+         $message = __('Declined amount of %1 online', $formattedAmount);
+
+--- a/Model/PaymentManagement/Capture.php
++++ b/Model/PaymentManagement/Capture.php
+@@ -221,6 +221,9 @@ class Capture extends AbstractOperation
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $invoice = $this->getInvoice($transactionId, $order);
+         $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++            $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++        }
+         $message = __('Captured amount of %1 online', $formattedAmount);
+ 
+         $this->getInvoiceAndSetPaid($transactionId, $order);
+@@ -242,6 +245,9 @@ class Capture extends AbstractOperation
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $invoice = $this->getInvoice($transactionId, $order);
+         $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++            $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++        }
+         $message = __('Declined amount of %1 online', $formattedAmount);
+ 
+         $this->getInvoiceAndSetCancelled($transactionId, $order);
+
+--- /dev/null
++++ b/Observer/OrderPaymentCapture.php
+@@ -0,0 +1,39 @@
++<?php
++/**
++ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Observer;
++
++
++use Magento\Framework\Event\Observer;
++use Magento\Framework\Event\ObserverInterface;
++
++/**
++ * Class OrderPaymentCapture
++ * @package Amazon\Payment\Observer
++ */
++class OrderPaymentCapture implements ObserverInterface
++{
++    /**
++     * @param Observer $observer
++     */
++    public function execute(Observer $observer)
++    {
++        $payment = $observer->getPayment();
++        $invoice = $observer->getInvoice();
++
++        // set custom invoice amount on the payment in the display currency, as Magento does everything on the base currency
++        $payment->setAmazonDisplayInvoiceAmount($invoice->getGrandTotal());
++    }
++}
+
+--- /dev/null
++++ b/Plugin/OrderCurrencyComment.php
+@@ -0,0 +1,77 @@
++<?php
++/**
++ * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Plugin;
++
++use Magento\Framework\Phrase;
++use Magento\Sales\Model\Order\Payment;
++use Amazon\Payment\Gateway\Config\Config;
++
++/**
++ * Class OrderCurrencyComment
++ * @package Amazon\Payment\Plugin
++ */
++class OrderCurrencyComment
++{
++    /**
++     * @param Payment $subject
++     * @param $messagePrependTo
++     * @return array|null
++     */
++    public function beforePrependMessage(Payment $subject, $messagePrependTo)
++    {
++        if ($subject->getMethod() == Config::CODE) {
++            $order = $subject->getOrder();
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                if ($subject->getOrder()->getPayment()->getCreditmemo()) {
++                    $displayCurrencyAmount = $subject->getCreditmemo()->getGrandTotal();
++                }
++                else {
++                    $displayCurrencyAmount = $subject->getOrder()->getPayment()->getAmazonDisplayInvoiceAmount() ?: $subject->getAmountOrdered();
++                }
++                $messagePrependTo = __(
++                    $messagePrependTo->getText(),
++                    $order->getBaseCurrency()
++                        ->formatTxt($messagePrependTo->getArguments()[0]) .' ['. $order->formatPriceTxt($displayCurrencyAmount) .']'
++                );
++
++                return [$messagePrependTo];
++            }
++        }
++
++        return null;
++    }
++
++    /**
++     * @param Payment $subject
++     * @param $result
++     * @return string
++     */
++    public function afterFormatPrice(Payment $subject, $result)
++    {
++        if ($subject->getMethod() == Config::CODE) {
++            $order = $subject->getOrder();
++            if (($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()
++                && $subject->getMessage() instanceof Phrase
++                && $subject->getMessage()->getText() == 'Canceled order online')
++                || strpos($subject->getTransactionId(), '-void') !== FALSE
++            ) {
++                return $result .' ['. $order->formatPriceTxt($subject->getCreditmemo()->getGrandTotal()) .']';
++            }
++        }
++
++        return $result;
++    }
++}
+
+--- a/Test/Mftf/ActionGroup/AmazonCheckoutBeginActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutBeginActionGroup.xml
+@@ -2,6 +2,8 @@
+ <actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
+     <!--Begin checkout and proceed to final step-->
+     <actionGroup name="AmazonCheckoutBeginActionGroup">
++        <!-- slight delay to allow for the shipping methods to refresh if needed -->
++        <wait time="2" stepKey="giveShippingChanceToReload"/>
+         <waitForElement selector="{{CheckoutShippingMethodsSection.shippingMethodRow}}" time="20" stepKey="apWaitForShipping"/>
+         <waitForPageLoad stepKey="apWaitPageLoadShipping" />
+ 
+
+--- a/Test/Mftf/ActionGroup/AmazonCheckoutCcActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutCcActionGroup.xml
+
+--- a/Test/Mftf/ActionGroup/AmazonCheckoutSubmitActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutSubmitActionGroup.xml
+
+--- a/Test/Mftf/ActionGroup/AmazonLoginPopupActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginPopupActionGroup.xml
+
+--- a/Test/Mftf/ActionGroup/AmazonLoginRedirectActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginRedirectActionGroup.xml
+
+--- a/Test/Mftf/Data/AmazonLoginData.xml
++++ b/Test/Mftf/Data/AmazonLoginData.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-          xsi:noNamespaceSchemaLocation="../../../../../../../../dev/tests/acceptance/vendor/magento/magento2-functional-testing-framework/src/Magento/FunctionalTestingFramework/DataGenerator/etc/dataProfileSchema.xsd">
++          xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
+     <entity name="AmazonLogin" type="amazon_login">
+         <data key="email">{{_CREDS.amazon/test_account_eu_email}}</data>
+         <data key="password">{{_CREDS.amazon/test_account_eu_password}}</data>
+
+--- a/Test/Mftf/Section/AmazonAddressSection.xml
++++ b/Test/Mftf/Section/AmazonAddressSection.xml
+@@ -7,7 +7,7 @@
+ -->
+ 
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+     <!--Amazon New Address Widget-->
+     <section name="AmazonAddressSection">
+         <element name="country" type="select" selector="address-ui-widgets-countryCode-dropdown-nativeId"/>
+
+--- a/Test/Mftf/Section/AmazonCheckoutSection.xml
++++ b/Test/Mftf/Section/AmazonCheckoutSection.xml
+@@ -7,7 +7,7 @@
+ -->
+ 
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+     <section name="AmazonCheckoutSection">
+         <element name="cartPayButton" type="button" selector="#PayWithAmazon-checkout-cart-shortcut-buttons img"/>
+         <element name="miniCartPayButton" type="button" selector="#minicart-amazon-pay-button img"/>
+
+--- a/Test/Mftf/Section/AmazonLoginSection.xml
++++ b/Test/Mftf/Section/AmazonLoginSection.xml
+@@ -7,11 +7,11 @@
+ -->
+ 
+ <sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/sectionObjectSchema.xsd">
++        xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+     <section name="AmazonLoginSection">
+         <element name="apEmail" type="input" selector="#ap_email"/>
+         <element name="apPassword" type="input" selector="#ap_password"/>
+-        <element name="apSignin" type="button" selector="#signInSubmit button"/>
++        <element name="apSignin" type="button" selector="#signInSubmit"/>
+         <element name="apConsent" type="button" selector="[name=consentApproved]"/>
+     </section>
+ </sections>
+
+--- a/Test/Mftf/Test/AmazonCheckoutAddressFailureTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutAddressFailureTest.xml
+@@ -26,6 +26,7 @@
+         <!--Save opener window name since popup auto-closes-->
+         <executeJS function="return window.name;" stepKey="openerName"/>
+         <!--Get address widget iframe name (dynamic)-->
++        <wait time="5" stepKey="jankyWaitForIframe"/>
+         <executeJS function="return jQuery('#addressBookWidgetDiv iframe').attr('name');" stepKey="iframeName"/>
+         <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFrameWidget"/>
+         <!--Open new address pop-up-->
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineAmazonRejectedTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineAmazonRejectedTest.xml
+@@ -27,9 +27,9 @@
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+             <argument name="cc" value="2323" />
+         </actionGroup>
+-        <!--Decline Error Message-->
+-        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <!--Decline Error Message - These messages are sometimes not showing up, but the redirect to cart always happens -->
++<!--        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>-->
+         <!--Verify iframe wallet message-->
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+     </test>
+-</tests>
+\ No newline at end of file
++</tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineInvalidPaymentMethodTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineInvalidPaymentMethodTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclinePaymentMethodTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclinePaymentMethodTest.xml
+@@ -28,7 +28,7 @@
+             <argument name="cc" value="4545" />
+         </actionGroup>
+         <!--Decline Error Message-->
+-        <waitForText userInput="Please select a payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <waitForText userInput="The selected payment method is not available for this transaction" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
+         <!--Use default CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
+         <!--See success message-->
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTransactionTimedOutAutomaticTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutAutomaticTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTransactionTimedOutInstantTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutInstantTest.xml
+@@ -28,8 +28,8 @@
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+             <argument name="cc" value="5656" />
+         </actionGroup>
+-        <!--Timeout Error Message-->
+-        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <!--Timeout Error Message - These messages are sometimes not showing up, but the redirect to cart always happens -->
++<!--        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>-->
+         <!--Wait for redirect to cart-->
+         <wait time="5" stepKey="waitRedirect"/>
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSCAAbandonedTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAAbandonedTest.xml
+@@ -40,6 +40,6 @@
+             <argument name="cc" value="4440" />
+         </actionGroup>
+         <!--Transaction declined error message-->
+-        <waitForText userInput="Something's wrong with your payment method." selector=".message" stepKey="waitForText"/>
++        <waitForText userInput="There has been a problem with the selected payment method" selector=".message" stepKey="waitForText"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSCAFailureTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAFailureTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutAddProductDetailTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProductDetailTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutAddProductTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProductTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutCartTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCartTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutConfigurableProductTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutConfigurableProductTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutCustomerTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCustomerTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutDisplayLanguageTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutDisplayLanguageTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutFreeShippingTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutFreeShippingTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutGroupedProductTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutGroupedProductTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutMiniCartTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutMiniCartTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutPageTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutPageTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutProductDetailTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutProductDetailTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutSCASuccessTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSCASuccessTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessAfterDeclinedTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSuccessAfterDeclinedTest.xml
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessAfterSCAAbandonedTest.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSuccessAfterSCAAbandonedTest.xml
+@@ -1,26 +1,30 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+-    <test name="AmazonCheckoutSuccessAfterSCAAbandoned" extends="AmazonCheckoutAddProduct">
++<!--
++ /**
++  * Copyright © Magento, Inc. All rights reserved.
++  * See COPYING.txt for license details.
++  */
++-->
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutSCAAbandoned" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+-            <stories value="(SCA) Amazon SCA Success After Abandoned"/>
+-            <title value="(SCA) Amazon SCA Success After Abandoned"/>
+-            <description value="Perform checkout from cart page and ensure SCA can succeed after being Abandoned."/>
++            <stories value="(SCA) Amazon SCA Abandoned"/>
++            <title value="(SCA) Amazon SCA Abandoned"/>
++            <description value="Perform checkout from cart page and ensure SCA Abandoned page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+-            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+-            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
+-            <createData entity="EUAmazonCurrencyConfig" stepKey="SampleAmazonCurrencyConfig"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
+-            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+@@ -41,11 +45,5 @@
+         </actionGroup>
+         <!--Transaction declined error message-->
+         <waitForText userInput="Something's wrong with your payment method." selector=".message" stepKey="waitForText"/>
+-
+-        <waitForAjaxLoad stepKey="waitForAjaxLoad2"/>
+-
+-        <!--Placing order again with normal CC-->
+-        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
+-        <waitForText selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonInvoiceSingleTest.xml
++++ b/Test/Mftf/Test/AmazonInvoiceTest/AmazonInvoiceSingleTest.xml
+@@ -3,7 +3,7 @@
+     <test name="AmazonInvoiceSingle">
+         <annotations>
+             <stories value="Amazon Pay Invoice"/>
+-            <title value="Amazon Pay Single Invoice"/>
++            <title value="Admin user must be unable to split invoices when configuration disallows"/>
+             <description value="Admin user must be unable to split invoices when configuration disallows"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_invoice"/>
+
+--- a/Test/Mftf/Test/AmazonInvoiceSplitTest.xml
++++ b/Test/Mftf/Test/AmazonInvoiceTest/AmazonInvoiceSplitTest.xml
+@@ -3,7 +3,7 @@
+     <test name="AmazonInvoiceSplit">
+         <annotations>
+             <stories value="Amazon Pay Invoice"/>
+-            <title value="Amazon Pay Split Invoice"/>
++            <title value="Admin user must be able to split invoices when configuration allows"/>
+             <description value="Admin user must be able to split invoices when configuration allows"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_invoice"/>
+
+--- a/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
++++ b/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
+@@ -86,7 +86,7 @@ class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
+     /**
+      * Sets up base classes needed to mock the command strategy class
+      */
+-    protected function setUp()
++    protected function setUp(): void
+     {
+         $this->commandPool = $this->getMockBuilder(CommandPoolInterface::class)
+             ->disableOriginalConstructor()
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "4.1.0",
++  "version": "4.1.2",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.3.0||~7.4.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.0",
+-    "amzn/login-with-amazon-module": "^4.1.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.2",
++    "amzn/login-with-amazon-module": "^4.1.2",
+     "magento/framework": "*",
+     "magento/module-customer": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -318,4 +318,9 @@
+             <argument name="connectionName" xsi:type="string">sales</argument>
+         </arguments>
+     </type>
++    
++    <!-- Order comments for currency differences  -->
++    <type name="Magento\Sales\Model\Order\Payment">
++        <plugin name="amazon_pay_order_payment" type="Amazon\Payment\Plugin\OrderCurrencyComment" />
++    </type>
+ </config>
+
+--- a/etc/events.xml
++++ b/etc/events.xml
+@@ -40,4 +40,7 @@
+     <event name="amazon_payment_pending_authorization_hard_decline_after">
+         <observer name="amazon_payment_hard_decline_email" instance="Amazon\Payment\Observer\HardDeclinedEmailSender" />
+     </event>
++    <event name="sales_order_payment_capture">
++        <observer name="amazon_payment_order_payment_capture" instance="Amazon\Payment\Observer\OrderPaymentCapture" />
++    </event>
+ </config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="4.1.0" >
++    <module name="Amazon_Payment" setup_version="4.1.2" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -23,3 +23,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
++"or continue with Standard Checkout","or continue with Standard Checkout"
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -123,3 +123,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
++"or continue with Standard Checkout","or continue with Standard Checkout"
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
+ "The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
++"or continue with Standard Checkout","ou continuer avec le Checkout Standard"
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
+ "The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
++"or continue with Standard Checkout","ou continuer avec le Checkout Standard"
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
++"or continue with Standard Checkout","o continua con il Checkout Standard"
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
++"or continue with Standard Checkout","o continua con il Checkout Standard"
+
+--- a/view/frontend/requirejs-config.js
++++ b/view/frontend/requirejs-config.js
+@@ -27,6 +27,9 @@ var config = {
+         mixins: {
+             'Amazon_Payment/js/action/place-order': {
+                 'Amazon_Payment/js/model/place-order-mixin': true
++            },
++            'Magento_Tax/js/view/checkout/summary/grand-total': {
++                'Amazon_Payment/js/view/checkout/summary/grand-total-mixin': true
+             }
+         }
+     }
+
+--- /dev/null
++++ b/view/frontend/web/js/view/checkout/summary/grand-total-mixin.js
+@@ -0,0 +1,22 @@
++/*global define*/
++
++define([
++    'Amazon_Payment/js/model/storage'
++], function (amazonStorage) {
++    'use strict';
++
++    return function (GrandTotal) {
++        return GrandTotal.extend({
++            /**
++             * @return {Boolean}
++             */
++            isBaseGrandTotalDisplayNeeded: function () {
++                if (!amazonStorage.isAmazonAccountLoggedIn()) {
++                    return this._super();
++                }
++
++                return false;
++            }
++        });
++    }
++});
+
+--- a/view/frontend/web/template/checkout-button.html
++++ b/view/frontend/web/template/checkout-button.html
+@@ -35,7 +35,7 @@
+ </div>
+ 
+ <div class="amazon-divider" data-bind="visible: !isAmazonAccountLoggedIn() && isPwaVisible()">
+-    <span data-bind="i18n: 'Or continue below to pay with a credit card'"></span>
++    <span data-bind="i18n: 'or continue with Standard Checkout'"></span>
+ </div>
+ 
+ <!-- ko foreach: getRegion('after-amazon-button') -->
+
