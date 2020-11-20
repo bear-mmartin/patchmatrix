@@ -1,0 +1,780 @@
+--- a/Gateway/Config/Config.php
++++ b/Gateway/Config/Config.php
+@@ -5,10 +5,14 @@
+  */
+ namespace Amazon\Payment\Gateway\Config;
+ 
++/**
++ * Class Config
++ * @package Amazon\Payment\Gateway\Config
++ */
+ class Config extends \Magento\Payment\Gateway\Config\Config
+ {
+     const CODE = 'amazon_payment';
+-    
++
+     const KEY_ACTIVE = 'active';
+ 
+     /**
+@@ -17,14 +21,31 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+     protected $amazonConfig;
+ 
+     /**
++     * @var \Magento\Framework\App\RequestInterface
++     */
++    protected $request;
++
++    /**
++     * @var \Magento\Sales\Api\OrderRepositoryInterface
++     */
++    protected $orderRepository;
++
++    /**
++     * Config constructor.
+      * @param \Amazon\Core\Model\AmazonConfig $amazonConfig
+      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++     * @param \Magento\Framework\App\RequestInterface $request
++     * @param \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+      */
+     public function __construct(
+         \Amazon\Core\Model\AmazonConfig $amazonConfig,
+-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
++        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
++        \Magento\Framework\App\RequestInterface $request,
++        \Magento\Sales\Api\OrderRepositoryInterface $orderRepository
+     ) {
+         $this->amazonConfig = $amazonConfig;
++        $this->request = $request;
++        $this->orderRepository = $orderRepository;
+         parent::__construct($scopeConfig, self::CODE);
+     }
+ 
+@@ -34,6 +55,15 @@ class Config extends \Magento\Payment\Gateway\Config\Config
+      */
+     protected function canCapturePartial($storeId = null)
+     {
++        // get the order store id if not provided
++        if (empty($storeId)) {
++            $orderId = $this->request->getParam('order_id');
++            if ($orderId) {
++                $order = $this->orderRepository->get($orderId);
++                $storeId = $order->getStoreId();
++            }
++        }
++
+         $region = $this->amazonConfig->getPaymentRegion(\Magento\Store\Model\ScopeInterface::SCOPE_STORE, $storeId);
+         switch ($region) {
+             case 'de':
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -100,8 +100,13 @@ class AuthorizationRequestBuilder implements BuilderInterface
+         $storeId = $orderDO->getStoreId();
+         $storeName = '';
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
++        if ($payment->getAmazonDisplayInvoiceAmount()) {
++            $total = $payment->getAmazonDisplayInvoiceAmount();
++        }
++        else {
++            $total = $payment->getAmountOrdered();
++        }
+ 
+         // capture sale or new auth/capture for partial capture
+         if (isset($buildSubject['multicurrency']) && $buildSubject['multicurrency']['multicurrency']) {
+
+--- a/Gateway/Request/RefundRequestBuilder.php
++++ b/Gateway/Request/RefundRequestBuilder.php
+@@ -91,8 +91,8 @@ class RefundRequestBuilder implements BuilderInterface
+ 
+         $orderDO = $paymentDO->getOrder();
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $payment->getOrder()->getOrderCurrencyCode();
++        $total = $payment->getCreditMemo()->getGrandTotal();
+         $storeId = $orderDO->getStoreId();
+ 
+         // The magento order adapter doesn't expose everything we need to send a request to the AP API so we
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -128,11 +128,17 @@ class SettlementRequestBuilder implements BuilderInterface
+         $data = [];
+ 
+         $paymentDO = $this->subjectReader->readPayment($buildSubject);
+-
+         $orderDO = $paymentDO->getOrder();
++        $order = $paymentDO->getPayment()->getOrder();
++        $payment = $paymentDO->getPayment();
+ 
+-        $currencyCode = $orderDO->getCurrencyCode();
+-        $total = $buildSubject['amount'];
++        $currencyCode = $order->getOrderCurrencyCode();
++        if ($payment->getAmazonDisplayInvoiceAmount()) {
++            $total = $payment->getAmazonDisplayInvoiceAmount();
++        }
++        else {
++            $total = $payment->getAmountOrdered();
++        }
+ 
+         if ($buildSubject['multicurrency']['multicurrency']) {
+             $currencyCode = $buildSubject['multicurrency']['order_currency'];
+
+--- a/Helper/Address.php
++++ b/Helper/Address.php
+@@ -79,6 +79,9 @@ class Address
+         $address->setTelephone($amazonAddress->getTelephone());
+         $address->setCountryId($this->getCountryId($amazonAddress));
+ 
++        $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
++        $address->setCompany($company);
++
+         /*
+          * The number of lines in a street address is configurable via 'customer/address/street_lines'.
+          * To avoid discarding information, we'll concatenate additional lines so that they fit within the configured
+@@ -95,9 +98,6 @@ class Address
+         }
+         $address->setStreet(array_values($lines));
+ 
+-        $company = !empty($amazonAddress->getCompany()) ? $amazonAddress->getCompany() : '';
+-        $address->setCompany($company);
+-
+         if ($amazonAddress->getState()) {
+             $address->setRegion($this->getRegionData($amazonAddress, $address->getCountryId()));
+         }
+
+--- a/Model/AddressManagement.php
++++ b/Model/AddressManagement.php
+@@ -135,6 +135,9 @@ class AddressManagement implements AddressManagementInterface
+ 
+             if (isset($data['OrderReferenceDetails']['Destination']['PhysicalDestination'])) {
+                 $shippingAddress = $data['OrderReferenceDetails']['Destination']['PhysicalDestination'];
++                if (!isset($shippingAddress['Phone']) || empty($shippingAddress['Phone'])) {
++                    $shippingAddress['Phone'] = '000-000-0000';
++                }
+ 
+                 return $this->convertToMagentoAddress($shippingAddress, true);
+             }
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -290,6 +290,9 @@ class Authorization extends AbstractOperation
+             }
+ 
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+             $message = __('Captured amount of %1 online', $formattedAmount);
+             $payment->setDataUsingMethod(
+                 'base_amount_paid_online',
+@@ -297,7 +300,10 @@ class Authorization extends AbstractOperation
+             );
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
+-            $message = __('Authorized amount of %1 online', $formattedAmount);
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
++            $message = __('Authorized amount of %1', $formattedAmount);
+         }
+ 
+         $transaction = ($newTransaction) ?: $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+@@ -366,8 +372,14 @@ class Authorization extends AbstractOperation
+             $invoice = $this->getInvoice($transactionId, $order);
+             $this->setPaymentReview($order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
+         }
+ 
+         $message = __('Declined amount of %1 online', $formattedAmount);
+@@ -409,9 +421,15 @@ class Authorization extends AbstractOperation
+         if ($capture) {
+             $invoice = $this->getInvoiceAndSetCancelled($transactionId, $order);
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++            }
+             $this->addCaptureDeclinedNotice($order);
+         } else {
+             $formattedAmount = $order->getBaseCurrency()->formatTxt($payment->getBaseAmountAuthorized());
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getAmountOrdered()) .']';
++            }
+         }
+ 
+         $message = __('Declined amount of %1 online', $formattedAmount);
+
+--- a/Model/PaymentManagement/Capture.php
++++ b/Model/PaymentManagement/Capture.php
+@@ -221,6 +221,9 @@ class Capture extends AbstractOperation
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $invoice = $this->getInvoice($transactionId, $order);
+         $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++            $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++        }
+         $message = __('Captured amount of %1 online', $formattedAmount);
+ 
+         $this->getInvoiceAndSetPaid($transactionId, $order);
+@@ -242,6 +245,9 @@ class Capture extends AbstractOperation
+         $transaction = $this->paymentManagement->getTransaction($transactionId, $payment, $order);
+         $invoice = $this->getInvoice($transactionId, $order);
+         $formattedAmount = $order->getBaseCurrency()->formatTxt($invoice->getBaseGrandTotal());
++        if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++            $formattedAmount = $formattedAmount .' ['. $order->formatPriceTxt($payment->getGrandTotal()) .']';
++        }
+         $message = __('Declined amount of %1 online', $formattedAmount);
+ 
+         $this->getInvoiceAndSetCancelled($transactionId, $order);
+
+--- /dev/null
++++ b/Observer/OrderPaymentCapture.php
+@@ -0,0 +1,39 @@
++<?php
++/**
++ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Observer;
++
++
++use Magento\Framework\Event\Observer;
++use Magento\Framework\Event\ObserverInterface;
++
++/**
++ * Class OrderPaymentCapture
++ * @package Amazon\Payment\Observer
++ */
++class OrderPaymentCapture implements ObserverInterface
++{
++    /**
++     * @param Observer $observer
++     */
++    public function execute(Observer $observer)
++    {
++        $payment = $observer->getPayment();
++        $invoice = $observer->getInvoice();
++
++        // set custom invoice amount on the payment in the display currency, as Magento does everything on the base currency
++        $payment->setAmazonDisplayInvoiceAmount($invoice->getGrandTotal());
++    }
++}
+
+--- /dev/null
++++ b/Plugin/OrderCurrencyComment.php
+@@ -0,0 +1,77 @@
++<?php
++/**
++ * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License").
++ * You may not use this file except in compliance with the License.
++ * A copy of the License is located at
++ *
++ *  http://aws.amazon.com/apache2.0
++ *
++ * or in the "license" file accompanying this file. This file is distributed
++ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
++ * express or implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++namespace Amazon\Payment\Plugin;
++
++use Magento\Framework\Phrase;
++use Magento\Sales\Model\Order\Payment;
++use Amazon\Payment\Gateway\Config\Config;
++
++/**
++ * Class OrderCurrencyComment
++ * @package Amazon\Payment\Plugin
++ */
++class OrderCurrencyComment
++{
++    /**
++     * @param Payment $subject
++     * @param $messagePrependTo
++     * @return array|null
++     */
++    public function beforePrependMessage(Payment $subject, $messagePrependTo)
++    {
++        if ($subject->getMethod() == Config::CODE) {
++            $order = $subject->getOrder();
++            if ($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()) {
++                if ($subject->getOrder()->getPayment()->getCreditmemo()) {
++                    $displayCurrencyAmount = $subject->getCreditmemo()->getGrandTotal();
++                }
++                else {
++                    $displayCurrencyAmount = $subject->getOrder()->getPayment()->getAmazonDisplayInvoiceAmount() ?: $subject->getAmountOrdered();
++                }
++                $messagePrependTo = __(
++                    $messagePrependTo->getText(),
++                    $order->getBaseCurrency()
++                        ->formatTxt($messagePrependTo->getArguments()[0]) .' ['. $order->formatPriceTxt($displayCurrencyAmount) .']'
++                );
++
++                return [$messagePrependTo];
++            }
++        }
++
++        return null;
++    }
++
++    /**
++     * @param Payment $subject
++     * @param $result
++     * @return string
++     */
++    public function afterFormatPrice(Payment $subject, $result)
++    {
++        if ($subject->getMethod() == Config::CODE) {
++            $order = $subject->getOrder();
++            if (($order->getBaseCurrencyCode() != $order->getOrderCurrencyCode()
++                && $subject->getMessage() instanceof Phrase
++                && $subject->getMessage()->getText() == 'Canceled order online')
++                || strpos($subject->getTransactionId(), '-void') !== FALSE
++            ) {
++                return $result .' ['. $order->formatPriceTxt($subject->getCreditmemo()->getGrandTotal()) .']';
++            }
++        }
++
++        return $result;
++    }
++}
+
+--- a/Test/Mftf/Section/AmazonLoginSection.xml
++++ b/Test/Mftf/Section/AmazonLoginSection.xml
+@@ -11,7 +11,7 @@
+     <section name="AmazonLoginSection">
+         <element name="apEmail" type="input" selector="#ap_email"/>
+         <element name="apPassword" type="input" selector="#ap_password"/>
+-        <element name="apSignin" type="button" selector="#signInSubmit button"/>
++        <element name="apSignin" type="button" selector="#signInSubmit"/>
+         <element name="apConsent" type="button" selector="[name=consentApproved]"/>
+     </section>
+ </sections>
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "3.6.2",
++  "version": "3.7.3",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.1.3||~7.2.0||~7.3.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.6.2",
+-    "amzn/login-with-amazon-module": "^3.6.2",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.7.3",
++    "amzn/login-with-amazon-module": "^3.7.3",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-eav": "^102",
+
+--- a/etc/csp_whitelist.xml
++++ b/etc/csp_whitelist.xml
+@@ -10,6 +10,7 @@
+                 <value id="amazon_it" type="host">*.amazon.it</value>
+                 <value id="amazon_fr" type="host">*.amazon.fr</value>
+                 <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_de" type="host">*.amazon.de</value>
+                 <value id="amazonpay_com" type="host">*.amazonpay.com</value>
+                 <value id="amazonpay_co_uk" type="host">*.amazonpay.co.uk</value>
+                 <value id="amazonpay_co_jp" type="host">*.amazonpay.co.jp</value>
+@@ -17,6 +18,7 @@
+                 <value id="amazonpay_it" type="host">*.amazonpay.it</value>
+                 <value id="amazonpay_fr" type="host">*.amazonpay.fr</value>
+                 <value id="amazonpay_es" type="host">*.amazonpay.es</value>
++                <value id="amazonpay_de" type="host">*.amazonpay.de</value>
+                 <value id="amazonservices_com" type="host">mws.amazonservices.com</value>
+                 <value id="amazonservices_co_uk" type="host">mws.amazonservices.co.uk</value>
+                 <value id="amazonservices_co_jp" type="host">mws.amazonservices.co.jp</value>
+@@ -24,6 +26,7 @@
+                 <value id="amazonservices_it" type="host">mws.amazonservices.it</value>
+                 <value id="amazonservices_fr" type="host">mws.amazonservices.fr</value>
+                 <value id="amazonservices_es" type="host">mws.amazonservices.es</value>
++                <value id="amazonservices_de" type="host">mws.amazonservices.de</value>
+             </values>
+         </policy>
+         <policy id="script-src">
+@@ -35,6 +38,7 @@
+                 <value id="amazon_payment_widget_it" type="host">*.payments-amazon.it</value>
+                 <value id="amazon_payment_widget_fr" type="host">*.payments-amazon.fr</value>
+                 <value id="amazon_payment_widget_es" type="host">*.payments-amazon.es</value>
++                <value id="amazon_payment_widget_de" type="host">*.payments-amazon.de</value>
+             </values>
+         </policy>
+         <policy id="img-src">
+@@ -68,6 +72,7 @@
+                 <value id="ssl_images_amazon_it" type="host">*.ssl-images-amazon.it</value>
+                 <value id="ssl_images_amazon_fr" type="host">*.ssl-images-amazon.fr</value>
+                 <value id="ssl_images_amazon_es" type="host">*.ssl-images-amazon.es</value>
++                <value id="ssl_images_amazon_de" type="host">*.ssl-images-amazon.de</value>
+                 <value id="media_amazon_com" type="host">*.media-amazon.com</value>
+                 <value id="media_amazon_co_uk" type="host">*.media-amazon.co.uk</value>
+                 <value id="media_amazon_co_jp" type="host">*.media-amazon.co.jp</value>
+@@ -75,6 +80,7 @@
+                 <value id="media_amazon_it" type="host">*.media-amazon.it</value>
+                 <value id="media_amazon_fr" type="host">*.media-amazon.fr</value>
+                 <value id="media_amazon_es" type="host">*.media-amazon.es</value>
++                <value id="media_amazon_de" type="host">*.media-amazon.de</value>
+             </values>
+         </policy>
+         <policy id="form-action">
+@@ -86,6 +92,7 @@
+                 <value id="amazon_it" type="host">*.amazon.it</value>
+                 <value id="amazon_fr" type="host">*.amazon.fr</value>
+                 <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_de" type="host">*.amazon.de</value>
+             </values>
+         </policy>
+         <policy id="frame-src">
+@@ -97,6 +104,7 @@
+                 <value id="amazon_it" type="host">*.amazon.it</value>
+                 <value id="amazon_fr" type="host">*.amazon.fr</value>
+                 <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_de" type="host">*.amazon.de</value>
+                 <value id="amazon_payment_widget_com" type="host">*.payments-amazon.com</value>
+                 <value id="amazon_payment_widget_co_uk" type="host">*.payments-amazon.co.uk</value>
+                 <value id="amazon_payment_widget_co_jp" type="host">*.payments-amazon.co.jp</value>
+@@ -104,6 +112,7 @@
+                 <value id="amazon_payment_widget_it" type="host">*.payments-amazon.it</value>
+                 <value id="amazon_payment_widget_fr" type="host">*.payments-amazon.fr</value>
+                 <value id="amazon_payment_widget_es" type="host">*.payments-amazon.es</value>
++                <value id="amazon_payment_widget_de" type="host">*.payments-amazon.de</value>
+             </values>
+         </policy>
+     </policies>
+
+--- a/etc/di.xml
++++ b/etc/di.xml
+@@ -318,4 +318,9 @@
+             <argument name="connectionName" xsi:type="string">sales</argument>
+         </arguments>
+     </type>
++    
++    <!-- Order comments for currency differences  -->
++    <type name="Magento\Sales\Model\Order\Payment">
++        <plugin name="amazon_pay_order_payment" type="Amazon\Payment\Plugin\OrderCurrencyComment" />
++    </type>
+ </config>
+
+--- a/etc/events.xml
++++ b/etc/events.xml
+@@ -40,4 +40,7 @@
+     <event name="amazon_payment_pending_authorization_hard_decline_after">
+         <observer name="amazon_payment_hard_decline_email" instance="Amazon\Payment\Observer\HardDeclinedEmailSender" />
+     </event>
++    <event name="sales_order_payment_capture">
++        <observer name="amazon_payment_order_payment_capture" instance="Amazon\Payment\Observer\OrderPaymentCapture" />
++    </event>
+ </config>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="3.6.2" >
++    <module name="Amazon_Payment" setup_version="3.7.3" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -23,3 +23,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
++"or continue with Standard Checkout","or continue with Standard Checkout"
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -123,3 +123,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
++"or continue with Standard Checkout","or continue with Standard Checkout"
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
+ "The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
++"or continue with Standard Checkout","ou continuer avec le Checkout Standard"
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
+ "The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
++"or continue with Standard Checkout","ou continuer avec le Checkout Standard"
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
++"or continue with Standard Checkout","o continua con il Checkout Standard"
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
++"or continue with Standard Checkout","o continua con il Checkout Standard"
+
+--- a/view/frontend/requirejs-config.js
++++ b/view/frontend/requirejs-config.js
+@@ -27,6 +27,9 @@ var config = {
+         mixins: {
+             'Amazon_Payment/js/action/place-order': {
+                 'Amazon_Payment/js/model/place-order-mixin': true
++            },
++            'Magento_Tax/js/view/checkout/summary/grand-total': {
++                'Amazon_Payment/js/view/checkout/summary/grand-total-mixin': true
+             }
+         }
+     }
+
+--- a/view/frontend/web/js/messages.js
++++ b/view/frontend/web/js/messages.js
+@@ -44,6 +44,14 @@ define(
+                         }
+                     });
+                 }
++            },
++
++            addMessage: function (type, messageText) {
++                var messageComponent = messagesFactory();
++
++                if (type === 'error') {
++                    messageList.addErrorMessage({message: $.mage.__($("<textarea/>").html(messageText).text())});
++                }
+             }
+         }
+     }
+
+--- a/view/frontend/web/js/view/checkout-widget-address.js
++++ b/view/frontend/web/js/view/checkout-widget-address.js
+@@ -164,6 +164,8 @@ define(
+                             addressConverter.quoteAddressToFormAddressData(addressData)
+                         );
+                         checkoutDataResolver.resolveEstimationAddress();
++
++                        amazonStorage.isAmazonShippingAddressSelected(true);
+                     }
+                 ).fail(
+                     function (response) {
+
+--- /dev/null
++++ b/view/frontend/web/js/view/checkout/summary/grand-total-mixin.js
+@@ -0,0 +1,22 @@
++/*global define*/
++
++define([
++    'Amazon_Payment/js/model/storage'
++], function (amazonStorage) {
++    'use strict';
++
++    return function (GrandTotal) {
++        return GrandTotal.extend({
++            /**
++             * @return {Boolean}
++             */
++            isBaseGrandTotalDisplayNeeded: function () {
++                if (!amazonStorage.isAmazonAccountLoggedIn()) {
++                    return this._super();
++                }
++
++                return false;
++            }
++        });
++    }
++});
+
+--- a/view/frontend/web/js/view/shipping.js
++++ b/view/frontend/web/js/view/shipping.js
+@@ -4,17 +4,20 @@ define(
+         'jquery',
+         'Magento_Checkout/js/view/shipping',
+         'Magento_Customer/js/model/customer',
+-        'Amazon_Payment/js/model/storage'
++        'Amazon_Payment/js/model/storage',
++        'Amazon_Payment/js/messages'
+     ],
+     function (
+         $,
+         Component,
+         customer,
+-        amazonStorage
++        amazonStorage,
++        amazonMessages
+     ) {
+         'use strict';
+ 
+         return Component.extend({
++            noShippingAddressSelectedMsg: 'No shipping address has been selected for this order, please try to refresh the page or add a new shipping address in the Address Book widget.',
+ 
+             /**
+              * Initialize shipping
+@@ -51,7 +54,19 @@ define(
+                 }
+ 
+                 if (!customer.isLoggedIn()) {
+-                    return this.validateGuestEmail();
++                    if (!(amazonStorage.isAmazonShippingAddressSelected() && this.validateGuestEmail())) {
++                        amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                        amazonMessages.displayMessages();
++
++                        return false;
++                    }
++                }
++
++                if (!(amazonStorage.isAmazonShippingAddressSelected())) {
++                    amazonMessages.addMessage('error', this.noShippingAddressSelectedMsg);
++                    amazonMessages.displayMessages();
++
++                    return false;
+                 }
+ 
+                 return true;
+
+--- a/view/frontend/web/template/checkout-button.html
++++ b/view/frontend/web/template/checkout-button.html
+@@ -35,7 +35,7 @@
+ </div>
+ 
+ <div class="amazon-divider" data-bind="visible: !isAmazonAccountLoggedIn() && isPwaVisible()">
+-    <span data-bind="i18n: 'Or continue below to pay with a credit card'"></span>
++    <span data-bind="i18n: 'or continue with Standard Checkout'"></span>
+ </div>
+ 
+ <!-- ko foreach: getRegion('after-amazon-button') -->
+
