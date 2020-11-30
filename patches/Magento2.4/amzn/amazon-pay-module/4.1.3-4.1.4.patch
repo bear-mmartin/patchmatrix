@@ -1,0 +1,115 @@
+--- a/Block/ProductPagePaymentLink.php
++++ b/Block/ProductPagePaymentLink.php
+@@ -18,6 +18,7 @@ namespace Amazon\Payment\Block;
+ use Amazon\Core\Helper\CategoryExclusion;
+ use Amazon\Core\Helper\Data;
+ use Magento\Catalog\Model\Product;
++use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
+ use Magento\Framework\Registry;
+ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+@@ -73,6 +74,20 @@ class ProductPagePaymentLink extends PaymentLink
+             return '';
+         }
+ 
++        // check for product stock and/or saleability
++        // configurable products
++        if ($product->getTypeId() == Configurable::TYPE_CODE) {
++            if (!$product->isSaleable()) {
++                return '';
++            }
++        }
++        // other product types
++        else {
++            if ($product->isInStock() == 0 || !$product->isSaleable()) {
++                return '';
++            }
++        }
++
+         return parent::_toHtml();
+     }
+ }
+
+--- a/Block/Widget/ResetPassword.php
++++ b/Block/Widget/ResetPassword.php
+@@ -13,6 +13,7 @@ use Magento\Framework\View\Element\Template\Context;
+ use Magento\Customer\Model\Url;
+ use Magento\Customer\Model\Session;
+ use Amazon\Login\Api\CustomerLinkRepositoryInterface;
++use Amazon\Core\Helper\Data;
+ 
+ /**
+  * @api
+@@ -26,17 +27,21 @@ class ResetPassword extends Template
+ 
+     private $customerLink;
+ 
++    private $coreHelper;
++
+     public function __construct(
+         Context $context,
+         Url $urlModel,
+         Session $session,
+         CustomerLinkRepositoryInterface $customerLink,
++        Data $coreHelper,
+         array $data = []
+     ) {
+         parent::__construct($context, $data);
+         $this->urlModel = $urlModel;
+         $this->session = $session;
+         $this->customerLink = $customerLink;
++        $this->coreHelper = $coreHelper;
+     }
+ 
+     protected function _prepareLayout()
+@@ -67,4 +72,16 @@ class ResetPassword extends Template
+ 
+         return $url;
+     }
++
++    /**
++     * @return string
++     */
++    protected function _toHtml()
++    {
++        if (!$this->coreHelper->isLoginButtonEnabled()) {
++            return '';
++        }
++
++        return parent::_toHtml();
++    }
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,14 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "4.1.3",
++  "version": "4.1.4",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.3.0||~7.4.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.3",
+-    "amzn/login-with-amazon-module": "^4.1.3",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.4",
++    "amzn/login-with-amazon-module": "^4.1.4",
+     "magento/framework": "*",
+     "magento/module-customer": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="4.1.3" >
++    <module name="Amazon_Payment" setup_version="4.1.4" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
