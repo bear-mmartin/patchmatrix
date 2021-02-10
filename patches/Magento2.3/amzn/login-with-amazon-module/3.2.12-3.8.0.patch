@@ -1,0 +1,969 @@
+--- a/Block/Login.php
++++ b/Block/Login.php
+@@ -21,6 +21,13 @@ use Magento\Framework\View\Element\Template\Context;
+ 
+ /**
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Login extends Template
+ {
+
+--- a/Block/OAuthRedirect.php
++++ b/Block/OAuthRedirect.php
+@@ -21,6 +21,13 @@ use Magento\Framework\View\Element\Template\Context;
+ 
+ /**
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class OAuthRedirect extends Template
+ {
+
+--- a/Block/Validate.php
++++ b/Block/Validate.php
+@@ -21,6 +21,13 @@ use Magento\Framework\View\Element\Template\Context;
+ 
+ /**
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Validate extends Template
+ {
+
+--- a/Controller/Login.php
++++ b/Controller/Login.php
+@@ -34,6 +34,14 @@ use Amazon\Login\Api\CustomerLinkManagementInterface;
+  * Login with token controller
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+  */
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class Login extends Action
+ {
+     /**
+
+--- a/Controller/Login/Authorize.php
++++ b/Controller/Login/Authorize.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Exception\ValidatorException;
+ use Magento\Framework\Exception\NotFoundException;
+ use Zend_Validate;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Authorize extends \Amazon\Login\Controller\Login
+ {
+     /**
+
+--- a/Controller/Login/Guest.php
++++ b/Controller/Login/Guest.php
+@@ -25,6 +25,14 @@ use Magento\Framework\App\Action\Action;
+ use Magento\Framework\App\Action\Context;
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Guest extends Action
+ {
+     /**
+
+--- a/Controller/Login/ProcessAuthHash.php
++++ b/Controller/Login/ProcessAuthHash.php
+@@ -18,6 +18,14 @@ namespace Amazon\Login\Controller\Login;
+ use Magento\Framework\App\Action\Context;
+ use Magento\Framework\View\Result\PageFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ProcessAuthHash extends \Magento\Framework\App\Action\Action
+ {
+     /**
+
+--- a/Controller/Login/Validate.php
++++ b/Controller/Login/Validate.php
+@@ -22,6 +22,13 @@ use Magento\Framework\View\Result\PageFactory;
+ /**
+  * Class Validate
+  * Validates login behaviors with Amazon Pay
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Validate extends Action
+ {
+
+--- a/Controller/Login/ValidatePost.php
++++ b/Controller/Login/ValidatePost.php
+@@ -24,6 +24,14 @@ use Magento\Framework\App\Action\Action;
+ use Magento\Framework\App\Action\Context;
+ use Magento\Framework\Encryption\Encryptor;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ValidatePost extends Action
+ {
+     /**
+
+--- a/Controller/Logout/Index.php
++++ b/Controller/Logout/Index.php
+@@ -19,6 +19,14 @@ use Magento\Framework\App\Action\Context;
+ use Magento\Framework\Controller\Result\JsonFactory;
+ use Amazon\Login\Helper\Session;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Index extends \Magento\Framework\App\Action\Action
+ {
+     /**
+
+--- a/Domain/LayoutConfig.php
++++ b/Domain/LayoutConfig.php
+@@ -15,12 +15,19 @@
+  */
+ 
+ namespace Amazon\Login\Domain;
++
+ use Magento\Framework\Model\AbstractModel;
+ use Amazon\Core\Helper\Data as CoreHelper;
+ 
+-
+ /**
+  * Used for accessing Amazon Login layout configuration
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class LayoutConfig
+ {
+@@ -48,5 +55,4 @@ class LayoutConfig
+     {
+         return !$this->coreHelper->isLwaEnabled();
+     }
+-
+ }
+
+--- a/Domain/ValidationCredentials.php
++++ b/Domain/ValidationCredentials.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Login\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ValidationCredentials
+ {
+     /**
+
+--- a/Helper/Session.php
++++ b/Helper/Session.php
+@@ -22,6 +22,14 @@ use Magento\Customer\Model\Session as CustomerSession;
+ use Magento\Checkout\Model\Session as CheckoutSession;
+ use Magento\Framework\Event\ManagerInterface as EventManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Session
+ {
+     /**
+
+--- a/Model/CheckoutConfigProvider.php
++++ b/Model/CheckoutConfigProvider.php
+@@ -19,6 +19,14 @@ use Magento\Checkout\Model\ConfigProviderInterface;
+ use Magento\Customer\Model\Session as CustomerSession;
+ use Magento\Checkout\Model\Session as CheckoutSession;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CheckoutConfigProvider implements ConfigProviderInterface
+ {
+     /**
+
+--- a/Model/Customer/Account/Redirect.php
++++ b/Model/Customer/Account/Redirect.php
+@@ -26,6 +26,14 @@ use Magento\Framework\Url\DecoderInterface;
+ use Magento\Framework\UrlInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Redirect extends BaseRedirect
+ {
+     /**
+
+--- a/Model/Customer/CompositeMatcher.php
++++ b/Model/Customer/CompositeMatcher.php
+@@ -18,6 +18,14 @@ namespace Amazon\Login\Model\Customer;
+ use Amazon\Core\Api\Data\AmazonCustomerInterface;
+ use Amazon\Login\Model\Customer\MatcherInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CompositeMatcher implements MatcherInterface
+ {
+     /**
+
+--- a/Model/Customer/EmailMatcher.php
++++ b/Model/Customer/EmailMatcher.php
+@@ -20,6 +20,14 @@ use Amazon\Login\Model\Customer\MatcherInterface;
+ use Magento\Customer\Api\CustomerRepositoryInterface;
+ use Magento\Framework\Exception\NoSuchEntityException;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class EmailMatcher implements MatcherInterface
+ {
+     /**
+
+--- a/Model/Customer/IdMatcher.php
++++ b/Model/Customer/IdMatcher.php
+@@ -20,6 +20,14 @@ use Amazon\Login\Model\Customer\MatcherInterface;
+ use Magento\Customer\Api\CustomerRepositoryInterface;
+ use Magento\Framework\Api\SearchCriteriaBuilder;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class IdMatcher implements MatcherInterface
+ {
+     /**
+
+--- a/Model/Customer/SessionMatcher.php
++++ b/Model/Customer/SessionMatcher.php
+@@ -19,6 +19,14 @@ use Amazon\Core\Api\Data\AmazonCustomerInterface;
+ use Amazon\Login\Model\Customer\MatcherInterface;
+ use Magento\Customer\Model\Session;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SessionMatcher implements MatcherInterface
+ {
+     /**
+
+--- a/Model/CustomerLink.php
++++ b/Model/CustomerLink.php
+@@ -19,6 +19,14 @@ use Amazon\Login\Api\Data\CustomerLinkInterface;
+ use Amazon\Login\Model\ResourceModel\CustomerLink as CustomerLinkResourceModel;
+ use Magento\Framework\Model\AbstractModel;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CustomerLink extends AbstractModel implements CustomerLinkInterface
+ {
+     protected function _construct()
+
+--- a/Model/CustomerLinkManagement.php
++++ b/Model/CustomerLinkManagement.php
+@@ -25,6 +25,14 @@ use Magento\Customer\Api\Data\CustomerInterface;
+ use Magento\Customer\Model\Session;
+ use Magento\Framework\Math\Random;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CustomerLinkManagement implements \Amazon\Login\Api\CustomerLinkManagementInterface
+ {
+     /**
+@@ -99,7 +107,7 @@ class CustomerLinkManagement implements \Amazon\Login\Api\CustomerLinkManagement
+         $customerData->setFirstname($amazonCustomer->getFirstName());
+         $customerData->setLastname($amazonCustomer->getLastName());
+         $customerData->setEmail($amazonCustomer->getEmail());
+-        $password = $this->random->getRandomString(64);
++        $password = "4mZ!" . $this->random->getRandomString(60);
+ 
+         $customer = $this->accountManagement->createAccount($customerData, $password);
+ 
+
+--- a/Model/CustomerLinkRepository.php
++++ b/Model/CustomerLinkRepository.php
+@@ -28,6 +28,13 @@ use Amazon\Login\Model\ResourceModel\CustomerLink\CollectionFactory;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class CustomerLinkRepository implements CustomerLinkRepositoryInterface
+ {
+
+--- a/Model/CustomerManagement.php
++++ b/Model/CustomerManagement.php
+@@ -19,6 +19,14 @@ use Amazon\Login\Api\CustomerLinkManagementInterface;
+ use Magento\Customer\Api\Data\CustomerInterface;
+ use Magento\Customer\Api\Data\CustomerExtensionFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CustomerManagement implements \Amazon\Login\Api\CustomerManagementInterface
+ {
+     /**
+
+--- a/Model/ResourceModel/CustomerLink.php
++++ b/Model/ResourceModel/CustomerLink.php
+@@ -17,6 +17,14 @@ namespace Amazon\Login\Model\ResourceModel;
+ 
+ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CustomerLink extends AbstractDb
+ {
+     const TABLE_NAME = 'amazon_customer';
+
+--- a/Model/ResourceModel/CustomerLink/Collection.php
++++ b/Model/ResourceModel/CustomerLink/Collection.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Login\Model\ResourceModel\CustomerLink;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Collection extends \Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection
+ {
+     protected function _construct()
+
+--- a/Model/Validator/AccessTokenRequestValidator.php
++++ b/Model/Validator/AccessTokenRequestValidator.php
+@@ -18,6 +18,14 @@ namespace Amazon\Login\Model\Validator;
+ use Magento\Framework\App\RequestInterface;
+ use Magento\Framework\Validator\AbstractValidator;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AccessTokenRequestValidator extends AbstractValidator
+ {
+     /**
+
+--- a/Observer/AmazonCustomerAuthenticated.php
++++ b/Observer/AmazonCustomerAuthenticated.php
+@@ -19,6 +19,14 @@ use Amazon\Login\Helper\Session as SessionHelper;
+ use Magento\Framework\Event\Observer;
+ use Magento\Framework\Event\ObserverInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCustomerAuthenticated implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/SetAuthorizeErrorCookie.php
++++ b/Observer/SetAuthorizeErrorCookie.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Event\ObserverInterface;
+ use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
+ use Magento\Framework\Stdlib\CookieManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SetAuthorizeErrorCookie implements ObserverInterface
+ {
+     const LOGIN_AUTHORIZE_ERROR_COOKIE = 'amz_auth_err';
+
+--- a/Observer/SetLogoutCookie.php
++++ b/Observer/SetLogoutCookie.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Event\ObserverInterface;
+ use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
+ use Magento\Framework\Stdlib\CookieManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SetLogoutCookie implements ObserverInterface
+ {
+     const LOGGEDOUT_COOKIE = 'amz_auth_logout';
+
+--- a/Plugin/CartController.php
++++ b/Plugin/CartController.php
+@@ -20,6 +20,14 @@ use Magento\Customer\Model\Session;
+ use Magento\Framework\Controller\ResultInterface;
+ use Magento\Framework\UrlInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CartController
+ {
+     /**
+
+--- a/Plugin/CheckoutController.php
++++ b/Plugin/CheckoutController.php
+@@ -20,6 +20,14 @@ use Magento\Customer\Model\Session;
+ use Magento\Framework\Controller\ResultInterface;
+ use Magento\Framework\UrlInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CheckoutController
+ {
+     /**
+
+--- a/Plugin/CreateController.php
++++ b/Plugin/CreateController.php
+@@ -20,6 +20,14 @@ use Magento\Customer\Model\Session;
+ use Magento\Customer\Model\Url;
+ use Magento\Framework\Controller\ResultInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CreateController
+ {
+     /**
+
+--- a/Plugin/CustomerCollection.php
++++ b/Plugin/CustomerCollection.php
+@@ -21,6 +21,14 @@ use Magento\Customer\Model\ResourceModel\Customer\Collection;
+ use Magento\Eav\Model\Entity\Attribute\AttributeInterface;
+ use Magento\Framework\DB\Select;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CustomerCollection
+ {
+     /**
+
+--- a/Plugin/CustomerRepository.php
++++ b/Plugin/CustomerRepository.php
+@@ -20,6 +20,14 @@ use Amazon\Login\Api\CustomerManagementInterface;
+ use Magento\Customer\Api\CustomerRepositoryInterface;
+ use Magento\Customer\Api\Data\CustomerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CustomerRepository
+ {
+     /**
+
+--- a/Plugin/LoginController.php
++++ b/Plugin/LoginController.php
+@@ -20,6 +20,14 @@ use Magento\Customer\Model\Session;
+ use Magento\Customer\Model\Url;
+ use Magento\Framework\Controller\ResultInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class LoginController
+ {
+     /**
+
+--- a/Plugin/OrderCustomerManagement.php
++++ b/Plugin/OrderCustomerManagement.php
+@@ -23,6 +23,14 @@ use Magento\Customer\Api\Data\CustomerInterface;
+ use Magento\Sales\Api\OrderCustomerManagementInterface;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class OrderCustomerManagement
+ {
+     /**
+
+--- a/Setup/InstallSchema.php
++++ b/Setup/InstallSchema.php
+@@ -22,6 +22,14 @@ use Magento\Framework\Setup\InstallSchemaInterface;
+ use Magento\Framework\Setup\ModuleContextInterface;
+ use Magento\Framework\Setup\SchemaSetupInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class InstallSchema implements InstallSchemaInterface
+ {
+     /**
+
+--- a/Setup/UpgradeSchema.php
++++ b/Setup/UpgradeSchema.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Setup\ModuleContextInterface;
+ use Magento\Framework\Setup\SchemaSetupInterface;
+ use Magento\Framework\Setup\UpgradeSchemaInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class UpgradeSchema implements UpgradeSchemaInterface
+ {
+     public function upgrade(SchemaSetupInterface $setup, ModuleContextInterface $context)
+
+--- a/Test/Unit/Model/LayoutConfigTest.php
++++ b/Test/Unit/Model/LayoutConfigTest.php
+@@ -22,6 +22,13 @@ use \Amazon\Core\Model\AmazonConfig;
+  * Class LayoutConfigTest
+  *
+  * @see \Amazon\Login\Domain\LayoutConfig
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class LayoutConfigTest extends \PHPUnit\Framework\TestCase
+ {
+@@ -49,5 +56,4 @@ class LayoutConfigTest extends \PHPUnit\Framework\TestCase
+             [false, true]
+         ];
+     }
+-
+ }
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,13 +2,14 @@
+   "name": "amzn/login-with-amazon-module",
+   "description": "Login with Amazon module",
+   "type": "magento2-module",
+-  "version": "3.2.12",
++  "version": "3.8.0",
++  "abandoned": "amzn/amazon-pay-v2-magento-2-module",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+-    "php": "~7.1.3||~7.2.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.2.12",
++    "php": "~7.1.3||~7.2.0||~7.3.0",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^3.8.0",
+     "magento/framework": "^102",
+     "magento/module-customer": "^102",
+     "magento/module-store": "^101",
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Login" setup_version="3.2.12">
++    <module name="Amazon_Login" setup_version="3.8.0">
+         <sequence>
+             <module name="Amazon_Core"/>
+         </sequence>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Passwort vergessen?"
+ "Login with Amazon available in authentication popup","Login mit Amazon im Anmelde-Popup anzeigen"
++"You will be redirected shortly...","Sie werden in Kürze weitergeleitet..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Falls Sie nicht weitergeleitet werden, versuchen Sie bitte die Seite neu zu laden, oder gehen Sie zurück zum Warenkorb um ggf. eine andere Zahlungsmethode zu verwenden."
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Passwort vergessen?"
+ "Login with Amazon available in authentication popup","Login mit Amazon im Anmelde-Popup anzeigen"
++"You will be redirected shortly...","Sie werden in Kürze weitergeleitet..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Falls Sie nicht weitergeleitet werden, versuchen Sie bitte die Seite neu zu laden, oder gehen Sie zurück zum Warenkorb um ggf. eine andere Zahlungsmethode zu verwenden."
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Passwort vergessen?"
+ "Login with Amazon available in authentication popup","Login mit Amazon im Anmelde-Popup anzeigen"
++"You will be redirected shortly...","Sie werden in Kürze weitergeleitet..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Falls Sie nicht weitergeleitet werden, versuchen Sie bitte die Seite neu zu laden, oder gehen Sie zurück zum Warenkorb um ggf. eine andere Zahlungsmethode zu verwenden."
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -12,4 +12,5 @@
+ "Ok","Ok"
+ "Forgot Your Password?","Forgot Your Password?"
+ "Login with Amazon available in authentication popup","Login with Amazon available in authentication popup"
+-
++"You will be redirected shortly...","You will be redirected shortly..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method."
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+@@ -115,4 +115,6 @@
+ "Welcome back!","Welcome back!"
+ "With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop.","With Amazon Pay and Login with Amazon, you can easily sign-in and use the shipping and payment information stored in your Amazon account to place an order on this shop."
+ "You will be registering for a %1 account based on the base currency of your shop (%2).","You will be registering for a %1 account based on the base currency of your shop (%2)."
+-"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
+\ No newline at end of file
++"Your session has expired, please reload the page and try again.","Your session has expired, please reload the page and try again."
++"You will be redirected shortly...","You will be redirected shortly..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method."
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+\ No newline at end of file
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -12,3 +12,5 @@
+ "Ok","Aceptar"
+ "Forgot Your Password?","¿Has olvidado la contraseña?"
+ "Login with Amazon available in authentication popup","Login con Amazon disponible en la ventana emergente de iniciar sesión"
++"You will be redirected shortly...","En breve serás redirigido a una nueva página..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si no fueses redirigido automáticamente, intenta refrescar la página o vuelve al carro de compra y utiliza otro medio de pago."
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Vous avez oublié votre mot de passe ?"
+ "Login with Amazon available in authentication popup","Connectez-vous avec Amazon disponible dans la fenêtre pop-up d'authentification"
++"You will be redirected shortly...","Vous allez être automatiquement redirigé..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si vous n’êtes pas automatiquement redirigé, veuillez rafraîchir la page ou veuillez retourner à votre panier et sélectionner une autre méthode de paiement."
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Vous avez oublié votre mot de passe ?"
+ "Login with Amazon available in authentication popup","Connectez-vous avec Amazon disponible dans la fenêtre pop-up d'authentification"
++"You will be redirected shortly...","Vous allez être automatiquement redirigé..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Si vous n’êtes pas automatiquement redirigé, veuillez rafraîchir la page ou veuillez retourner à votre panier et sélectionner une autre méthode de paiement."
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Hai dimenticato la password?"
+ "Login with Amazon available in authentication popup","Accedi con Amazon disponibile nel pop-up di autenticazione"
++"You will be redirected shortly...","Verrai reindirizzato a breve..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Se non vieni reindirizzato automaticamente, prova a ricaricare la pagina o torna al carrello e utilizza un altro metodo di pagamento."
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -12,3 +12,5 @@
+ "Ok","OK"
+ "Forgot Your Password?","Hai dimenticato la password?"
+ "Login with Amazon available in authentication popup","Accedi con Amazon disponibile nel pop-up di autenticazione"
++"You will be redirected shortly...","Verrai reindirizzato a breve..."
++"If you are not redirected automatically, try refreshing the page, or return to your cart and use another payment method.","Se non vieni reindirizzato automaticamente, prova a ricaricare la pagina o torna al carrello e utilizza un altro metodo di pagamento."
+
+--- a/view/frontend/templates/oAuthRedirect.phtml
++++ b/view/frontend/templates/oAuthRedirect.phtml
+@@ -18,9 +18,9 @@
+ <div>
+     <?= $block->escapeHtml(__('You will be redirected shortly...')); ?><br/>
+     <?= $block->escapeHtml(__(
+-            'If you are not redirected automatically, try refreshing the page,'
++        'If you are not redirected automatically, try refreshing the page,'
+             . ' or return to your cart and use another payment method.'
+-        )); ?>
++    )); ?>
+ </div>
+ <script>
+ require([
+
+--- a/view/frontend/web/js/amazon-logout.js
++++ b/view/frontend/web/js/amazon-logout.js
+@@ -16,7 +16,6 @@
+ define([
+     'jquery',
+     'amazonCore',
+-    'jquery/ui',
+     'mage/cookies'
+ ], function ($, core) {
+     'use strict';
+
+--- a/view/frontend/web/js/amazon-redirect.js
++++ b/view/frontend/web/js/amazon-redirect.js
+@@ -20,7 +20,6 @@ define([
+     'amazonCsrf',
+     'Magento_Customer/js/customer-data',
+     'mage/loader',
+-    'jquery/ui',
+     'mage/cookies'
+ ], function ($, amazonCore, amazonPaymentConfig, amazonCsrf, customerData) {
+     'use strict';
+

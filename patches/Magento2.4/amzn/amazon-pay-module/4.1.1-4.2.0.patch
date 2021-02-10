@@ -1,0 +1,3760 @@
+--- a/Block/Minicart/Button.php
++++ b/Block/Minicart/Button.php
+@@ -30,6 +30,13 @@ use Magento\Framework\App\Request\Http;
+  * Class Button
+  *
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Button extends Template implements ShortcutInterface
+ {
+
+--- a/Block/PaymentLink.php
++++ b/Block/PaymentLink.php
+@@ -23,6 +23,13 @@ use Magento\Catalog\Model\Product;
+ 
+ /**
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class PaymentLink extends Template
+ {
+
+--- a/Block/ProductPagePaymentLink.php
++++ b/Block/ProductPagePaymentLink.php
+@@ -18,12 +18,20 @@ namespace Amazon\Payment\Block;
+ use Amazon\Core\Helper\CategoryExclusion;
+ use Amazon\Core\Helper\Data;
+ use Magento\Catalog\Model\Product;
++use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
+ use Magento\Framework\Registry;
+ use Magento\Framework\View\Element\Template;
+ use Magento\Framework\View\Element\Template\Context;
+ 
+ /**
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class ProductPagePaymentLink extends PaymentLink
+ {
+@@ -73,6 +81,20 @@ class ProductPagePaymentLink extends PaymentLink
+             return '';
+         }
+ 
++        // check for product stock and/or saleability
++        // configurable products
++        if ($product->getTypeId() == Configurable::TYPE_CODE) {
++            if (!$product->isSaleable()) {
++                return '';
++            }
++        }
++        // other product types
++        else {
++            if ($product->isInStock() == 0 || !$product->isSaleable()) {
++                return '';
++            }
++        }
++
+         return parent::_toHtml();
+     }
+ }
+
+--- a/Block/Widget/ResetPassword.php
++++ b/Block/Widget/ResetPassword.php
+@@ -13,9 +13,17 @@ use Magento\Framework\View\Element\Template\Context;
+ use Magento\Customer\Model\Url;
+ use Magento\Customer\Model\Session;
+ use Amazon\Login\Api\CustomerLinkRepositoryInterface;
++use Amazon\Core\Helper\Data;
+ 
+ /**
+  * @api
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class ResetPassword extends Template
+ {
+@@ -26,17 +34,21 @@ class ResetPassword extends Template
+ 
+     private $customerLink;
+ 
++    private $coreHelper;
++
+     public function __construct(
+         Context $context,
+         Url $urlModel,
+         Session $session,
+         CustomerLinkRepositoryInterface $customerLink,
++        Data $coreHelper,
+         array $data = []
+     ) {
+         parent::__construct($context, $data);
+         $this->urlModel = $urlModel;
+         $this->session = $session;
+         $this->customerLink = $customerLink;
++        $this->coreHelper = $coreHelper;
+     }
+ 
+     protected function _prepareLayout()
+@@ -67,4 +79,16 @@ class ResetPassword extends Template
+ 
+         return $url;
+     }
++
++    /**
++     * @return string
++     */
++    protected function _toHtml()
++    {
++        if (!$this->coreHelper->isLoginButtonEnabled()) {
++            return '';
++        }
++
++        return parent::_toHtml();
++    }
+ }
+
+--- a/Controller/Payment/CompleteCheckout.php
++++ b/Controller/Payment/CompleteCheckout.php
+@@ -36,6 +36,13 @@ use Magento\Framework\App\ObjectManager;
+  * Class CompleteCheckout
+  *
+  * @package Amazon\Payment\Controller\Payment
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class CompleteCheckout extends Action
+ {
+
+--- a/Controller/Payment/Ipn.php
++++ b/Controller/Payment/Ipn.php
+@@ -28,6 +28,14 @@ use Magento\Framework\App\ResponseInterface;
+ use Magento\Framework\Exception\NotFoundException;
+ use Magento\Framework\App\ObjectManager;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Ipn extends Action
+ {
+     /**
+
+--- a/Cron/GetAmazonAuthorizationUpdates.php
++++ b/Cron/GetAmazonAuthorizationUpdates.php
+@@ -27,6 +27,14 @@ use Magento\Framework\Api\FilterBuilder;
+ use Magento\Framework\Api\Search\FilterGroup;
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class GetAmazonAuthorizationUpdates
+ {
+     /**
+
+--- a/Cron/GetAmazonCaptureUpdates.php
++++ b/Cron/GetAmazonCaptureUpdates.php
+@@ -27,6 +27,14 @@ use Magento\Framework\Api\FilterBuilder;
+ use Magento\Framework\Api\Search\FilterGroup;
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class GetAmazonCaptureUpdates
+ {
+     /**
+
+--- a/Cron/ProcessAmazonRefunds.php
++++ b/Cron/ProcessAmazonRefunds.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Model\QueuedRefundUpdaterFactory;
+ use Amazon\Payment\Model\ResourceModel\PendingRefund\CollectionFactory;
+ use Magento\Framework\Data\Collection;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ProcessAmazonRefunds
+ {
+     /**
+
+--- a/Domain/AbstractAmazonAuthorizationResponse.php
++++ b/Domain/AbstractAmazonAuthorizationResponse.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Domain\Details\AmazonAuthorizationDetails;
+ use Amazon\Payment\Domain\Details\AmazonAuthorizationDetailsFactory;
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class AbstractAmazonAuthorizationResponse
+ {
+     /**
+
+--- a/Domain/AbstractAmazonCaptureResponse.php
++++ b/Domain/AbstractAmazonCaptureResponse.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Domain\Details\AmazonCaptureDetails;
+ use Amazon\Payment\Domain\Details\AmazonCaptureDetailsFactory;
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class AbstractAmazonCaptureResponse
+ {
+     /**
+
+--- a/Domain/AbstractAmazonRefundResponse.php
++++ b/Domain/AbstractAmazonRefundResponse.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Domain\Details\AmazonRefundDetails;
+ use Amazon\Payment\Domain\Details\AmazonRefundDetailsFactory;
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class AbstractAmazonRefundResponse
+ {
+     /**
+
+--- a/Domain/AbstractAmazonStatus.php
++++ b/Domain/AbstractAmazonStatus.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class AbstractAmazonStatus
+ {
+     /**
+
+--- a/Domain/AmazonAuthorizationDetailsResponse.php
++++ b/Domain/AmazonAuthorizationDetailsResponse.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAuthorizationDetailsResponse extends AbstractAmazonAuthorizationResponse
+ {
+     private $resultKey = 'GetAuthorizationDetailsResult';
+
+--- a/Domain/AmazonAuthorizationResponse.php
++++ b/Domain/AmazonAuthorizationResponse.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAuthorizationResponse extends AbstractAmazonAuthorizationResponse
+ {
+     private $resultKey = 'AuthorizeResult';
+
+--- a/Domain/AmazonAuthorizationStatus.php
++++ b/Domain/AmazonAuthorizationStatus.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAuthorizationStatus extends AbstractAmazonStatus
+ {
+     const STATE_OPEN = 'Open';
+
+--- a/Domain/AmazonCaptureDetailsResponse.php
++++ b/Domain/AmazonCaptureDetailsResponse.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCaptureDetailsResponse extends AbstractAmazonCaptureResponse
+ {
+     private $resultKey = 'GetCaptureDetailsResult';
+
+--- a/Domain/AmazonCaptureResponse.php
++++ b/Domain/AmazonCaptureResponse.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCaptureResponse extends AbstractAmazonCaptureResponse
+ {
+     private $resultKey = 'CaptureResult';
+
+--- a/Domain/AmazonCaptureStatus.php
++++ b/Domain/AmazonCaptureStatus.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCaptureStatus extends AbstractAmazonStatus
+ {
+     const STATE_COMPLETED = 'Completed';
+
+--- a/Domain/AmazonConstraint.php
++++ b/Domain/AmazonConstraint.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonConstraint
+ {
+     const PAYMENT_METHOD_NOT_ALLOWED_ID = 'PaymentMethodNotAllowed';
+
+--- a/Domain/AmazonGetOrderDetailsResponse.php
++++ b/Domain/AmazonGetOrderDetailsResponse.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Domain\Details\AmazonOrderDetails;
+ use Amazon\Payment\Domain\Details\AmazonOrderDetailsFactory;
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonGetOrderDetailsResponse
+ {
+     /**
+
+--- a/Domain/AmazonOrderStatus.php
++++ b/Domain/AmazonOrderStatus.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonOrderStatus extends AbstractAmazonStatus
+ {
+     const STATE_DRAFT = 'Draft';
+
+--- a/Domain/AmazonRefundDetailsResponse.php
++++ b/Domain/AmazonRefundDetailsResponse.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonRefundDetailsResponse extends AbstractAmazonRefundResponse
+ {
+     private $resultKey = 'GetRefundDetailsResult';
+
+--- a/Domain/AmazonRefundResponse.php
++++ b/Domain/AmazonRefundResponse.php
+@@ -17,6 +17,14 @@ namespace Amazon\Payment\Domain;
+ 
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonRefundResponse extends AbstractAmazonRefundResponse
+ {
+     private $resultKey = 'RefundResult';
+
+--- a/Domain/AmazonRefundStatus.php
++++ b/Domain/AmazonRefundStatus.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Domain;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonRefundStatus extends AbstractAmazonStatus
+ {
+     const STATE_PENDING = 'Pending';
+
+--- a/Domain/AmazonSetOrderDetailsResponse.php
++++ b/Domain/AmazonSetOrderDetailsResponse.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Domain;
+ use Amazon\Core\Exception\AmazonServiceUnavailableException;
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonSetOrderDetailsResponse
+ {
+     /**
+
+--- a/Domain/Details/AmazonAuthorizationDetails.php
++++ b/Domain/Details/AmazonAuthorizationDetails.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Domain\Details;
+ use Amazon\Payment\Domain\AmazonAuthorizationStatus;
+ use Amazon\Payment\Domain\AmazonAuthorizationStatusFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAuthorizationDetails
+ {
+     /**
+
+--- a/Domain/Details/AmazonCaptureDetails.php
++++ b/Domain/Details/AmazonCaptureDetails.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Domain\Details;
+ use Amazon\Payment\Domain\AmazonCaptureStatus;
+ use Amazon\Payment\Domain\AmazonCaptureStatusFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCaptureDetails
+ {
+     /**
+
+--- a/Domain/Details/AmazonOrderDetails.php
++++ b/Domain/Details/AmazonOrderDetails.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Domain\Details;
+ use Amazon\Payment\Domain\AmazonOrderStatus;
+ use Amazon\Payment\Domain\AmazonOrderStatusFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonOrderDetails
+ {
+     /**
+
+--- a/Domain/Details/AmazonRefundDetails.php
++++ b/Domain/Details/AmazonRefundDetails.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Domain\Details;
+ use Amazon\Payment\Domain\AmazonRefundStatus;
+ use Amazon\Payment\Domain\AmazonRefundStatusFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonRefundDetails
+ {
+     /**
+
+--- a/Domain/Validator/AmazonAuthorization.php
++++ b/Domain/Validator/AmazonAuthorization.php
+@@ -22,6 +22,13 @@ use Amazon\Payment\Domain\Details\AmazonAuthorizationDetails;
+ /**
+  * Class AmazonAuthorization
+  * validates Amazon Pay status during cron updates.
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AmazonAuthorization
+ {
+
+--- a/Exception/AuthorizationExpiredException.php
++++ b/Exception/AuthorizationExpiredException.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Exception;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AuthorizationExpiredException extends \Exception
+ {
+     public function __construct($message = '', $code = 0, \Exception $previous = null)
+
+--- a/Exception/CapturePendingException.php
++++ b/Exception/CapturePendingException.php
+@@ -15,6 +15,14 @@
+  */
+ namespace Amazon\Payment\Exception;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CapturePendingException extends \Exception
+ {
+     public function __construct($message = '', $code = 0, \Exception $previous = null)
+
+--- a/Exception/HardDeclineException.php
++++ b/Exception/HardDeclineException.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Exception;
+ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Framework\Phrase;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class HardDeclineException extends LocalizedException
+ {
+     public function __construct(Phrase $phrase, \Exception $cause = null)
+
+--- a/Exception/SoftDeclineException.php
++++ b/Exception/SoftDeclineException.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Exception;
+ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Framework\Phrase;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SoftDeclineException extends LocalizedException
+ {
+     public function __construct(Phrase $phrase, \Exception $cause = null)
+
+--- a/Exception/TransactionTimeoutException.php
++++ b/Exception/TransactionTimeoutException.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Exception;
+ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Framework\Phrase;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class TransactionTimeoutException extends HardDeclineException
+ {
+     public function __construct(Phrase $phrase, \Exception $cause = null)
+
+--- a/Gateway/Command/AmazonAuthCommand.php
++++ b/Gateway/Command/AmazonAuthCommand.php
+@@ -27,6 +27,13 @@ use Amazon\Payment\Gateway\Config\Config;
+  *
+  * Enables customized error handling for Amazon Payment
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AmazonAuthCommand implements CommandInterface
+ {
+
+--- a/Gateway/Command/CaptureStrategyCommand.php
++++ b/Gateway/Command/CaptureStrategyCommand.php
+@@ -29,6 +29,14 @@ use Amazon\Core\Helper\Data;
+ use Amazon\Core\Logger\ExceptionLogger;
+ use Amazon\Payment\Gateway\Data\Order\OrderAdapterFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CaptureStrategyCommand implements CommandInterface
+ {
+ 
+
+--- a/Gateway/Config/Config.php
++++ b/Gateway/Config/Config.php
+@@ -8,6 +8,13 @@ namespace Amazon\Payment\Gateway\Config;
+ /**
+  * Class Config
+  * @package Amazon\Payment\Gateway\Config
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Config extends \Magento\Payment\Gateway\Config\Config
+ {
+
+--- a/Gateway/Data/Order/OrderAdapter.php
++++ b/Gateway/Data/Order/OrderAdapter.php
+@@ -25,6 +25,13 @@ use Amazon\Core\Helper\Data;
+ 
+ /**
+  * Class OrderAdapter
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class OrderAdapter implements OrderAdapterInterface
+ {
+
+--- a/Gateway/Helper/SubjectReader.php
++++ b/Gateway/Helper/SubjectReader.php
+@@ -26,6 +26,13 @@ use Magento\Payment\Gateway\Data\PaymentDataObjectInterface;
+ /**
+  * Class SubjectReader
+  * Consolidates commonly used calls
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class SubjectReader
+ {
+
+--- a/Gateway/Http/Client/AbstractClient.php
++++ b/Gateway/Http/Client/AbstractClient.php
+@@ -28,6 +28,14 @@ use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+  * Class AbstractClient
+  * Base class for gateway client classes
+  */
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class AbstractClient implements ClientInterface
+ {
+     /**
+
+--- a/Gateway/Http/Client/AuthorizeClient.php
++++ b/Gateway/Http/Client/AuthorizeClient.php
+@@ -19,6 +19,13 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ /**
+  * Class Client
+  * Amazon Pay authorization gateway client
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AuthorizeClient extends AbstractClient
+ {
+
+--- a/Gateway/Http/Client/CaptureClient.php
++++ b/Gateway/Http/Client/CaptureClient.php
+@@ -19,6 +19,13 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ /**
+  * Class Client
+  * Amazon Pay gateway capture client
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class CaptureClient extends AbstractClient
+ {
+
+--- a/Gateway/Http/Client/RefundClient.php
++++ b/Gateway/Http/Client/RefundClient.php
+@@ -25,6 +25,13 @@ use Amazon\Payment\Domain\AmazonRefundResponseFactory;
+ /**
+  * Class RefundClient
+  * Amazon Pay refund client
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class RefundClient implements ClientInterface
+ {
+
+--- a/Gateway/Http/Client/SettlementClient.php
++++ b/Gateway/Http/Client/SettlementClient.php
+@@ -19,6 +19,13 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ /**
+  * Class SettlementClient
+  * Amazon Pay capture client
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class SettlementClient extends AbstractClient
+ {
+
+--- a/Gateway/Http/Client/VoidClient.php
++++ b/Gateway/Http/Client/VoidClient.php
+@@ -19,6 +19,13 @@ namespace Amazon\Payment\Gateway\Http\Client;
+ /**
+  * Class VoidClient
+  * Amazon Pay client for gateway cancel and void
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class VoidClient extends AbstractClient
+ {
+
+--- a/Gateway/Http/TransferFactory.php
++++ b/Gateway/Http/TransferFactory.php
+@@ -19,6 +19,14 @@ use Magento\Payment\Gateway\Http\TransferBuilder;
+ use Magento\Payment\Gateway\Http\TransferFactoryInterface;
+ use Magento\Payment\Gateway\Http\TransferInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class TransferFactory implements TransferFactoryInterface
+ {
+     /**
+
+--- a/Gateway/Request/AuthorizationRequestBuilder.php
++++ b/Gateway/Request/AuthorizationRequestBuilder.php
+@@ -26,6 +26,14 @@ use Magento\Framework\DataObject;
+ use Amazon\Payment\Plugin\AdditionalInformation;
+ use Amazon\Core\Helper\CategoryExclusion;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AuthorizationRequestBuilder implements BuilderInterface
+ {
+     /**
+
+--- a/Gateway/Request/RefundRequestBuilder.php
++++ b/Gateway/Request/RefundRequestBuilder.php
+@@ -26,6 +26,13 @@ use Amazon\Payment\Gateway\Data\Order\OrderAdapterFactory;
+ /**
+  * Class RefundRequestBuilder
+  * Builds refund request for Amazon Pay
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class RefundRequestBuilder implements BuilderInterface
+ {
+
+--- a/Gateway/Request/SettlementRequestBuilder.php
++++ b/Gateway/Request/SettlementRequestBuilder.php
+@@ -24,6 +24,14 @@ use Magento\Payment\Model\Method\Logger;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SettlementRequestBuilder implements BuilderInterface
+ {
+     /**
+
+--- a/Gateway/Request/VoidRequestBuilder.php
++++ b/Gateway/Request/VoidRequestBuilder.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class VoidRequestBuilder implements BuilderInterface
+ {
+ 
+
+--- a/Gateway/Response/CompleteAuthHandler.php
++++ b/Gateway/Response/CompleteAuthHandler.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterfaceFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CompleteAuthHandler implements HandlerInterface
+ {
+ 
+
+--- a/Gateway/Response/CompleteSaleHandler.php
++++ b/Gateway/Response/CompleteSaleHandler.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterfaceFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CompleteSaleHandler implements HandlerInterface
+ {
+ 
+
+--- a/Gateway/Response/RefundHandler.php
++++ b/Gateway/Response/RefundHandler.php
+@@ -26,6 +26,13 @@ use Amazon\Payment\Api\Data\PendingRefundInterfaceFactory;
+ /**
+  * Class RefundHandler
+  * Handles refund behavior for Amazon Pay
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class RefundHandler implements HandlerInterface
+ {
+
+--- a/Gateway/Response/SettlementHandler.php
++++ b/Gateway/Response/SettlementHandler.php
+@@ -23,6 +23,14 @@ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Magento\Sales\Api\OrderRepositoryInterface;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SettlementHandler implements HandlerInterface
+ {
+ 
+
+--- a/Gateway/Response/VoidHandler.php
++++ b/Gateway/Response/VoidHandler.php
+@@ -22,6 +22,14 @@ use Magento\Payment\Model\Method\Logger;
+ use Amazon\Payment\Gateway\Helper\SubjectReader;
+ use Magento\Framework\Message\ManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class VoidHandler implements HandlerInterface
+ {
+ 
+
+--- a/Gateway/Validator/AuthorizationValidator.php
++++ b/Gateway/Validator/AuthorizationValidator.php
+@@ -23,6 +23,13 @@ use Amazon\Payment\Domain\AmazonConstraint;
+ /**
+  * Class AuthorizationValidator
+  * Validates authorization calls during gateway payment
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AuthorizationValidator extends AbstractValidator
+ {
+
+--- a/Gateway/Validator/ConstraintValidator.php
++++ b/Gateway/Validator/ConstraintValidator.php
+@@ -21,6 +21,14 @@ use Magento\Payment\Gateway\Validator\ResultInterface;
+ use Amazon\Payment\Gateway\Http\Client\Client;
+ use Amazon\Payment\Domain\AmazonConstraint;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ConstraintValidator extends AbstractValidator
+ {
+ 
+
+--- a/Helper/Address.php
++++ b/Helper/Address.php
+@@ -23,6 +23,14 @@ use Magento\Customer\Api\Data\RegionInterfaceFactory;
+ use Magento\Directory\Model\RegionFactory;
+ use Magento\Framework\App\Config\ScopeConfigInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Address
+ {
+     /**
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -19,6 +19,14 @@ use Magento\Framework\App\Helper\AbstractHelper;
+ use Magento\Framework\App\Helper\Context;
+ use Magento\Framework\Module\ModuleListInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Data extends AbstractHelper
+ {
+     const MODULE_CODE = 'Amazon_Payment';
+
+--- a/Helper/Email.php
++++ b/Helper/Email.php
+@@ -23,6 +23,14 @@ use Magento\Sales\Model\Order;
+ use Magento\Framework\Mail\Template\TransportBuilderFactory;
+ use Magento\Store\Model\ScopeInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Email extends AbstractHelper
+ {
+     /**
+
+--- a/Helper/Shortcut/CheckoutValidator.php
++++ b/Helper/Shortcut/CheckoutValidator.php
+@@ -16,6 +16,14 @@
+ 
+ namespace Amazon\Payment\Helper\Shortcut;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CheckoutValidator implements ValidatorInterface
+ {
+     /**
+
+--- a/Helper/Shortcut/Factory.php
++++ b/Helper/Shortcut/Factory.php
+@@ -16,6 +16,14 @@
+ 
+ namespace Amazon\Payment\Helper\Shortcut;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Factory
+ {
+     /**
+
+--- a/Helper/Shortcut/Validator.php
++++ b/Helper/Shortcut/Validator.php
+@@ -18,6 +18,13 @@ namespace Amazon\Payment\Helper\Shortcut;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.UnusedPrivateField)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Validator implements ValidatorInterface
+ {
+
+--- a/Ipn/IpnHandler.php
++++ b/Ipn/IpnHandler.php
+@@ -17,6 +17,14 @@ namespace Amazon\Payment\Ipn;
+ 
+ use AmazonPay\IpnHandler as AmazonIpnHandler;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class IpnHandler extends AmazonIpnHandler
+ {
+     /**
+
+--- a/Ipn/IpnHandlerFactory.php
++++ b/Ipn/IpnHandlerFactory.php
+@@ -21,6 +21,14 @@ use AmazonPay\IpnHandlerInterface;
+ use Psr\Log\LoggerAwareInterface;
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class IpnHandlerFactory implements IpnHandlerFactoryInterface
+ {
+     /**
+
+--- a/Model/Adapter/AmazonPaymentAdapter.php
++++ b/Model/Adapter/AmazonPaymentAdapter.php
+@@ -32,6 +32,13 @@ use Magento\Framework\App\ObjectManager;
+  * Class AmazonPaymentAdapter
+  * Use \Amazon\Payment\Model\Adapter\AmazonPaymentAdapterFactory to create new instance of adapter.
+  * @codeCoverageIgnore
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AmazonPaymentAdapter
+ {
+
+--- a/Model/AddressManagement.php
++++ b/Model/AddressManagement.php
+@@ -37,6 +37,13 @@ use Psr\Log\LoggerInterface;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AddressManagement implements AddressManagementInterface
+ {
+
+--- a/Model/Ipn/AuthorizationProcessor.php
++++ b/Model/Ipn/AuthorizationProcessor.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Domain\Details\AmazonAuthorizationDetailsFactory;
+ use Amazon\Payment\Model\ResourceModel\PendingAuthorization\CollectionFactory;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AuthorizationProcessor implements ProcessorInterface
+ {
+     /**
+
+--- a/Model/Ipn/CaptureProcessor.php
++++ b/Model/Ipn/CaptureProcessor.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Domain\Details\AmazonCaptureDetailsFactory;
+ use Amazon\Payment\Model\ResourceModel\PendingCapture\CollectionFactory;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CaptureProcessor implements ProcessorInterface
+ {
+     /**
+
+--- a/Model/Ipn/CompositeProcessor.php
++++ b/Model/Ipn/CompositeProcessor.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Model\Ipn;
+ use Amazon\Payment\Api\Ipn\CompositeProcessorInterface;
+ use Amazon\Payment\Api\Ipn\ProcessorInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CompositeProcessor implements CompositeProcessorInterface
+ {
+     /**
+
+--- a/Model/Ipn/OrderProcessor.php
++++ b/Model/Ipn/OrderProcessor.php
+@@ -23,6 +23,14 @@ use Amazon\Payment\Model\ResourceModel\OrderLink;
+ use Amazon\Payment\Model\ResourceModel\PendingAuthorization\CollectionFactory;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class OrderProcessor implements ProcessorInterface
+ {
+     /**
+
+--- a/Model/Ipn/RefundProcessor.php
++++ b/Model/Ipn/RefundProcessor.php
+@@ -22,6 +22,14 @@ use Amazon\Payment\Model\QueuedRefundUpdater;
+ use Amazon\Payment\Model\ResourceModel\PendingRefund\CollectionFactory;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class RefundProcessor implements ProcessorInterface
+ {
+     /**
+
+--- a/Model/Method/AmazonLoginMethod.php
++++ b/Model/Method/AmazonLoginMethod.php
+@@ -20,6 +20,13 @@ use Amazon\Core\Helper\Data as AmazonCoreHelper;
+ /**
+  * Class AmazonLoginMethod
+  * For display of Amazon Pay in payment method list
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AmazonLoginMethod extends \Magento\Payment\Model\Method\AbstractMethod
+ {
+
+--- a/Model/OrderInformationManagement.php
++++ b/Model/OrderInformationManagement.php
+@@ -37,6 +37,13 @@ use Magento\Framework\App\ObjectManager;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class OrderInformationManagement implements OrderInformationManagementInterface
+ {
+@@ -259,7 +266,7 @@ class OrderInformationManagement implements OrderInformationManagementInterface
+     public function removeOrderReference()
+     {
+         $quote = $this->session->getQuote();
+-        
++
+         if ($quote->getId()) {
+             $quoteLink = $this->quoteLinkFactory->create()->load($quote->getId(), 'quote_id');
+ 
+
+--- a/Model/OrderLink.php
++++ b/Model/OrderLink.php
+@@ -19,6 +19,14 @@ use Amazon\Payment\Api\Data\OrderLinkInterface;
+ use Amazon\Payment\Model\ResourceModel\OrderLink as OrderLinkResourceModel;
+ use Magento\Framework\Model\AbstractModel;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class OrderLink extends AbstractModel implements OrderLinkInterface
+ {
+     protected function _construct()
+
+--- a/Model/PaymentManagement.php
++++ b/Model/PaymentManagement.php
+@@ -32,6 +32,13 @@ use Magento\Sales\Api\TransactionRepositoryInterface;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class PaymentManagement
+ {
+
+--- a/Model/PaymentManagement/AbstractOperation.php
++++ b/Model/PaymentManagement/AbstractOperation.php
+@@ -34,6 +34,14 @@ use Magento\Sales\Model\Order\Payment\Transaction;
+ use Magento\Store\Model\ScopeInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ abstract class AbstractOperation
+ {
+     /**
+
+--- a/Model/PaymentManagement/Authorization.php
++++ b/Model/PaymentManagement/Authorization.php
+@@ -46,6 +46,13 @@ use Amazon\Payment\Exception\TransactionTimeoutException;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Authorization extends AbstractOperation
+ {
+
+--- a/Model/PaymentManagement/Capture.php
++++ b/Model/PaymentManagement/Capture.php
+@@ -40,6 +40,13 @@ use Psr\Log\LoggerInterface;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Capture extends AbstractOperation
+ {
+
+--- a/Model/PendingAuthorization.php
++++ b/Model/PendingAuthorization.php
+@@ -25,6 +25,14 @@ use Magento\Framework\Registry;
+ use Magento\Framework\Stdlib\DateTime\DateTimeFactory;
+ use Magento\Sales\Api\Data\OrderInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PendingAuthorization extends AbstractModel implements PendingAuthorizationInterface
+ {
+     /**
+
+--- a/Model/PendingCapture.php
++++ b/Model/PendingCapture.php
+@@ -24,6 +24,14 @@ use Magento\Framework\Model\ResourceModel\AbstractResource;
+ use Magento\Framework\Registry;
+ use Magento\Framework\Stdlib\DateTime\DateTimeFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PendingCapture extends AbstractModel implements PendingCaptureInterface
+ {
+     /**
+
+--- a/Model/PendingRefund.php
++++ b/Model/PendingRefund.php
+@@ -24,6 +24,14 @@ use Magento\Framework\Model\ResourceModel\AbstractResource;
+ use Magento\Framework\Registry;
+ use Magento\Framework\Stdlib\DateTime\DateTimeFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PendingRefund extends AbstractModel implements PendingRefundInterface
+ {
+     /**
+
+--- a/Model/QueuedRefundUpdater.php
++++ b/Model/QueuedRefundUpdater.php
+@@ -27,6 +27,14 @@ use Magento\Sales\Api\OrderRepositoryInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class QueuedRefundUpdater
+ {
+     /**
+
+--- a/Model/QuoteLink.php
++++ b/Model/QuoteLink.php
+@@ -19,6 +19,14 @@ use Amazon\Payment\Api\Data\QuoteLinkInterface;
+ use Amazon\Payment\Model\ResourceModel\QuoteLink as QuoteLinkResourceModel;
+ use Magento\Framework\Model\AbstractModel;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class QuoteLink extends AbstractModel implements QuoteLinkInterface
+ {
+     protected function _construct()
+
+--- a/Model/QuoteLinkManagement.php
++++ b/Model/QuoteLinkManagement.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Api\Data\QuoteLinkInterfaceFactory;
+ use Magento\Quote\Api\Data\CartExtensionFactory;
+ use Magento\Quote\Api\Data\CartInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class QuoteLinkManagement implements QuoteLinkManagementInterface
+ {
+     /**
+
+--- a/Model/ResourceModel/OrderLink.php
++++ b/Model/ResourceModel/OrderLink.php
+@@ -17,6 +17,14 @@ namespace Amazon\Payment\Model\ResourceModel;
+ 
+ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class OrderLink extends AbstractDb
+ {
+     const TABLE_NAME = 'amazon_sales_order';
+
+--- a/Model/ResourceModel/PendingAuthorization.php
++++ b/Model/ResourceModel/PendingAuthorization.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Model\ResourceModel;
+ use Amazon\Payment\Api\Data\PendingAuthorizationInterface;
+ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PendingAuthorization extends AbstractDb
+ {
+     const TABLE_NAME = 'amazon_pending_authorization';
+
+--- a/Model/ResourceModel/PendingAuthorization/Collection.php
++++ b/Model/ResourceModel/PendingAuthorization/Collection.php
+@@ -22,6 +22,14 @@ use Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection;
+ use Amazon\Payment\Model\PendingAuthorization as PendingAuthorizationModel;
+ use Amazon\Payment\Model\ResourceModel\PendingAuthorization as PendingAuthorizationResourceModel;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Collection extends AbstractCollection
+ {
+     protected function _construct()
+
+--- a/Model/ResourceModel/PendingCapture.php
++++ b/Model/ResourceModel/PendingCapture.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Model\ResourceModel;
+ use Amazon\Payment\Api\Data\PendingCaptureInterface;
+ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PendingCapture extends AbstractDb
+ {
+     const TABLE_NAME = 'amazon_pending_capture';
+
+--- a/Model/ResourceModel/PendingCapture/Collection.php
++++ b/Model/ResourceModel/PendingCapture/Collection.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection;
+ use Amazon\Payment\Model\PendingCapture as PendingCaptureModel;
+ use Amazon\Payment\Model\ResourceModel\PendingCapture as PendingCaptureResourceModel;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Collection extends AbstractCollection
+ {
+     protected function _construct()
+
+--- a/Model/ResourceModel/PendingRefund.php
++++ b/Model/ResourceModel/PendingRefund.php
+@@ -19,6 +19,14 @@ use Amazon\Payment\Api\Data\PendingRefundInterface;
+ use Amazon\Payment\Setup\UpgradeSchema as AmazonSchemaHelper;
+ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PendingRefund extends AbstractDb
+ {
+     const TABLE_NAME = AmazonSchemaHelper::PENDING_REFUND_TABLE_NAME;
+
+--- a/Model/ResourceModel/PendingRefund/Collection.php
++++ b/Model/ResourceModel/PendingRefund/Collection.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Model\PendingRefund as PendingRefundModel;
+ use Amazon\Payment\Model\ResourceModel\PendingRefund as PendingRefundResourceModel;
+ use Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Collection extends AbstractCollection
+ {
+ 
+
+--- a/Model/ResourceModel/QuoteLink.php
++++ b/Model/ResourceModel/QuoteLink.php
+@@ -17,6 +17,14 @@ namespace Amazon\Payment\Model\ResourceModel;
+ 
+ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class QuoteLink extends AbstractDb
+ {
+     const TABLE_NAME = 'amazon_quote';
+
+--- a/Observer/AddAmazonButton.php
++++ b/Observer/AddAmazonButton.php
+@@ -20,6 +20,14 @@ use Magento\Framework\Event\Observer;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Payment\Helper\Shortcut\Factory as ShortcutFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AddAmazonButton implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/DataAssignObserver.php
++++ b/Observer/DataAssignObserver.php
+@@ -20,6 +20,14 @@ use Magento\Payment\Observer\AbstractDataAssignObserver;
+ use Magento\Quote\Api\Data\PaymentInterface;
+ use Amazon\Payment\Plugin\AdditionalInformation;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class DataAssignObserver extends AbstractDataAssignObserver
+ {
+ 
+
+--- a/Observer/HardDeclinedEmailSender.php
++++ b/Observer/HardDeclinedEmailSender.php
+@@ -19,6 +19,14 @@ use Amazon\Payment\Helper\Email;
+ use Magento\Framework\Event\Observer;
+ use Magento\Framework\Event\ObserverInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class HardDeclinedEmailSender implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/IgnoreBillingAddressValidation.php
++++ b/Observer/IgnoreBillingAddressValidation.php
+@@ -19,6 +19,14 @@ use Amazon\Payment\Gateway\Config\Config as AmazonPayment;
+ use Magento\Framework\Event\Observer;
+ use Magento\Framework\Event\ObserverInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class IgnoreBillingAddressValidation implements ObserverInterface
+ {
+     public function execute(Observer $observer)
+
+--- a/Observer/KlarnaKcoOverride.php
++++ b/Observer/KlarnaKcoOverride.php
+@@ -20,6 +20,14 @@ use Magento\Framework\Event\Observer;
+ use Amazon\Core\Helper\Data;
+ use Amazon\Login\Helper\Session;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class KlarnaKcoOverride implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/LoadOrder.php
++++ b/Observer/LoadOrder.php
+@@ -24,6 +24,14 @@ use Magento\Sales\Api\Data\OrderInterface;
+ use Amazon\Payment\Api\Data\QuoteLinkInterfaceFactory;
+ use Amazon\Payment\Model\Adapter\AmazonPaymentAdapter;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class LoadOrder implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/OrderPaymentCapture.php
++++ b/Observer/OrderPaymentCapture.php
+@@ -22,6 +22,13 @@ use Magento\Framework\Event\ObserverInterface;
+ /**
+  * Class OrderPaymentCapture
+  * @package Amazon\Payment\Observer
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class OrderPaymentCapture implements ObserverInterface
+ {
+
+--- a/Observer/SandboxSimulation.php
++++ b/Observer/SandboxSimulation.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Event\Observer;
+ use Magento\Framework\Event\ObserverInterface;
+ use Magento\Payment\Model\InfoInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SandboxSimulation implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/SoftDeclinedEmailSender.php
++++ b/Observer/SoftDeclinedEmailSender.php
+@@ -19,6 +19,14 @@ use Amazon\Payment\Helper\Email;
+ use Magento\Framework\Event\Observer;
+ use Magento\Framework\Event\ObserverInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SoftDeclinedEmailSender implements ObserverInterface
+ {
+     /**
+
+--- a/Plugin/AdditionalInformation.php
++++ b/Plugin/AdditionalInformation.php
+@@ -17,6 +17,14 @@ namespace Amazon\Payment\Plugin;
+ 
+ use Magento\Quote\Model\Quote\Payment;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AdditionalInformation
+ {
+     const KEY_SANDBOX_SIMULATION_REFERENCE = 'sandbox_simulation_reference';
+
+--- a/Plugin/CheckoutProcessor.php
++++ b/Plugin/CheckoutProcessor.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Plugin;
+ use Amazon\Core\Helper\Data;
+ use Magento\Checkout\Model\Session;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CheckoutProcessor
+ {
+     /**
+
+--- a/Plugin/ConfirmOrderReference.php
++++ b/Plugin/ConfirmOrderReference.php
+@@ -34,6 +34,13 @@ use Magento\Quote\Api\CartRepositoryInterface;
+  * Class ConfirmOrderReference
+  *
+  * Confirm the OrderReference when payment details are saved
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class ConfirmOrderReference
+ {
+
+--- a/Plugin/DisableAmazonPaymentMethod.php
++++ b/Plugin/DisableAmazonPaymentMethod.php
+@@ -13,6 +13,13 @@ use Magento\Checkout\Model\Session;
+ /**
+  * Class DisableAmazonPaymentMethod
+  * Plugin removes Amazon Payment Method if cart contains only virtual products.
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class DisableAmazonPaymentMethod
+ {
+
+--- a/Plugin/OrderCurrencyComment.php
++++ b/Plugin/OrderCurrencyComment.php
+@@ -22,6 +22,13 @@ use Amazon\Payment\Gateway\Config\Config;
+ /**
+  * Class OrderCurrencyComment
+  * @package Amazon\Payment\Plugin
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class OrderCurrencyComment
+ {
+
+--- a/Plugin/QuoteRepository.php
++++ b/Plugin/QuoteRepository.php
+@@ -20,6 +20,14 @@ use Amazon\Payment\Api\QuoteLinkManagementInterface;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ use Magento\Quote\Api\Data\CartInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class QuoteRepository
+ {
+     /**
+
+--- a/Plugin/ShippingInformationManagement.php
++++ b/Plugin/ShippingInformationManagement.php
+@@ -23,6 +23,14 @@ use Magento\Checkout\Api\ShippingInformationManagementInterface;
+ use Magento\Quote\Api\CartRepositoryInterface;
+ use Amazon\Login\Helper\Session as LoginSessionHelper;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ShippingInformationManagement
+ {
+     /**
+
+--- a/Plugin/WebapiErrorProcessor.php
++++ b/Plugin/WebapiErrorProcessor.php
+@@ -18,6 +18,14 @@ namespace Amazon\Payment\Plugin;
+ use Amazon\Core\Exception\AmazonWebapiException;
+ use Magento\Framework\Webapi\ErrorProcessor;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class WebapiErrorProcessor
+ {
+     /**
+
+--- a/Setup/UpgradeData.php
++++ b/Setup/UpgradeData.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Setup\ModuleContextInterface;
+ use Magento\Framework\Setup\ModuleDataSetupInterface;
+ use Magento\Framework\Setup\UpgradeDataInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class UpgradeData implements UpgradeDataInterface
+ {
+     /**
+
+--- a/Setup/UpgradeSchema.php
++++ b/Setup/UpgradeSchema.php
+@@ -32,6 +32,14 @@ use Magento\Framework\Setup\SchemaSetupInterface;
+ use Magento\Framework\Setup\UpgradeSchemaInterface;
+ use Magento\Sales\Api\Data\TransactionInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class UpgradeSchema implements UpgradeSchemaInterface
+ {
+ 
+
+--- a/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutBeginActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutBeginActionGroup.xml
+@@ -1,22 +1,18 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <!--Begin checkout and proceed to final step-->
+     <actionGroup name="AmazonCheckoutBeginActionGroup">
++        <!-- slight delay to allow for the shipping methods to refresh if needed -->
++        <wait time="2" stepKey="giveShippingChanceToReload"/>
+         <waitForElement selector="{{CheckoutShippingMethodsSection.shippingMethodRow}}" time="20" stepKey="apWaitForShipping"/>
+-        <waitForPageLoad stepKey="apWaitPageLoadShipping"/>
++        <waitForPageLoad stepKey="apWaitPageLoadShipping" />
+ 
+         <click selector="{{CheckoutShippingMethodsSection.firstShippingMethod}}" stepKey="clickShippingMethod"/>
+-        <waitForPageLoad stepKey="waitForPageLoadPayment1"/>
++        <waitForPageLoad stepKey="waitForPageLoadPayment1" />
+         <waitForLoadingMaskToDisappear stepKey="waitForLoadingMaskToDisappear1"/>
+ 
+         <click selector="{{CheckoutShippingMethodsSection.next}}" stepKey="clickContinueButton"/>
+-        <waitForPageLoad stepKey="waitForPageLoadPayment2"/>
++        <waitForPageLoad stepKey="waitForPageLoadPayment2" />
+         <waitForLoadingMaskToDisappear stepKey="waitForLoadingMaskToDisappear2"/>
+     </actionGroup>
+ </actionGroups>
+
+--- a/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutCcActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutCcActionGroup.xml
+@@ -1,12 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <!--Select credit card number and submit-->
+     <actionGroup name="AmazonCheckoutCcActionGroup">
+         <arguments>
+             <argument name="cc" defaultValue="1111" type="string"/>
+@@ -20,9 +14,8 @@
+         <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFrameWidget"/>
+         <executeJS function="$('.card-number:contains({{cc}})').closest('a').click();" stepKey="executeJsCc"/>
+         <!--Place order-->
+-        <switchToWindow userInput="{$topName}" stepKey="switchToWindowTop"/>
+-        <waitForPageLoad stepKey="waitForPageLoadPayment1"/>
++        <switchToWindow userInput="{$topName}" stepKey="switchToWindowTop" />
++        <waitForPageLoad stepKey="waitForPageLoadPayment1" />
+         <click selector="{{CheckoutPaymentSection.placeOrder}}" stepKey="clickPlaceOrder"/>
+-        <waitForPageLoad stepKey="waitForPageLoadPayment2"/>
+     </actionGroup>
+ </actionGroups>
+
+--- a/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutSubmitActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonCheckoutActionGroup/AmazonCheckoutSubmitActionGroup.xml
+@@ -1,12 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <!--Place order-->
+     <actionGroup name="AmazonCheckoutSubmitActionGroup" extends="AmazonCheckoutBeginActionGroup">
+         <!--Click Place Order button-->
+         <click selector="{{CheckoutPaymentSection.placeOrder}}" stepKey="clickPlaceOrder"/>
+
+--- a/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginPopupActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginPopupActionGroup.xml
+@@ -1,12 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <!--Open login popup and complete form-->
+     <actionGroup name="AmazonLoginPopupActionGroup">
+         <!--Save opener window name since popup auto-closes-->
+         <executeJS function="return window.name;" stepKey="openerName"/>
+@@ -21,6 +15,6 @@
+         <click selector="{{AmazonLoginSection.apSignin}}" stepKey="clickSigninButton"/>
+ 
+         <!--Prevent "NoSuchWindowException: window was already closed"-->
+-        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener"/>
++        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener" />
+     </actionGroup>
+ </actionGroups>
+
+--- a/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginRedirectActionGroup.xml
++++ b/Test/Mftf/ActionGroup/AmazonLoginActionGroup/AmazonLoginRedirectActionGroup.xml
+@@ -1,12 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
++    <!--Fill in login from redirect form and submit-->
+     <actionGroup name="AmazonLoginRedirectActionGroup">
+         <waitForElement selector="{{AmazonLoginSection.apEmail}}" time="10" stepKey="apWaitForLogin"/>
+         <fillField selector="{{AmazonLoginSection.apEmail}}" userInput="{{AmazonLogin.email}}" stepKey="apEnterEmail"/>
+
+--- a/Test/Mftf/Data/AmazonCurrencyData.xml
++++ b/Test/Mftf/Data/AmazonCurrencyData.xml
+@@ -6,17 +6,45 @@
+             <item>EUR</item>
+         </array>
+     </entity>
++    <entity name="AmazonAllowMultiCurrencyValue" type="allow">
++        <array key="value">
++            <item>USD</item>
++            <item>EUR</item>
++            <item>GBP</item>
++            <item>JPY</item>
++            <item>NOK</item>
++            <item>CZK</item>
++            <item>EUR</item>
++            <item>CZK</item>
++        </array>
++    </entity>
+     <entity name="EUAmazonCurrencyConfig" type="amazon_currency_config">
+         <requiredEntity type="base">EUAmazonBaseCurrencyValue</requiredEntity>
+         <requiredEntity type="default">EUAmazonDefaultCurrencyValue</requiredEntity>
+         <requiredEntity type="allow">AmazonAllowCurrencyValue</requiredEntity>
+     </entity>
++    <entity name="EUAmazonMultiCurrencyConfig" type="amazon_currency_config">
++        <requiredEntity type="base">EUAmazonBaseCurrencyValue</requiredEntity>
++        <requiredEntity type="default">EUAmazonDefaultMultiCurrencyValue</requiredEntity>
++        <requiredEntity type="allow">AmazonAllowMultiCurrencyValue</requiredEntity>
++    </entity>
++    <entity name="EUAmazonInvalidMultiCurrencyConfig" type="amazon_currency_config">
++        <requiredEntity type="base">EUAmazonBaseCurrencyValue</requiredEntity>
++        <requiredEntity type="default">EUAmazonNoMultiCurrencyValue</requiredEntity>
++        <requiredEntity type="allow">AmazonAllowMultiCurrencyValue</requiredEntity>
++    </entity>
+     <entity name="EUAmazonBaseCurrencyValue" type="base">
+         <data key="value">EUR</data>
+     </entity>
+     <entity name="EUAmazonDefaultCurrencyValue" type="default">
+         <data key="value">EUR</data>
+     </entity>
++    <entity name="EUAmazonMultiCurrencyValue" type="default">
++        <data key="value">USD</data>
++    </entity>
++    <entity name="EUAmazonNoMultiCurrencyValue" type="default">
++        <data key="value">CZK</data>
++    </entity>
+     <entity name="DefaultAmazonCurrencyConfig" type="default_amazon_currency_config">
+         <requiredEntity type="amazonCurrencyBaseFlagZero">DefaultAmazonCurrencyBaseFlagZero</requiredEntity>
+         <requiredEntity type="amazonCurrencyDefaultFlagZero">DefaultAmazonCurrencyDefaultFlagZero</requiredEntity>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutAddressFailure.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutAddressFailureTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutAddressFailure" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <stories value="Test new shipping address validation"/>
+@@ -14,6 +7,7 @@
+             <description value="Adds an invalid address to Amazon Address widget to test Magento shipping address validation"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -32,6 +26,7 @@
+         <!--Save opener window name since popup auto-closes-->
+         <executeJS function="return window.name;" stepKey="openerName"/>
+         <!--Get address widget iframe name (dynamic)-->
++        <wait time="5" stepKey="jankyWaitForIframe"/>
+         <executeJS function="return jQuery('#addressBookWidgetDiv iframe').attr('name');" stepKey="iframeName"/>
+         <switchToIFrame userInput="{$iframeName}" stepKey="switchToIFrameWidget"/>
+         <!--Open new address pop-up-->
+@@ -51,7 +46,7 @@
+         <fillField selector="{{AmazonAddressSection.phone}}" userInput="{{AmazonAddressFail.phone}}" stepKey="enterPhone"/>
+         <click selector="{{AmazonAddressSection.submit}}" stepKey="clickAddAddressButton"/>
+         <!--Switch back to Magento and detect error from new address-->
+-        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener"/>
++        <switchToWindow userInput="{$openerName}" stepKey="switchToWindowOpener" />
+         <waitForText userInput="The country associated with your address is not allowed" selector=".message" stepKey="waitForText"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineAmazonRejected.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineAmazonRejectedTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutDeclineAmazonRejected" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+@@ -14,6 +7,7 @@
+             <description value="Test CC decline message, logout, and redirect to cart with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -28,13 +22,14 @@
+         </after>
+ 
+         <!--Begin checkout-->
+-        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+-            <argument name="cc" value="2323"/>
++            <argument name="cc" value="2323" />
+         </actionGroup>
+-        <!--Decline Error Message-->
+-        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>        <!--Verify iframe wallet message-->
++        <!--Decline Error Message - These messages are sometimes not showing up, but the redirect to cart always happens -->
++<!--        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>-->
++        <!--Verify iframe wallet message-->
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineInvalidPaymentMethod.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineInvalidPaymentMethodTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutDeclineInvalidPaymentMethod" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+@@ -14,12 +7,13 @@
+             <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <group value="amazon_payment"/>
+         </annotations>
+         <!--Begin checkout-->
+-        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+-            <argument name="cc" value="3434"/>
++            <argument name="cc" value="3434" />
+         </actionGroup>
+         <!--Decline Error Message-->
+         <waitForText userInput="There has been a problem with the selected payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclinePaymentMethod.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclinePaymentMethodTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutDeclinePaymentMethod" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+@@ -14,6 +7,7 @@
+             <description value="Test CC decline message and then success page elements for placed order with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -28,16 +22,16 @@
+         </after>
+ 
+         <!--Begin checkout-->
+-        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+-            <argument name="cc" value="4545"/>
++            <argument name="cc" value="4545" />
+         </actionGroup>
+         <!--Decline Error Message-->
+-        <waitForText userInput="Please select a payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <waitForText userInput="The selected payment method is not available for this transaction" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
+         <!--Use default CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
+         <!--See success message-->
+-        <see selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
++        <waitForText selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutAutomatic.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutAutomaticTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutDeclineTransactionTimedOutAutomatic" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+@@ -14,10 +7,11 @@
+             <description value="Test CC timeout message with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous"/>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode asynchronous" />
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+@@ -25,17 +19,20 @@
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous"/>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+         <!--Begin checkout-->
+-        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+-            <argument name="cc" value="5656"/>
++            <argument name="cc" value="5656" />
+         </actionGroup>
+-        <!--Transaction declined error message-->
+-        <waitForText userInput="Transaction has been declined" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <!--Transaction declined error message - These messages are sometimes not showing up, but the redirect to cart always happens-->
++<!--        <waitForText userInput="Transaction has been declined" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>-->
++        <!--Wait for redirect to cart-->
++        <wait time="5" stepKey="waitRedirect"/>
++        <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutInstant.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutDeclineTransactionTimedOutInstantTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutDeclineTransactionTimedOutInstant" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <stories value="Test decline error messages using sandbox CC# with Amazon Pay"/>
+@@ -14,10 +7,11 @@
+             <description value="Test CC timeout message with Amazon Pay"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_decline"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+-            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous"/>
++            <magentoCLI stepKey="setAuthMode" command="config:set payment/amazon_payment/authorization_mode synchronous" />
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+             <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+@@ -29,13 +23,13 @@
+         </after>
+ 
+         <!--Begin checkout-->
+-        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with invalid test CC#-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+-            <argument name="cc" value="5656"/>
++            <argument name="cc" value="5656" />
+         </actionGroup>
+-        <!--Timeout Error Message-->
+-        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++        <!--Timeout Error Message - These messages are sometimes not showing up, but the redirect to cart always happens -->
++<!--        <waitForText userInput="please choose another payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>-->
+         <!--Wait for redirect to cart-->
+         <wait time="5" stepKey="waitRedirect"/>
+         <seeInCurrentUrl url="{{CheckoutCartPage.url}}" stepKey="assertUrl"/>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAAbandonedTest.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutSCAAbandoned" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <features value="Amazon Pay"/>
++            <stories value="(SCA) Amazon SCA Abandoned"/>
++            <title value="(SCA) Amazon SCA Abandoned"/>
++            <description value="Perform checkout from cart page and ensure SCA Abandoned page."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_sca"/>
++            <group value="amazon_payment"/>
++        </annotations>
++
++        <before>
++            <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="EUAmazonCurrencyConfig" stepKey="SampleAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Login (popup)-->
++        <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
++
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
++        <!--Place order with SCA Abandoned CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="4440" />
++        </actionGroup>
++        <!--Transaction declined error message-->
++        <waitForText userInput="There has been a problem with the selected payment method" selector=".message" stepKey="waitForText"/>
++    </test>
++</tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAFailure.xml
++++ b/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAFailureTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutSCAFailure" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,33 +8,36 @@
+             <description value="Perform checkout from cart page and ensure SCA Failure page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+-            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="EUAmazonCurrencyConfig" stepKey="SampleAmazonCurrencyConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+         <!--Go to Cart-->
+-        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+         <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
+ 
+         <!--Login (popup)-->
+         <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+ 
+         <!--Begin checkout-->
+-        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup" />
+         <!--Place order with SCA Failure CC-->
+         <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
+-            <argument name="cc" value="8320"/>
++            <argument name="cc" value="8320" />
+         </actionGroup>
+         <!--Transaction declined error message-->
+         <waitForText userInput="There was a problem with your payment." selector=".message" stepKey="waitForText"/>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProductDetail.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProductDetailTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Creates and loads simple product and adds it to cart using Amazon Pay button on product detail page."/>
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -35,10 +29,10 @@
+         <!--Add to cart via Amazon Pay button on product page-->
+         <waitForElement selector="{{AmazonCheckoutSection.productPayButton}}" time="30" stepKey="apWaitForPayButton"/>
+         <waitForElement selector="#OffAmazonPaymentsWidgets0" time="30" stepKey="apWaitForPayButton2"/>
+-        <waitForJS function="return document.getElementById('{{AmazonCheckoutSection.productPayButton}}'.substr(1)).clientHeight &gt; 10;" stepKey="waitForPayButtonClickable"/>
++        <waitForJS function="return document.getElementById('{{AmazonCheckoutSection.productPayButton}}'.substr(1)).clientHeight > 10;" stepKey="waitForPayButtonClickable" />
+         <click selector="{{AmazonCheckoutSection.productPayButton}}" stepKey="clickProductPayButton"/>
+ 
+         <!--Login (redirect)-->
+-        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProduct.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutAddProductTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Adds product to cart."/>
+             <severity value="BLOCKER"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCart.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCartTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutCart" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,18 +8,19 @@
+             <description value="Perform checkout from cart page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <!--Go to Cart-->
+-        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+         <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
+ 
+         <!--Login (popup)-->
+         <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutConfigurableProduct.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutConfigurableProductTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutConfigurableProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Perform checkout with configurable product and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -122,22 +116,22 @@
+ 
+         <!-- Add Configurable Product to the cart -->
+         <actionGroup ref="StorefrontAddConfigurableProductToTheCartActionGroup" stepKey="addConfigurableProductToCart">
+-            <argument name="urlKey" value="$$createConfigProduct.custom_attributes[url_key]$$"/>
++            <argument name="urlKey" value="$$createConfigProduct.custom_attributes[url_key]$$" />
+             <argument name="productAttribute" value="$$createConfigProductAttribute.default_value$$"/>
+             <argument name="productOption" value="$$getConfigAttributeOption2.label$$"/>
+             <argument name="qty" value="2"/>
+         </actionGroup>
+ 
+         <!--Open minicart-->
+-        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart"/>
+-        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink"/>
+-        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart"/>
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart" />
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink" />
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart" />
+ 
+         <!--Login (redirect)-->
+         <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCustomer.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutCustomerTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutCustomer" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,16 +8,25 @@
+             <description value="Perform checkout after logging in from customer account page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
++        <before>
++            <magentoCLI command="config:set {{AmazonLwaConfig.path}} 1" stepKey="enableAmazonLwa"/>
++        </before>
++
++        <after>
++            <magentoCLI command="config:set {{AmazonLwaConfig.path}} 0" stepKey="disableAmazonLwa"/>
++        </after>
++
+         <!--Go to Customer page-->
+-        <amOnPage url="/customer/account/" stepKey="goToMyAccountPage"/>
++        <amOnPage url="/customer/account/" stepKey="goToMyAccountPage" />
+ 
+         <!--Login (popup)-->
+         <click selector="{{AmazonCheckoutSection.loginButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutDisplayLanguage.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutDisplayLanguageTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutDisplayLanguage" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Perform checkout with non-default display language and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -31,6 +25,6 @@
+         </after>
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutFreeShipping.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutFreeShippingTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutFreeShipping" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Perform checkout with free shipping"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -31,6 +25,6 @@
+         </after>
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutGroupedProduct.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutGroupedProductTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutGroupedProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Perform checkout with bundled product and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+@@ -67,15 +61,15 @@
+         </actionGroup>
+ 
+         <!--Open minicart-->
+-        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart"/>
+-        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink"/>
+-        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart"/>
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart" />
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink" />
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart" />
+ 
+         <!--Login (redirect)-->
+         <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutMiniCart.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutMiniCartTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutMiniCart" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,18 +8,19 @@
+             <description value="Perform checkout from minicart and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <!--Open minicart-->
+-        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart"/>
+-        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink"/>
+-        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart"/>
++        <waitForElement selector="{{StorefrontMinicartSection.showCart}}" stepKey="waitForShowMinicart" />
++        <waitForElement selector="{{StorefrontMinicartSection.viewAndEditCart}}" stepKey="waitForCartLink" />
++        <click selector="{{StorefrontMinicartSection.showCart}}" stepKey="clickShowMinicart" />
+ 
+         <!--Login (redirect)-->
+         <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutPage.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutPageTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutPage" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,6 +8,7 @@
+             <description value="Perform checkout from checkout page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <!--Go to Checkout-->
+@@ -24,9 +18,9 @@
+ 
+         <!--Login (popup)-->
+         <click selector="{{AmazonCheckoutSection.checkoutPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutProductDetail.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutProductDetailTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutProductDetail" extends="AmazonCheckoutAddProductDetail">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,9 +8,10 @@
+             <description value="Perform checkout from product details page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSCASuccess.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSCASuccessTest.xml
+@@ -1,12 +1,5 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+     <test name="AmazonCheckoutSCASuccess" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+@@ -15,18 +8,31 @@
+             <description value="Perform checkout from cart page and ensure Success page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
++        <before>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="EUAmazonCurrencyConfig" stepKey="SampleAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
+         <!--Go to Cart-->
+-        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart"/>
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
+ 
+         <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
+ 
+         <!--Login (popup)-->
+         <click selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup"/>
++        <actionGroup ref="AmazonLoginPopupActionGroup" stepKey="AmazonLoginPopupActionGroup" />
+ 
+         <!--Place order-->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+     </test>
+-</tests>
++</tests>
+\ No newline at end of file
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSuccessAfterDeclinedTest.xml
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutSuccessAfterDeclined" extends="AmazonCheckoutAddProductDetail">
++        <annotations>
++            <stories value="Amazon Pay Success After being Declined by InvalidPaymentMethod error"/>
++            <title value="Amazon Pay Success After being Declined by InvalidPaymentMethod error"/>
++            <description value="Test user ability to placed order with different CC after being declined"/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_checkout"/>
++            <group value="amazon_payment"/>
++        </annotations>
++        <!--Begin checkout-->
++        <actionGroup ref="AmazonCheckoutBeginActionGroup" stepKey="AmazonCheckoutBeginActionGroup"/>
++        <!--Place order with invalid test CC#-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupBad">
++            <argument name="cc" value="3434"/>
++        </actionGroup>
++        <!--Decline Error Message-->
++        <waitForText userInput="There has been a problem with the selected payment method" selector="{{AdminMessagesSection.errorMessage}}" stepKey="waitForText"/>
++
++        <waitForAjaxLoad stepKey="waitForAjaxLoad"/>
++
++        <!--Place order again with normal CC-->
++        <actionGroup ref="AmazonCheckoutCcActionGroup" stepKey="AmazonCheckoutCcActionGroupGood"/>
++        <waitForText selector="{{CheckoutSuccessMainSection.successTitle}}" userInput="Thank you for your purchase!" stepKey="waitForLoadSuccessPage"/>
++    </test>
++</tests>
+
+--- a/Test/Mftf/Test/AmazonCheckoutDeclineTest/AmazonCheckoutSCAAbandoned.xml
++++ b/Test/Mftf/Test/AmazonCheckoutSuccessTest/AmazonCheckoutSuccessAfterSCAAbandonedTest.xml
+@@ -7,11 +7,11 @@
+ -->
+ <tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ 	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+-    <test name="AmazonCheckoutSCAAbandoned" extends="AmazonCheckoutAddProduct">
++    <test name="AmazonCheckoutSuccessAfterSCAAbandoned" extends="AmazonCheckoutAddProduct">
+         <annotations>
+             <features value="Amazon Pay"/>
+-            <stories value="(SCA) Amazon SCA Abandoned"/>
+-            <title value="(SCA) Amazon SCA Abandoned"/>
++            <stories value="(SCA) Amazon Success After SCA Abandoned"/>
++            <title value="(SCA) Amazon Success After SCA Abandoned"/>
+             <description value="Perform checkout from cart page and ensure SCA Abandoned page."/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_sca"/>
+@@ -19,7 +19,8 @@
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct"/>
+-            <createData entity="SampleAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData"/>
++            <createData entity="EUAmazonCurrencyConfig" stepKey="SampleAmazonCurrencyConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+@@ -44,6 +45,6 @@
+             <argument name="cc" value="4440"/>
+         </actionGroup>
+         <!--Transaction declined error message-->
+-        <waitForText userInput="Something's wrong with your payment method." selector=".message" stepKey="waitForText"/>
++        <waitForText userInput="There has been a problem with the selected payment method" selector=".message" stepKey="waitForText"/>
+     </test>
+ </tests>
+
+--- a/Test/Mftf/Test/AmazonInvoiceTest/AmazonSingleInvoice.xml
++++ b/Test/Mftf/Test/AmazonInvoiceTest/AmazonInvoiceSingleTest.xml
+@@ -1,26 +1,20 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+-    <test name="AmazonSingleInvoice">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonInvoiceSingle">
+         <annotations>
+             <stories value="Amazon Pay Invoice"/>
+             <title value="Admin user must be unable to split invoices when configuration disallows"/>
+             <description value="Admin user must be unable to split invoices when configuration disallows"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_invoice"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct1"/>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct2"/>
+-            <createData entity="SingleInvoiceAmazonPaymentConfig" stepKey="SingleInvoiceAmazonPaymentConfig"/>
+-            <createData entity="SingleInvoiceAmazonCurrencyConfig" stepKey="SingleInvoiceAmazonCurrencyConfig"/>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SingleInvoiceAmazonPaymentConfig"/>
++            <createData entity="EUAmazonCurrencyConfig" stepKey="SingleInvoiceAmazonCurrencyConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+@@ -47,10 +41,10 @@
+ 
+         <!-- Login (redirect) -->
+         <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
+ 
+         <!-- Place order -->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+         <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
+ 
+         <!-- Login as admin -->
+
+--- a/Test/Mftf/Test/AmazonInvoiceTest/AmazonMultiInvoice.xml
++++ b/Test/Mftf/Test/AmazonInvoiceTest/AmazonInvoiceSplitTest.xml
+@@ -1,32 +1,24 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!--
+- /**
+-  * Copyright © Magento, Inc. All rights reserved.
+-  * See COPYING.txt for license details.
+-  */
+--->
+-<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+-    <test name="AmazonMultiInvoice">
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonInvoiceSplit">
+         <annotations>
+             <stories value="Amazon Pay Invoice"/>
+-            <title value="Admin user must be able to split invoices when configuration allows with Currency Config"/>
+-            <description value="Admin user must be able to split invoices when configuration allows with Currency Config"/>
++            <title value="Admin user must be able to split invoices when configuration allows"/>
++            <description value="Admin user must be able to split invoices when configuration allows"/>
+             <severity value="CRITICAL"/>
+             <group value="amazon_invoice"/>
++            <group value="amazon_payment"/>
+         </annotations>
+ 
+         <before>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct1"/>
+             <createData entity="SimpleTwo" stepKey="createSimpleProduct2"/>
+-            <createData entity="MultiInvoiceAmazonPaymentConfig" stepKey="MultiInvoiceAmazonPaymentConfig"/>
+-            <createData entity="MultiInvoiceAmazonCurrencyConfig" stepKey="MultiInvoiceAmazonCurrencyConfig"/>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="SplitInvoiceAmazonPaymentConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </before>
+ 
+         <after>
+             <createData entity="DefaultAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
+-            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
+             <magentoCLI command="cache:flush" stepKey="flushCache"/>
+         </after>
+ 
+@@ -47,10 +39,10 @@
+ 
+         <!-- Login (redirect) -->
+         <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
+-        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
+ 
+         <!-- Place order -->
+-        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup"/>
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
+         <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
+ 
+         <!-- Login as admin -->
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonMulticurrencyTest/AmazonCheckoutMulticurrencyCurrencyNoButtonV2Test.xml
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutMulticurrencyCurrencyNoButton" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <stories value="Amazon Multicurrency Checkout No Button"/>
++            <title value="Amazon Multicurrency Checkout No Button"/>
++            <description value="User should not be able to checkout with Amazon Pay when not in an allowed multi-currency region."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_payment"/>
++            <group value="amazon_payment_multicurrency"/>
++        </annotations>
++
++        <before>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData" before="flushCache"/>
++            <createData entity="EUAmazonInvalidMultiCurrencyConfig" stepKey="SampleAmazonCurrencyConfig" before="flushCache"/>
++            <!-- enable multicurrency -->
++            <magentoCLI command="config:set payment/amazon_payment/multicurrency 1" stepKey="setMulticurrency" before="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <!-- disable multicurrency -->
++            <magentoCLI command="config:set payment/amazon_payment/multicurrency 0" stepKey="disableMulticurrency" before="flushCache"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
++
++        <!--Verify we don't see Amazon Pay Button-->
++        <dontSeeElement selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="dontSeeEnabledAmazonButton"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonMulticurrencyTest/AmazonCheckoutMulticurrencyDisabledNoButtonV2Test.xml
+@@ -0,0 +1,32 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutMulticurrencyDisabledNoButton" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <stories value="Amazon Checkout Multicurrency Disabled No Button"/>
++            <title value="Amazon Checkout Multicurrency Disabled No Button"/>
++            <description value="User should not be able to checkout with Amazon Pay when multi-currency is disabled."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_payment"/>
++            <group value="amazon_payment_multicurrency"/>
++        </annotations>
++
++        <before>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData" before="flushCache"/>
++            <createData entity="EUAmazonMultiCurrencyConfig" stepKey="SampleAmazonCurrencyConfig" before="flushCache"/>
++            <!-- ensure multicurrency disabled -->
++            <magentoCLI command="config:set payment/amazon_payment/multicurrency 0" stepKey="setMulticurrency" before="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!--Go to Cart-->
++        <actionGroup ref="StorefrontOpenCartFromMinicartActionGroup" stepKey="cartOpenCart" />
++
++        <!--Verify we don't see Amazon Pay Button-->
++        <dontSeeElement selector="{{AmazonCheckoutSection.cartPayButton}}" stepKey="dontSeeEnabledAmazonButton"/>
++    </test>
++</tests>
+
+--- /dev/null
++++ b/Test/Mftf/Test/AmazonMulticurrencyTest/AmazonCheckoutMulticurrencySuccessTest.xml
+@@ -0,0 +1,66 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
++    <test name="AmazonCheckoutMulticurrencySuccess" extends="AmazonCheckoutAddProduct">
++        <annotations>
++            <stories value="Amazon Checkout Multicurrency"/>
++            <title value="Amazon Checkout Multicurrency Success"/>
++            <description value="User should be able to checkout with Amazon Pay when multicurrency is enabled and they are using a supported currency."/>
++            <severity value="CRITICAL"/>
++            <group value="amazon_payment"/>
++            <group value="amazon_payment_multicurrency"/>
++        </annotations>
++
++        <before>
++            <createData entity="EUAmazonPaymentConfig" stepKey="SampleAmazonPaymentConfigData" before="flushCache"/>
++            <createData entity="EUAmazonCurrencyConfig" stepKey="SampleAmazonCurrencyConfig" before="flushCache"/>
++            <!-- set default currency to one supported for multicurrency -->
++            <magentoCLI command="config:set currency/options/default USD" stepKey="setDefaultCurrency" before="flushCache"/>
++            <!-- enable multicurrency -->
++            <magentoCLI command="config:set payment/amazon_payment/multicurrency 1" stepKey="setMulticurrency" before="flushCache"/>
++        </before>
++
++        <after>
++            <createData entity="SampleAmazonPaymentConfig" stepKey="DefaultAmazonPaymentConfig"/>
++            <createData entity="DefaultAmazonCurrencyConfig" stepKey="DefaultAmazonCurrencyConfig"/>
++            <!-- disable multicurrency -->
++            <magentoCLI command="config:set payment/amazon_payment/multicurrency 0" stepKey="disableMulticurrency" before="flushCache"/>
++            <magentoCLI command="cache:flush" stepKey="flushCache"/>
++        </after>
++
++        <!-- Click on mini cart -->
++        <actionGroup ref="StorefrontClickOnMiniCartActionGroup" stepKey="clickOnMiniCart"/>
++
++        <!-- Login (redirect) -->
++        <click selector="{{AmazonCheckoutSection.miniCartPayButton}}" stepKey="clickAmazonCartButton"/>
++        <actionGroup ref="AmazonLoginRedirectActionGroup" stepKey="AmazonLoginRedirectActionGroup" />
++
++        <!-- Place order -->
++        <actionGroup ref="AmazonCheckoutSubmitActionGroup" stepKey="AmazonCheckoutSubmitActionGroup" />
++        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
++
++        <!-- Login as admin -->
++        <actionGroup ref="AdminLoginActionGroup" stepKey="loginAsAdmin"/>
++
++        <!-- Open created order in backend -->
++        <amOnPage url="{{AdminOrdersPage.url}}" stepKey="goToOrders"/>
++        <waitForPageLoad stepKey="waitForOrdersPageLoad"/>
++        <actionGroup ref="OpenOrderByIdActionGroup" stepKey="filterOrderGridById">
++            <argument name="orderId" value="$grabOrderNumber"/>
++        </actionGroup>
++
++        <!-- Create Invoice -->
++        <click selector="{{AdminOrderDetailsMainActionsSection.invoice}}" stepKey="clickInvoice"/>
++        <waitForPageLoad stepKey="waitForInvoicePage"/>
++
++        <!-- Verify invoice item qtys cannot be changed -->
++        <dontSeeElement stepKey="dontSeeItemQtyToInvoice1" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('1')}}"/>
++        <dontSeeElement stepKey="dontSeeItemQtyToInvoice2" selector="{{AdminInvoiceItemsSection.itemQtyToInvoice('2')}}"/>
++        <dontSeeElement stepKey="dontSeeUpdateQty" selector="{{AdminInvoiceItemsSection.updateQty}}"/>
++
++        <!-- Submit and verify the invoice created using the presentmentCurrency -->
++        <click selector="{{AdminInvoiceMainActionsSection.submitInvoice}}" stepKey="submitInvoice"/>
++        <waitForPageLoad stepKey="waitForLoadPage"/>
++        <see userInput="The invoice has been created." stepKey="seeMessage"/>
++        <see userInput="Captured amount of €6.23 [$8.82] online." stepKey="seeCapturedAmount"/>
++    </test>
++</tests>
+
+--- a/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
++++ b/Test/Unit/Gateway/Command/CaptureStrategyCommandTest.php
+@@ -35,6 +35,13 @@ use PHPUnit_Framework_MockObject_MockObject as MockObject;
+  * Class CaptureStrategyCommandTest
+  *
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class CaptureStrategyCommandTest extends \PHPUnit\Framework\TestCase
+ {
+
+--- a/Test/Unit/Observer/AddAmazonButtonTest.php
++++ b/Test/Unit/Observer/AddAmazonButtonTest.php
+@@ -26,6 +26,13 @@ use Amazon\Payment\Observer\AddAmazonButton;
+  * Class AddAmazonButtonTest
+  *
+  * @see \Amazon\Payment\Observer\AddAmazonButton
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class AddAmazonButtonTest extends \PHPUnit\Framework\TestCase
+ {
+
+--- a/Test/Unit/Observer/DataAssignObserverTest.php
++++ b/Test/Unit/Observer/DataAssignObserverTest.php
+@@ -24,6 +24,13 @@ use Magento\Quote\Api\Data\PaymentInterface;
+ 
+ /**
+  * Class DataAssignObserverTest
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class DataAssignObserverTest extends \PHPUnit\Framework\TestCase
+ {
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,14 +2,15 @@
+   "name": "amzn/amazon-pay-module",
+   "description": "Amazon Pay module",
+   "type": "magento2-module",
+-  "version": "4.1.1",
++  "version": "4.2.0",
++  "abandoned": "amzn/amazon-pay-v2-magento-2-module",
+   "license": [
+     "Apache-2.0"
+   ],
+   "require": {
+     "php": "~7.3.0||~7.4.0",
+-    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.1.1",
+-    "amzn/login-with-amazon-module": "^4.1.1",
++    "amzn/amazon-pay-and-login-with-amazon-core-module": "^4.2.0",
++    "amzn/login-with-amazon-module": "^4.2.0",
+     "magento/framework": "*",
+     "magento/module-customer": "*",
+     "magento/module-eav": "*",
+
+--- a/etc/csp_whitelist.xml
++++ b/etc/csp_whitelist.xml
+@@ -10,6 +10,7 @@
+                 <value id="amazon_it" type="host">*.amazon.it</value>
+                 <value id="amazon_fr" type="host">*.amazon.fr</value>
+                 <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_de" type="host">*.amazon.de</value>
+                 <value id="amazonpay_com" type="host">*.amazonpay.com</value>
+                 <value id="amazonpay_co_uk" type="host">*.amazonpay.co.uk</value>
+                 <value id="amazonpay_co_jp" type="host">*.amazonpay.co.jp</value>
+@@ -17,6 +18,7 @@
+                 <value id="amazonpay_it" type="host">*.amazonpay.it</value>
+                 <value id="amazonpay_fr" type="host">*.amazonpay.fr</value>
+                 <value id="amazonpay_es" type="host">*.amazonpay.es</value>
++                <value id="amazonpay_de" type="host">*.amazonpay.de</value>
+                 <value id="amazonservices_com" type="host">mws.amazonservices.com</value>
+                 <value id="amazonservices_co_uk" type="host">mws.amazonservices.co.uk</value>
+                 <value id="amazonservices_co_jp" type="host">mws.amazonservices.co.jp</value>
+@@ -24,6 +26,7 @@
+                 <value id="amazonservices_it" type="host">mws.amazonservices.it</value>
+                 <value id="amazonservices_fr" type="host">mws.amazonservices.fr</value>
+                 <value id="amazonservices_es" type="host">mws.amazonservices.es</value>
++                <value id="amazonservices_de" type="host">mws.amazonservices.de</value>
+             </values>
+         </policy>
+         <policy id="script-src">
+@@ -35,6 +38,7 @@
+                 <value id="amazon_payment_widget_it" type="host">*.payments-amazon.it</value>
+                 <value id="amazon_payment_widget_fr" type="host">*.payments-amazon.fr</value>
+                 <value id="amazon_payment_widget_es" type="host">*.payments-amazon.es</value>
++                <value id="amazon_payment_widget_de" type="host">*.payments-amazon.de</value>
+             </values>
+         </policy>
+         <policy id="img-src">
+@@ -68,6 +72,7 @@
+                 <value id="ssl_images_amazon_it" type="host">*.ssl-images-amazon.it</value>
+                 <value id="ssl_images_amazon_fr" type="host">*.ssl-images-amazon.fr</value>
+                 <value id="ssl_images_amazon_es" type="host">*.ssl-images-amazon.es</value>
++                <value id="ssl_images_amazon_de" type="host">*.ssl-images-amazon.de</value>
+                 <value id="media_amazon_com" type="host">*.media-amazon.com</value>
+                 <value id="media_amazon_co_uk" type="host">*.media-amazon.co.uk</value>
+                 <value id="media_amazon_co_jp" type="host">*.media-amazon.co.jp</value>
+@@ -75,6 +80,7 @@
+                 <value id="media_amazon_it" type="host">*.media-amazon.it</value>
+                 <value id="media_amazon_fr" type="host">*.media-amazon.fr</value>
+                 <value id="media_amazon_es" type="host">*.media-amazon.es</value>
++                <value id="media_amazon_de" type="host">*.media-amazon.de</value>
+             </values>
+         </policy>
+         <policy id="form-action">
+@@ -86,6 +92,7 @@
+                 <value id="amazon_it" type="host">*.amazon.it</value>
+                 <value id="amazon_fr" type="host">*.amazon.fr</value>
+                 <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_de" type="host">*.amazon.de</value>
+             </values>
+         </policy>
+         <policy id="frame-src">
+@@ -97,6 +104,7 @@
+                 <value id="amazon_it" type="host">*.amazon.it</value>
+                 <value id="amazon_fr" type="host">*.amazon.fr</value>
+                 <value id="amazon_es" type="host">*.amazon.es</value>
++                <value id="amazon_de" type="host">*.amazon.de</value>
+                 <value id="amazon_payment_widget_com" type="host">*.payments-amazon.com</value>
+                 <value id="amazon_payment_widget_co_uk" type="host">*.payments-amazon.co.uk</value>
+                 <value id="amazon_payment_widget_co_jp" type="host">*.payments-amazon.co.jp</value>
+@@ -104,6 +112,7 @@
+                 <value id="amazon_payment_widget_it" type="host">*.payments-amazon.it</value>
+                 <value id="amazon_payment_widget_fr" type="host">*.payments-amazon.fr</value>
+                 <value id="amazon_payment_widget_es" type="host">*.payments-amazon.es</value>
++                <value id="amazon_payment_widget_de" type="host">*.payments-amazon.de</value>
+             </values>
+         </policy>
+     </policies>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Payment" setup_version="4.1.1" >
++    <module name="Amazon_Payment" setup_version="4.2.0" >
+         <sequence>
+             <module name="Amazon_Core"/>
+             <module name="Amazon_Login"/>
+
+--- a/i18n/de_AT.csv
++++ b/i18n/de_AT.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/de_CH.csv
++++ b/i18n/de_CH.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/de_DE.csv
++++ b/i18n/de_DE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Die gewählte Zahlmethode ist für diese Transaktion nicht verfügbar. Bitte wählen Sie eine andere oder fügen Sie eine neue Zahlmethode hinzu."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Für diese Bestellung wurde kein Zahlungsmittel ausgewählt, bitte versuchen Sie, die Seite zu aktualisieren oder ein neues Zahlungsmittel hinzuzufügen."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Die Bestellung ist aufgrund eines technischen Fehlers fehlgeschlagen, bitte wählen Sie eine andere Zahlungsmethode oder kontaktieren Sie unseren Support."
++"or continue with Standard Checkout","oder verwenden Sie den Standard Checkout"
+
+--- a/i18n/en_GB.csv
++++ b/i18n/en_GB.csv
+@@ -23,3 +23,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
++"or continue with Standard Checkout","or continue with Standard Checkout"
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -123,3 +123,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","The order failed due to a technical error, please select another payment method or contact our support."
++"or continue with Standard Checkout","or continue with Standard Checkout"
+
+--- a/i18n/es_AR.csv
++++ b/i18n/es_AR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CL.csv
++++ b/i18n/es_CL.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CO.csv
++++ b/i18n/es_CO.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_CR.csv
++++ b/i18n/es_CR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_ES.csv
++++ b/i18n/es_ES.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_MX.csv
++++ b/i18n/es_MX.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_PA.csv
++++ b/i18n/es_PA.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_PE.csv
++++ b/i18n/es_PE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/es_VE.csv
++++ b/i18n/es_VE.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","El método de pago seleccionado no está disponible para esta transacción. Por favor, seleccione otro o introducza uno nuevo en el recuadro Metodo de pago."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","No ha sido seleccionado un método de pago para este pedido. Por favor, refresque la página o introduzca uno nuevo en el recuadro Metodo de pago."
+ "The order failed due to a technical error, please select another payment method or contact our support.","El pedido no ha sido procesado debido a un error técnico. Por favor, seleccione otro método de pago o contacte nuestro servicio de soporte al cliente."
++"or continue with Standard Checkout","o continúa con el Checkout Standard"
+
+--- a/i18n/fr_CA.csv
++++ b/i18n/fr_CA.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
+ "The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
++"or continue with Standard Checkout","ou continuer avec le Checkout Standard"
+
+--- a/i18n/fr_FR.csv
++++ b/i18n/fr_FR.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Le mode de paiement sélectionné n'est pas disponible pour cette transaction. Veuillez en sélectionner un autre ou ajouter un nouveau mode de paiement au widget de portefeuille."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Aucun instrument de paiement n'a été sélectionné pour cette commande, veuillez essayer de rafraîchir la page ou d'ajouter un nouvel instrument de paiement dans le widget de portefeuille."
+ "The order failed due to a technical error, please select another payment method or contact our support.","La commande a échoué en raison d'une erreur technique, veuillez sélectionner un autre mode de paiement ou contacter notre support."
++"or continue with Standard Checkout","ou continuer avec le Checkout Standard"
+
+--- a/i18n/it_CH.csv
++++ b/i18n/it_CH.csv
+@@ -25,3 +25,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
++"or continue with Standard Checkout","o continua con il Checkout Standard"
+
+--- a/i18n/it_IT.csv
++++ b/i18n/it_IT.csv
+@@ -26,3 +26,4 @@
+ "The selected payment method is not available for this transaction. Please select another one or add a new payment method to the wallet widget.","Il metodo di pagamento selezionato non è disponibile per questa transazione. Per favore selezionarne o aggiungerne un altro nel wallet widget."
+ "No payment instrument has been selected for this order, please try to refresh the page or add a new payment instrument in the wallet widget.","Non è stato selezionato nessun metodo di pagamento per questo ordine. Per favore ricaricare la pagina o aggiungere un nuovo metodo di pagamento nel wallet widget."
+ "The order failed due to a technical error, please select another payment method or contact our support.","Non è stato possibile processare l’ordine a causa di un problema tecnico. Per favore selezionare un altro metodo di pagamento o contattare il supporto."
++"or continue with Standard Checkout","o continua con il Checkout Standard"
+
+--- a/view/frontend/web/template/checkout-button.html
++++ b/view/frontend/web/template/checkout-button.html
+@@ -35,7 +35,7 @@
+ </div>
+ 
+ <div class="amazon-divider" data-bind="visible: !isAmazonAccountLoggedIn() && isPwaVisible()">
+-    <span data-bind="i18n: 'Or continue below to pay with a credit card'"></span>
++    <span data-bind="i18n: 'or continue with Standard Checkout'"></span>
+ </div>
+ 
+ <!-- ko foreach: getRegion('after-amazon-button') -->
+

@@ -1,0 +1,1351 @@
+--- a/Api/Data/AmazonAddressInterface.php
++++ b/Api/Data/AmazonAddressInterface.php
+@@ -59,6 +59,14 @@ interface AmazonAddressInterface
+      */
+     public function getLine($lineNumber);
+ 
++    /**
++     * Shifts address lines
++     *
++     * @param int $times
++     * @return null|string
++     */
++    public function shiftLines($times);
++
+     /**
+      * Get city
+      *
+@@ -100,4 +108,12 @@ interface AmazonAddressInterface
+      * @return string
+      */
+     public function getCompany();
++
++    /**
++     * Set company name
++     *
++     * @param string $company
++     * @return string
++     */
++    public function setCompany($company);
+ }
+
+--- a/Block/Adminhtml/Form/Field/CategoryMultiselect.php
++++ b/Block/Adminhtml/Form/Field/CategoryMultiselect.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Block\Adminhtml\Form\Field;
+ 
+ use Magento\Catalog\Block\Adminhtml\Product\Helper\Form\Category;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CategoryMultiselect extends Category
+ {
+     /**
+
+--- a/Block/Adminhtml/Form/Field/IpnUrl.php
++++ b/Block/Adminhtml/Form/Field/IpnUrl.php
+@@ -19,6 +19,14 @@ use Magento\Config\Block\System\Config\Form\Field as BaseField;
+ use Magento\Framework\Data\Form\Element\AbstractElement;
+ use Magento\Framework\UrlInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class IpnUrl extends BaseField
+ {
+     /**
+
+--- a/Block/Adminhtml/Form/Field/JsOrigin.php
++++ b/Block/Adminhtml/Form/Field/JsOrigin.php
+@@ -21,6 +21,14 @@ use Magento\Framework\Data\Form\Element\AbstractElement;
+ use Magento\Framework\UrlInterface;
+ use Zend\Uri\UriFactory;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class JsOrigin extends BaseField
+ {
+     /**
+
+--- a/Block/Adminhtml/Form/Field/RedirectUrl.php
++++ b/Block/Adminhtml/Form/Field/RedirectUrl.php
+@@ -19,6 +19,14 @@ use Magento\Config\Block\System\Config\Form\Field as BaseField;
+ use Magento\Framework\Data\Form\Element\AbstractElement;
+ use Magento\Framework\UrlInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class RedirectUrl extends BaseField
+ {
+     /**
+
+--- a/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
++++ b/Block/Adminhtml/System/Config/Form/DeveloperLogs.php
+@@ -23,6 +23,13 @@ use Magento\Framework\App\Filesystem\DirectoryList;
+ 
+ /**
+  * Displays links to available custom logs
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class DeveloperLogs extends \Magento\Config\Block\System\Config\Form\Field
+ {
+
+--- a/Block/Adminhtml/System/Config/Form/SimplepathConfig.php
++++ b/Block/Adminhtml/System/Config/Form/SimplepathConfig.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Block\Adminhtml\System\Config\Form;
+ 
+ use Magento\Backend\Block\Template\Context;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SimplepathConfig extends \Magento\Config\Block\System\Config\Form\Field
+ {
+ 
+@@ -35,6 +43,6 @@ class SimplepathConfig extends \Magento\Config\Block\System\Config\Form\Field
+             ->setCacheable(false)
+             ->toHtml();
+ 
+-        return $html;
++        return '<div id="row_' . $element->getHtmlId() . '">' . $html . '</div>';
+     }
+ }
+
+--- a/Block/Adminhtml/System/Config/Form/Version.php
++++ b/Block/Adminhtml/System/Config/Form/Version.php
+@@ -18,6 +18,14 @@ namespace Amazon\Core\Block\Adminhtml\System\Config\Form;
+ use Magento\Backend\Block\Template\Context;
+ use Amazon\Core\Helper\Data as CoreHelper;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Version extends \Magento\Config\Block\System\Config\Form\Field
+ {
+     /**
+@@ -56,6 +64,6 @@ class Version extends \Magento\Config\Block\System\Config\Form\Field
+         $output = '<div style="background-color:#eee;padding:1em;border:1px solid #ddd;">';
+         $output .= __('Module version') . ': ' . $version;
+         $output .= "</div>";
+-        return $output;
++        return '<div id="row_' . $element->getHtmlId() . '">' . $output . '</div>';
+     }
+ }
+
+--- a/Block/Adminhtml/System/Config/SimplePathAdmin.php
++++ b/Block/Adminhtml/System/Config/SimplePathAdmin.php
+@@ -16,6 +16,14 @@
+ 
+ namespace Amazon\Core\Block\Adminhtml\System\Config;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class SimplePathAdmin extends \Magento\Framework\View\Element\Template
+ {
+     /**
+
+--- a/Block/Config.php
++++ b/Block/Config.php
+@@ -28,6 +28,13 @@ use Magento\Framework\View\Element\Template\Context;
+  * @api
+  *
+  * Provides a block that displays links to available custom error logs in Amazon Pay admin/config section.
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Config extends Template
+ {
+
+--- a/Client/Client.php
++++ b/Client/Client.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Client;
+ 
+ use AmazonPay\Client as AmazonClient;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Client extends AmazonClient
+ {
+     /**
+
+--- a/Client/ClientFactory.php
++++ b/Client/ClientFactory.php
+@@ -21,6 +21,14 @@ use Magento\Store\Model\ScopeInterface;
+ use Psr\Log\LoggerAwareInterface;
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ClientFactory implements ClientFactoryInterface
+ {
+     /**
+
+--- a/Controller/Adminhtml/Download/ClientLog.php
++++ b/Controller/Adminhtml/Download/ClientLog.php
+@@ -24,6 +24,13 @@ use Magento\Framework\Exception\NotFoundException;
+ /**
+  * Class ClientLog
+  * Enables custom client log file to be accessed via an admin link
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class ClientLog extends System
+ {
+
+--- a/Controller/Adminhtml/Download/IpnLog.php
++++ b/Controller/Adminhtml/Download/IpnLog.php
+@@ -24,6 +24,13 @@ use Magento\Framework\Exception\NotFoundException;
+ /**
+  * Class IpnLog
+  * Enables custom IPN log file to be accessed via an admin link
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class IpnLog extends System
+ {
+
+--- a/Controller/Adminhtml/Simplepath/Poll.php
++++ b/Controller/Adminhtml/Simplepath/Poll.php
+@@ -20,6 +20,14 @@ use Magento\Backend\Controller\Adminhtml\System;
+ use Magento\Framework\App\ObjectManager;
+ use Amazon\Core\Logger\ExceptionLogger;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Poll extends System
+ {
+ 
+
+--- a/Controller/Simplepath/Listener.php
++++ b/Controller/Simplepath/Listener.php
+@@ -25,6 +25,13 @@ use Magento\Framework\App\ObjectManager;
+ /**
+  * Class Listener
+  * Retrieves entered keys from Amazon Pay popup
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Listener extends \Magento\Framework\App\Action\Action implements CsrfAwareActionInterface
+ {
+
+--- a/Domain/AmazonAddress.php
++++ b/Domain/AmazonAddress.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Domain;
+ 
+ use Amazon\Core\Api\Data\AmazonAddressInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAddress extends \Magento\Framework\DataObject implements AmazonAddressInterface
+ {
+     /**
+@@ -54,6 +62,24 @@ class AmazonAddress extends \Magento\Framework\DataObject implements AmazonAddre
+         return null;
+     }
+ 
++    /**
++     * {@inheritdoc}
++     */
++    public function shiftLines($times = 1)
++    {
++        while ($times > 0) {
++            $lines = $this->getData(AmazonAddressInterface::LINES);
++            for ($i = 1; $i <= count($lines); $i++) {
++                $lines[$i] = isset($lines[$i + 1]) ? $lines[$i + 1] : '';
++            }
++            $this->setData(AmazonAddressInterface::LINES, $lines);
++
++            $times--;
++        }
++
++        return $this->getLines();
++    }
++
+     /**
+      * {@inheritdoc}
+      */
+@@ -101,4 +127,14 @@ class AmazonAddress extends \Magento\Framework\DataObject implements AmazonAddre
+     {
+         return $this->getData(AmazonAddressInterface::COMPANY);
+     }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function setCompany($company)
++    {
++        $this->setData(AmazonAddressInterface::COMPANY, $company);
++
++        return $this->getCompany();
++    }
+ }
+
+--- a/Domain/AmazonAddressDecoratorDe.php
++++ b/Domain/AmazonAddressDecoratorDe.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Domain;
+ 
+ use Amazon\Core\Api\Data\AmazonAddressInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+ {
+     /**
+@@ -79,11 +87,15 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+                 $firstTwoLines = $line1 . ' ' . $line2;
+                 if (!$this->isPOBox($line1, $firstTwoLines)) {
+                     $company = $firstTwoLines;
++                    $this->amazonAddress->setCompany($company);
++                    $this->amazonAddress->shiftLines(2);
+                 }
+                 break;
+             case !empty($line2):
+                 if (!$this->isPOBox($line1, $line1)) {
+                     $company = $line1;
++                    $this->amazonAddress->setCompany($company);
++                    $this->amazonAddress->shiftLines();
+                 }
+                 break;
+         }
+@@ -180,4 +192,20 @@ class AmazonAddressDecoratorDe implements AmazonAddressInterface
+     {
+         return $this->amazonAddress->getLine($lineNumber);
+     }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function shiftLines($times)
++    {
++        return $this->amazonAddress->shiftLines($times);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function setCompany($company)
++    {
++        return $this->amazonAddress->setCompany($company);
++    }
+ }
+
+--- a/Domain/AmazonAddressDecoratorJp.php
++++ b/Domain/AmazonAddressDecoratorJp.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Domain;
+ 
+ use Amazon\Core\Api\Data\AmazonAddressInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+ {
+     /**
+@@ -38,13 +46,7 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getLines()
+     {
+-        $city = $this->amazonAddress->getCity();
+-
+-        /*
+-         * AmazonAddressDecoratorJp->getCity() returns address line 1 when city is empty.
+-         * Omit line 1 from the street address in this case.
+-         */
+-        return array_slice($this->amazonAddress->getLines(), empty($city) ? 1 : 0);
++        return $this->amazonAddress->getLines();
+     }
+ 
+     /**
+@@ -76,7 +78,7 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+      */
+     public function getCity()
+     {
+-        return $this->amazonAddress->getCity() ?? $this->amazonAddress->getLine(1);
++        return $this->amazonAddress->getCity() ?? '-';
+     }
+ 
+     /**
+@@ -122,4 +124,20 @@ class AmazonAddressDecoratorJp implements AmazonAddressInterface
+         }
+         return null;
+     }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function shiftLines($times)
++    {
++        return $this->amazonAddress->shiftLines($times);
++    }
++
++    /**
++     * {@inheritdoc}
++     */
++    public function setCompany($company)
++    {
++        return $this->amazonAddress->setCompany($company);
++    }
+ }
+
+--- a/Domain/AmazonAddressFactory.php
++++ b/Domain/AmazonAddressFactory.php
+@@ -21,6 +21,14 @@ use Magento\Framework\ObjectManagerInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Escaper;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonAddressFactory
+ {
+ 
+
+--- a/Domain/AmazonCustomer.php
++++ b/Domain/AmazonCustomer.php
+@@ -19,6 +19,14 @@ use Amazon\Core\Api\Data\AmazonCustomerInterface;
+ use Amazon\Core\Api\Data\AmazonNameInterface;
+ use Magento\Framework\Api\AbstractSimpleObject;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCustomer extends \Magento\Framework\DataObject implements AmazonCustomerInterface
+ {
+     /**
+
+--- a/Domain/AmazonCustomerFactory.php
++++ b/Domain/AmazonCustomerFactory.php
+@@ -22,6 +22,14 @@ use Magento\Framework\ObjectManagerInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ use Magento\Framework\Escaper;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonCustomerFactory
+ {
+     /**
+
+--- a/Domain/AmazonName.php
++++ b/Domain/AmazonName.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Domain;
+ 
+ use Amazon\Core\Api\Data\AmazonNameInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonName extends \Magento\Framework\DataObject implements AmazonNameInterface
+ {
+     /**
+
+--- a/Domain/AmazonNameDecoratorJp.php
++++ b/Domain/AmazonNameDecoratorJp.php
+@@ -18,6 +18,14 @@ namespace Amazon\Core\Domain;
+ 
+ use Amazon\Core\Api\Data\AmazonNameInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonNameDecoratorJp implements AmazonNameInterface
+ {
+     /**
+
+--- a/Domain/AmazonNameFactory.php
++++ b/Domain/AmazonNameFactory.php
+@@ -20,6 +20,14 @@ use Magento\Framework\Exception\LocalizedException;
+ use Magento\Framework\ObjectManagerInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonNameFactory
+ {
+     /**
+
+--- a/Exception/AmazonServiceUnavailableException.php
++++ b/Exception/AmazonServiceUnavailableException.php
+@@ -17,12 +17,65 @@ namespace Amazon\Core\Exception;
+ 
+ use Magento\Framework\Exception\LocalizedException;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonServiceUnavailableException extends LocalizedException
+ {
+     const ERROR_MESSAGE = 'Amazon could not process your request.';
+ 
+-    public function __construct()
++    /**
++     * @var string
++     */
++    private $apiErrorType;
++
++    /**
++     * @var string
++     */
++    private $apiErrorCode;
++
++    /**
++     * @var string
++     */
++    private $apiErrorMessage;
++
++    /**
++     * AmazonServiceUnavailableException constructor.
++     * @param string $apiErrorType
++     * @param string $apiErrorCode
++     * @param string $apiErrorMessage
++     */
++    public function __construct($apiErrorType = '', $apiErrorCode = '', $apiErrorMessage = '')
+     {
++        $this->apiErrorType = $apiErrorType;
++        $this->apiErrorCode = $apiErrorCode;
++        $this->apiErrorMessage = $apiErrorMessage;
+         parent::__construct(__('Amazon could not process your request.'));
+     }
++
++    /**
++     * @return string
++     */
++    public function getApiErrorType() {
++        return $this->apiErrorType;
++    }
++
++    /**
++     * @return string
++     */
++    public function getApiErrorCode() {
++        return $this->apiErrorCode;
++    }
++
++    /**
++     * @return string
++     */
++    public function getApiErrorMessage() {
++        return $this->apiErrorMessage;
++    }
+ }
+
+--- a/Exception/AmazonWebapiException.php
++++ b/Exception/AmazonWebapiException.php
+@@ -18,6 +18,14 @@ namespace Amazon\Core\Exception;
+ use Magento\Framework\Phrase;
+ use Magento\Framework\Webapi\Exception;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonWebapiException extends Exception
+ {
+     public function __construct(
+
+--- a/Helper/CategoryExclusion.php
++++ b/Helper/CategoryExclusion.php
+@@ -22,6 +22,14 @@ use Magento\Framework\App\Helper\Context;
+ use Magento\Quote\Model\Quote;
+ use Magento\Store\Model\ScopeInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CategoryExclusion extends AbstractHelper
+ {
+     const ATTR_QUOTE_ITEM_IS_EXCLUDED_PRODUCT = 'is_excluded_product';
+
+--- a/Helper/ClientIp.php
++++ b/Helper/ClientIp.php
+@@ -19,6 +19,14 @@ use Magento\Framework\App\Helper\AbstractHelper;
+ use Magento\Framework\App\Helper\Context;
+ use Magento\Store\Model\ScopeInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ClientIp extends AbstractHelper
+ {
+     /**
+
+--- a/Helper/Data.php
++++ b/Helper/Data.php
+@@ -27,6 +27,13 @@ use Amazon\Core\Model\AmazonConfig;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.ExcessivePublicCount)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Data extends AbstractHelper
+ {
+@@ -59,7 +66,7 @@ class Data extends AbstractHelper
+     private $moduleStatusFactory;
+ 
+     /**
+-     * @var Config
++     * @var AmazonConfig
+      */
+     private $config;
+ 
+@@ -611,7 +618,9 @@ class Data extends AbstractHelper
+      */
+     public function isCurrentCurrencySupportedByAmazon()
+     {
+-        return $this->config->getBaseCurrencyCode() == $this->getCurrencyCode();
++        $regionCurrency = $this->getCurrencyCode();
++        $currentCurrency = $this->config->getPresentmentCurrency();
++        return $currentCurrency === $regionCurrency || $this->config->canUseCurrency($currentCurrency);
+     }
+ 
+     /**
+
+--- a/Logger/ExceptionLogger.php
++++ b/Logger/ExceptionLogger.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Logger;
+ 
+ use Psr\Log\LoggerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ExceptionLogger
+ {
+     private $logger;
+
+--- a/Logger/Handler/Client.php
++++ b/Logger/Handler/Client.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Logger\Handler;
+ 
+ use Magento\Framework\Logger\Handler\Base;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Client extends Base
+ {
+     const FILENAME = '/var/log/paywithamazon.log';
+
+--- a/Logger/Handler/Ipn.php
++++ b/Logger/Handler/Ipn.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Logger\Handler;
+ 
+ use Magento\Framework\Logger\Handler\Base;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Ipn extends Base
+ {
+     const FILENAME = '/var/log/amazonipn.log';
+
+--- a/Logger/IpnLogger.php
++++ b/Logger/IpnLogger.php
+@@ -17,6 +17,13 @@ namespace Amazon\Core\Logger;
+ 
+ /**
+  * Enables implementation of custom log file.
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class IpnLogger extends \Monolog\Logger
+ {
+
+--- a/Logger/Logger.php
++++ b/Logger/Logger.php
+@@ -17,6 +17,13 @@ namespace Amazon\Core\Logger;
+ 
+ /**
+  * Enables implementation of custom log file.
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class Logger extends \Monolog\Logger
+ {
+
+--- a/Model/AmazonConfig.php
++++ b/Model/AmazonConfig.php
+@@ -20,6 +20,14 @@ use Magento\Store\Model\ScopeInterface;
+ use Magento\Framework\App\Config\ScopeConfigInterface;
+ use Magento\Store\Model\StoreManagerInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AmazonConfig
+ {
+     /**
+@@ -77,21 +85,20 @@ class AmazonConfig
+      * Checks to see if store's selected region is a multicurrency region.
+      * @param string $scope
+      * @param null $scopeCode
+-     * @param null $store
+      * @return bool
+      */
+-    public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
++    public function isMulticurrencyRegion($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+         $mcRegions = $this->scopeConfig->getValue(
+             'multicurrency/regions',
+             $scope,
+-            $store
++            $scopeCode
+         );
+ 
+         if ($mcRegions) {
+             $allowedRegions = explode(',', $mcRegions);
+ 
+-            if (in_array($this->getPaymentRegion(), $allowedRegions)) {
++            if (in_array($this->getPaymentRegion($scope, $scopeCode), $allowedRegions)) {
+                 return true;
+             }
+         }
+@@ -104,11 +111,10 @@ class AmazonConfig
+      *
+      * @param string $scope
+      * @param null $scopeCode
+-     * @param null $store
+      *
+      * @return bool
+      */
+-    public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null, $store = null)
++    public function multiCurrencyEnabled($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
+     {
+         $enabled = $this->scopeConfig->getValue(
+             'payment/amazon_payment/multicurrency',
+@@ -117,12 +123,37 @@ class AmazonConfig
+         );
+ 
+         if ($enabled) {
+-            return $this->isMulticurrencyRegion($scope, $scopeCode, $store);
++            return $this->isMulticurrencyRegion($scope, $scopeCode);
+         }
+ 
+         return false;
+     }
+ 
++    /**
++     * @param string $scope
++     * @param string $scopeCode
++     * @return array
++     */
++    public function getValidCurrencies($scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        return explode(',', $this->scopeConfig->getValue('multicurrency/currencies', $scope, $scopeCode));
++    }
++
++    /**
++     * @param string $currencyCode
++     * @param string $scope
++     * @param string $scopeCode
++     * @return boolean
++     */
++    public function canUseCurrency($currencyCode, $scope = ScopeInterface::SCOPE_STORE, $scopeCode = null)
++    {
++        $result = false;
++        if ($this->multiCurrencyEnabled($scope, $scopeCode)) {
++            $result = in_array($currencyCode, $this->getValidCurrencies($scope, $scopeCode));
++        }
++        return $result;
++    }
++
+     /**
+      * Only certain currency codes are allowed to be used with multi-currency
+      *
+@@ -131,23 +162,7 @@ class AmazonConfig
+      */
+     public function useMultiCurrency($store = null)
+     {
+-        if ($this->multiCurrencyEnabled()) {
+-            // get allowed presentment currencies from config.xml
+-            $currencies = $this->scopeConfig->getValue(
+-                'multicurrency/currencies',
+-                ScopeInterface::SCOPE_STORE,
+-                $store
+-            );
+-
+-            if ($currencies) {
+-                $allowedCurrencies = explode(',', $currencies);
+-
+-                if (in_array($this->getCurrentCurrencyCode(), $allowedCurrencies)) {
+-                    return true;
+-                }
+-            }
+-        }
+-        return false;
++        return $this->canUseCurrency($this->getCurrentCurrencyCode(), ScopeInterface::SCOPE_STORE, $store);
+     }
+ 
+     /*
+
+--- a/Model/Config/Credentials/Json.php
++++ b/Model/Config/Credentials/Json.php
+@@ -23,6 +23,14 @@ use Magento\Framework\Encryption\EncryptorInterface;
+ use Magento\Framework\Json\DecoderInterface;
+ use Magento\Framework\Message\ManagerInterface as MessageManager;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Json
+ {
+     const AMAZON_CONFIG_PREFIX = 'payment/amazon_payment/';
+
+--- a/Model/Config/SimplePath.php
++++ b/Model/Config/SimplePath.php
+@@ -27,6 +27,13 @@ use \phpseclib\Crypt\AES;
+ 
+ /**
+  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class SimplePath
+ {
+@@ -539,9 +546,14 @@ class SimplePath
+      */
+     public function getRegion()
+     {
+-        $currency = $this->getConfig('currency/options/default');
++        $currency = $this->getCurrency();
++
++        $region = null;
++        if ($currency) {
++            $region = isset($this->_mapCurrencyRegion[$currency]) ? strtoupper($this->_mapCurrencyRegion[$currency]) : 'DE';
++        }
++
+ 
+-        $region = isset($this->_mapCurrencyRegion[$currency]) ? strtoupper($this->_mapCurrencyRegion[$currency]) : '';
+         if ($region == 'DE') {
+             $region = 'Euro Region';
+         }
+@@ -555,7 +567,15 @@ class SimplePath
+     public function getCurrency()
+     {
+         $currency = $this->getConfig('currency/options/default');
+-        return (isset($this->_mapCurrencyRegion[$currency])) ? $currency : null;
++        $isCurrencyValid = isset($this->_mapCurrencyRegion[$currency]);
++        if (!$isCurrencyValid) {
++            if ($this->getConfig(CoreHelper::AMAZON_ACTIVE, $this->_scope, $this->_scopeId)) {
++                $isCurrencyValid = $this->amazonConfig->canUseCurrency($currency, $this->_scope, $this->_scopeId);
++            } else {
++                $isCurrencyValid = in_array($currency, $this->amazonConfig->getValidCurrencies($this->_scope, $this->_scopeId));
++            }
++        }
++        return $isCurrencyValid ? $currency : null;
+     }
+ 
+     /**
+@@ -581,7 +601,7 @@ class SimplePath
+             'isSecure'      => (int) ($this->request->isSecure()),
+             'hasOpenssl'    => (int) (extension_loaded('openssl')),
+             'formParams'    => $this->getFormParams(),
+-            'isMultiCurrencyRegion' => (int) $this->amazonConfig->isMulticurrencyRegion(),
++            'isMultiCurrencyRegion' => (int) $this->amazonConfig->isMulticurrencyRegion($this->_scope, $this->_scopeId),
+         ];
+     }
+ }
+
+--- a/Model/Config/Source/AuthorizationMode.php
++++ b/Model/Config/Source/AuthorizationMode.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AuthorizationMode implements ArrayInterface
+ {
+     const ASYNC = 'asynchronous';
+
+--- a/Model/Config/Source/Button/Color.php
++++ b/Model/Config/Source/Button/Color.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source\Button;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Color implements ArrayInterface
+ {
+     /**
+
+--- a/Model/Config/Source/Button/Size.php
++++ b/Model/Config/Source/Button/Size.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source\Button;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Size implements ArrayInterface
+ {
+     /**
+
+--- a/Model/Config/Source/Button/Type.php
++++ b/Model/Config/Source/Button/Type.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source\Button;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class Type implements ArrayInterface
+ {
+     /**
+
+--- a/Model/Config/Source/PaymentAction.php
++++ b/Model/Config/Source/PaymentAction.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PaymentAction implements ArrayInterface
+ {
+     const AUTHORIZE = 'authorize';
+
+--- a/Model/Config/Source/PaymentRegion.php
++++ b/Model/Config/Source/PaymentRegion.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PaymentRegion implements ArrayInterface
+ {
+     /**
+
+--- a/Model/Config/Source/UpdateMechanism.php
++++ b/Model/Config/Source/UpdateMechanism.php
+@@ -17,6 +17,14 @@ namespace Amazon\Core\Model\Config\Source;
+ 
+ use Magento\Framework\Option\ArrayInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class UpdateMechanism implements ArrayInterface
+ {
+     const IPN = 'instant';
+
+--- a/Model/Validation/AddressBlacklistTermsValidator.php
++++ b/Model/Validation/AddressBlacklistTermsValidator.php
+@@ -18,6 +18,14 @@ namespace Amazon\Core\Model\Validation;
+ use Amazon\Core\Helper\Data;
+ use Magento\Framework\Validator\AbstractValidator;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class AddressBlacklistTermsValidator extends AbstractValidator
+ {
+     /**
+
+--- a/Model/Validation/ApiCredentialsValidator.php
++++ b/Model/Validation/ApiCredentialsValidator.php
+@@ -21,6 +21,14 @@ use Magento\Framework\DataObject;
+ use Magento\Framework\Validator\AbstractValidator;
+ use AmazonPay\ResponseInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ApiCredentialsValidator extends AbstractValidator
+ {
+     const TEST_ORDER_REF = 'S00-0000000-0000000';
+
+--- a/Model/Validation/JsonConfigDataValidator.php
++++ b/Model/Validation/JsonConfigDataValidator.php
+@@ -19,6 +19,14 @@ use Amazon\Core\Helper\Data;
+ use Magento\Framework\Validator\AbstractValidator;
+ use Magento\Framework\Json\DecoderInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class JsonConfigDataValidator extends AbstractValidator
+ {
+     /**
+
+--- a/Observer/ExcludedCategoryQuoteItemAddition.php
++++ b/Observer/ExcludedCategoryQuoteItemAddition.php
+@@ -21,6 +21,14 @@ use Magento\Checkout\Model\Session;
+ use Magento\Framework\Event\Observer;
+ use Magento\Framework\Event\ObserverInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class ExcludedCategoryQuoteItemAddition implements ObserverInterface
+ {
+     /**
+
+--- a/Observer/PaymentConfigSaveAfter.php
++++ b/Observer/PaymentConfigSaveAfter.php
+@@ -26,6 +26,14 @@ use Magento\Framework\App\RequestInterface;
+ use Magento\Store\Model\ScopeInterface;
+ use Magento\Framework\App\Config\Storage\WriterInterface;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class PaymentConfigSaveAfter implements ObserverInterface
+ {
+     /**
+
+--- a/Plugin/CartSection.php
++++ b/Plugin/CartSection.php
+@@ -19,6 +19,14 @@ use Amazon\Core\Helper\Data;
+ use Amazon\Core\Helper\CategoryExclusion;
+ use Magento\Checkout\CustomerData\Cart;
+ 
++/**
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
++ */
+ class CartSection
+ {
+     /**
+
+--- a/Setup/UpgradeData.php
++++ b/Setup/UpgradeData.php
+@@ -22,6 +22,13 @@ use Magento\Framework\Setup\UpgradeDataInterface;
+ /**
+  * Class UpgradeData
+  * Ensures default authorization mode is set if upgrading from earlier versions
++ *
++ * @deprecated As of February 2021, this Legacy Amazon Pay plugin has been
++ * deprecated, in favor of a newer Amazon Pay version available through GitHub
++ * and Magento Marketplace. Please download the new plugin for automatic
++ * updates and to continue providing your customers with a seamless checkout
++ * experience. Please see https://pay.amazon.com/help/E32AAQBC2FY42HS for details
++ * and installation instructions.
+  */
+ class UpgradeData implements UpgradeDataInterface
+ {
+
+--- a/composer.json
++++ b/composer.json
+@@ -2,7 +2,8 @@
+   "name": "amzn/amazon-pay-and-login-with-amazon-core-module",
+   "description": "Shared functionality for Amazon Pay and Login with Amazon modules",
+   "type": "magento2-module",
+-  "version": "3.4.0",
++  "version": "3.8.0",
++  "abandoned": "amzn/amazon-pay-v2-magento-2-module",
+   "license": [
+     "Apache-2.0"
+   ],
+
+--- a/etc/adminhtml/system.xml
++++ b/etc/adminhtml/system.xml
+@@ -152,7 +152,7 @@
+                             <label>Store Name</label>
+                             <config_path>payment/amazon_payment/storename</config_path>
+                         </field>
+-                        <field id="multicurrency" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
++                        <field id="multicurrency" translate="label" type="select" sortOrder="10" showInDefault="0" showInWebsite="0" showInStore="1">
+                             <label>Use Multi-currency</label>
+                             <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                             <config_path>payment/amazon_payment/multicurrency</config_path>
+
+--- a/etc/module.xml
++++ b/etc/module.xml
+@@ -16,7 +16,7 @@
+  */
+ -->
+ <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+-    <module name="Amazon_Core" setup_version="3.4.0">
++    <module name="Amazon_Core" setup_version="3.8.0">
+         <sequence>
+             <module name="Magento_Store"/>
+             <module name="Magento_Customer"/>
+
+--- a/i18n/en_US.csv
++++ b/i18n/en_US.csv
+@@ -106,7 +106,7 @@
+ "The currency selected is not supported by Amazon Pay","The currency selected is not supported by Amazon Pay on this store."
+ "the email address for your Amazon account is invalid","The email address for your Amazon account is invalid."
+ "There has been a problem with the selected payment method on your Amazon account. Please choose another one.","There has been a problem with the selected payment method on your Amazon account. Please choose another one."
+-"Unfortunately it is not possible to pay with Amazon Pay for this order. Please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
++"Unfortunately it is not possible to use Amazon Pay for this order, please choose another payment method.","Unfortunately it is not possible to Pay with Amazon Pay for this order. Please choose another payment method."
+ "United Kingdom","United Kingdom"
+ "United States","United States"
+ "Update Mechanism","Update Mechanism"
+
+--- a/view/adminhtml/templates/system/config/simplepath_admin.phtml
++++ b/view/adminhtml/templates/system/config/simplepath_admin.phtml
+@@ -1,4 +1,3 @@
+-<div id="amazon_simplepath">
+ <!--
+ /**
+  * Copyright 2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
